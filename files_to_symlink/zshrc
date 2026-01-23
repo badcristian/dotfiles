@@ -1,16 +1,26 @@
+
+export PATH="$HOME/bin:/usr/local/bin:$PATH"
 # ALIAS
 
 alias pr="vim ~/.zshrc"
+alias ccc="checks"
 alias profile="vim ~/.zshrc"
 alias v="nvim"
 alias py="python3"
 alias pa="php artisan"
+alias pa84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php artisan"
+alias p84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php"
+alias php84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php"
+alias link74="valet use php@7.4"
+alias link82="valet use php@8.2"
+alias link83="valet use php@8.3"
+alias link84="valet use php@8.4"
+
 alias g="git"
 alias growee="ssh forge@54.195.224.232"
-alias ribeit="ssh forge@3.76.111.19"
+alias forge="ssh forge@3.76.111.19"
 alias reload="source ~/.zshrc"
 alias rr="source ~/.zshrc"
-alias mysql="sudo /usr/local/mysql/bin/mysql -u root -p"
 alias checks="composer checks"
 alias gck='git checkout'
 alias gb="git branch"
@@ -21,8 +31,11 @@ alias ga='git add .'
 alias fresh="pa migrate:fresh --seed"
 alias gcm="git commit -m"
 alias n="tmux new-session -A -s"
-alias a="tmux a -d -t"
+alias a="tmux a"
+alias init="bash ~/init_tmux_sessions.sh"
+alias tko="tmux kill-server"
 alias t="tmux"
+alias ta="tmux a"
 alias reseed="composer reseed"
 alias theme=" ghostty +list-themes"
 alias config="vim ~/.config/ghostty/config"
@@ -30,13 +43,22 @@ alias work="php artisan queue:work --timeout=0"
 alias works="php artisan queue:work --timeout=0 --queue=default,storage"
 alias queue="php artisan queue:listen --timeout=0"
 alias scheduler="php artisan schedule:work"
+alias cf="config"
+
+# alias ls="lsd -la"
+
 
 # BREW
 export PATH="/opt/homebrew/bin:$PATH"
 export PATH="/opt/homebrew/sbin:$PATH"
 export PATH="/opt/homebrew/opt/node@20/bin:$PATH"
-export PATH="/opt/homebrew/opt/php@8.4/bin:$PATH"
-export PATH="/opt/homebrew/opt/php@8.4/sbin:$PATH"
+#export PATH="/opt/homebrew/opt/php@8.4/bin:$PATH"
+#export PATH="/opt/homebrew/opt/php@8.4/sbin:$PATH"
+#export PATH="/opt/homebrew/opt/php@8.2/bin:$PATH"
+#export PATH="/opt/homebrew/opt/php@8.2/sbin:$PATH"
+
+#COMMANDS
+export LSCOLORS="exfxcxdxbxegedabagacad"
 
 # COMPOSER
 export PATH="$PATH:$HOME/.composer/vendor/bin"
@@ -47,7 +69,7 @@ export PATH="$PATH:$HOME/.composer/vendor/bin"
 # prompt pure
 
 # GEOMETRY
-GEOMETRY_INFO=""	
+GEOMETRY_INFO=""
 source /opt/homebrew/opt/geometry/share/geometry/geometry.zsh
 
 # CARGO
@@ -93,6 +115,23 @@ setopt HIST_IGNORE_ALL_DUPS
 # Do not remember commands that start with a whitespace
 setopt HIST_IGNORE_SPACE
 # Correct spelling of all arguments in the command line
-setopt CORRECT_ALL
+#setopt CORRECT_ALL
 # Enable autocompletion
-zstyle ':completion:*' completer _complete _correct _approximate
+# zstyle ':completion:*' completer _complete _correct _approximate
+
+#TMUX
+#i#tmux capture-pane -J -p | grep -oE '(https?):\/\/.*[^>]' | fzf-tmux -d20 --multi --bind alt-a:select-all,alt-d:deselect-all | xargs open
+
+#RUBY
+if [ -d "/opt/homebrew/opt/ruby/bin" ]; then
+  export PATH=/opt/homebrew/opt/ruby/bin:$PATH
+  export PATH=`gem environment gemdir`/bin:$PATH
+fi
+eval "$(~/.local/bin/mise activate)"
+
+# php-pkcs11 stuff
+
+export PHP11_MODULE=/usr/local/lib/softhsm/libsofthsm2.so
+export PHP11_SLOT=0x2bf550a9
+export PHP11_PIN=12345678
+alias cl="clear"
