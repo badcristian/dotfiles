@@ -25,4 +25,5 @@ ln -sf $DOTFILES/zshrc ~/.zshrc
 
 # bash scripts
 ln -sf $DOTFILES/init_tmux_sessions.sh ~/init_tmux_sessions.sh
+ln -sf $DOTFILES/switch_php_ver.sh ~/switch_php_ver.sh
 # add more as needed
