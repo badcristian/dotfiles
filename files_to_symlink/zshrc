@@ -132,3 +132,4 @@ export PHP11_MODULE=/usr/local/lib/softhsm/libsofthsm2.so
 export PHP11_SLOT=0x2bf550a9
 export PHP11_PIN=12345678
 alias cl="clear"
+export GPG_TTY=$(tty)
