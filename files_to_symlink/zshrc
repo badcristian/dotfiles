@@ -7,12 +7,30 @@ alias ccc="checks"
 alias profile="vim ~/.zshrc"
 alias v="nvim"
 alias py="python3"
+
 alias pa="php artisan"
-alias pa84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php artisan"
-alias p84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php"
-alias php84="/opt/homebrew/Cellar/php@8.4/8.4.15/bin/php"
+alias pa74="/opt/homebrew/Cellar/php@7.4/7.4.33_13/bin/php artisan"
+alias pa82="/opt/homebrew/Cellar/php@8.2/8.2.30/bin/php artisan"
+alias pa83="/opt/homebrew/Cellar/php@8.3/8.3.30/bin/php artisan"
+alias pa84="/opt/homebrew/Cellar/php@8.4/8.4.17/bin/php artisan"
+
+alias p74="/opt/homebrew/Cellar/php@7.4/7.4.33_13/bin/php"
+alias php74="/opt/homebrew/Cellar/php@7.4/7.4.33_13/bin/php"
+
+alias p82="/opt/homebrew/Cellar/php@8.2/8.2.30/bin/php"
+alias php82="/opt/homebrew/Cellar/php@8.2/8.2.30/bin/php"
+
+alias p83="/opt/homebrew/Cellar/php@8.3/8.3.30/bin/php"
+alias php83="/opt/homebrew/Cellar/php@8.3/8.3.30/bin/php"
+
+alias p84="/opt/homebrew/Cellar/php@8.4/8.4.17/bin/php"
+alias php84="/opt/homebrew/Cellar/php@8.4/8.4.17/bin/php"
+
 alias switch="bash ~/switch_php_ver.sh"
 
+alias c="clear"
+alias cl="clear"
+alias u="bash ~/claude-usage.sh"
 alias g="git"
 alias growee="ssh forge@54.195.224.232"
 alias forge="ssh forge@3.76.111.19"
@@ -20,6 +38,7 @@ alias reload="source ~/.zshrc"
 alias rr="source ~/.zshrc"
 alias checks="composer checks"
 alias gck='git checkout'
+alias ll='lazygit'
 alias gb="git branch"
 alias stash='git stash -u'
 alias unstash='git stash pop'
@@ -65,9 +84,8 @@ export PATH="$PATH:$HOME/.composer/vendor/bin"
 # autoload -U promptinit; promptinit
 # prompt pure
 
-# GEOMETRY
-GEOMETRY_INFO=""
-source /opt/homebrew/opt/geometry/share/geometry/geometry.zsh
+# use starhisp instead of GEOMETRY
+eval "$(starship init zsh)"
 
 # CARGO
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -127,9 +145,11 @@ fi
 eval "$(~/.local/bin/mise activate)"
 
 # php-pkcs11 stuff
-
 export PHP11_MODULE=/usr/local/lib/softhsm/libsofthsm2.so
 export PHP11_SLOT=0x2bf550a9
 export PHP11_PIN=12345678
-alias cl="clear"
 export GPG_TTY=$(tty)
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"

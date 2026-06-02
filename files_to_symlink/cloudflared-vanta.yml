@@ -1,0 +1,11 @@
+tunnel: vanta
+credentials-file: /Users/mac/.cloudflared/541d714d-356b-4f02-8f4e-641526e0040b.json
+
+ingress:
+  - hostname: vanta.cerdac.org
+    service: https://127.0.0.1:443
+    originRequest:
+      httpHostHeader: vanta.test
+      originServerName: vanta.test
+      noTLSVerify: true
+  - service: http_status:404

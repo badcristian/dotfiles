@@ -19,11 +19,24 @@ if [ ! -d ~/.hammerspoon ]; then
     mkdir -p ~/.hammerspoon
 fi
 
+if [ ! -d ~/.config/ghostty ]; then
+    mkdir -p ~/.config/ghostty
+fi
+
+if [ ! -d ~/.cloudflared ]; then
+    mkdir -p ~/.cloudflared
+fi
+
 ln -sf $DOTFILES/init.lua ~/.hammerspoon/init.lua
 ln -sf $DOTFILES/tmux.conf ~/.tmux.conf
 ln -sf $DOTFILES/zshrc ~/.zshrc
 
+# cloudflared tunnel configs (credentials JSON + cert.pem are secrets — NOT versioned)
+ln -sf $DOTFILES/cloudflared-vanta.yml ~/.cloudflared/vanta.yml
+
 # bash scripts
 ln -sf $DOTFILES/init_tmux_sessions.sh ~/init_tmux_sessions.sh
 ln -sf $DOTFILES/switch_php_ver.sh ~/switch_php_ver.sh
+ln -sf $DOTFILES/ghostty.config ~/.config/ghostty/config
+# ln -sf $DOTFILES/claude-usage.sh ~/claude-usage.sh
 # add more as needed
