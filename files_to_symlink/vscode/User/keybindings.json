@@ -1,0 +1,340 @@
+// Place your key bindings in this file to override the defaults
+[
+	{
+		"key": "shift+cmd+p",
+		"command": "-workbench.action.showCommands"
+	},
+	{
+		"key": "shift+cmd+p",
+		"command": "workbench.action.pinEditor",
+		"when": "activeEditorGroupEmpty == false"
+	},
+	{
+		"key": "cmd+p",
+		"command": "-workbench.action.quickOpen"
+	},
+	{
+		"key": "cmd+p",
+		"command": "workbench.action.showCommands"
+	},
+	{
+		"key": "alt+cmd+b",
+		"command": "gitlens.toggleFileBlame",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "cmd+enter",
+		"command": "php-smart-docblock.navigate",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack)"
+	},
+	{
+		"key": "cmd+enter",
+		"command": "markdown.togglePreview",
+		"when": "resourceExtname == .md && !terminalFocus && ((editorFocus && resourceLangId == markdown && !notebookEditorFocused) || activeCustomEditorId == 'vscode.markdown.preview.editor')"
+	},
+	{
+		"key": "alt+enter",
+		"command": "editor.action.quickFix",
+		"when": "editorHasCodeActionsProvider && editorTextFocus && !editorReadonly"
+	},
+	{
+		"key": "cmd+c",
+		"command": "smartReferences.smartCopy",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack)"
+	},
+	{
+		"key": "cmd+v",
+		"command": "smartReferences.smartPaste",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack)"
+	},
+	{
+		"key": "cmd+x",
+		"command": "workbench.action.terminal.kill",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+j",
+		"command": "workbench.action.terminal.toggleTerminal"
+	},
+	{
+		"key": "shift+cmd+r",
+		"command": "python.execInTerminal"
+	},
+	{
+		"key": "shift+cmd+v",
+		"command": "workbench.action.closeSidebar",
+		"when": "focusedView == favorites"
+	},
+	{
+		"key": "shift+cmd+v",
+		"command": "favorites.focus",
+		"when": "focusedView != favorites"
+	},
+	{
+		"key": "shift shift",
+		"command": "workbench.action.quickOpenNavigateNextInFilePicker"
+	},
+	{
+		"key": "shift shift",
+		"command": "workbench.action.quickOpen"
+	},
+	{
+		"key": "shift+cmd+f",
+		"command": "workbench.action.quickTextSearch"
+	},
+	{
+		"key": "cmd+b",
+		"command": "-workbench.action.toggleSidebarVisibility"
+	},
+	{
+		"key": "cmd+b",
+		"command": "smartReferences.go",
+		"when": "editorTextFocus && editorHasReferenceProvider"
+	},
+	{
+		"key": "backspace",
+		"command": "smartReferences.smartBackspace",
+		"when": "editorTextFocus && !editorReadonly && editorLangId == php"
+	},
+	{
+		"key": "enter",
+		"command": "smartReferences.smartEnter",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack) && !suggestWidgetVisible"
+	},
+	{
+		"key": "=",
+		"command": "smartReferences.smartEquals",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack) && !suggestWidgetVisible"
+	},
+	{
+		"key": "up",
+		"command": "smartReferences.smartCursorUp",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack) && !suggestWidgetVisible"
+	},
+	{
+		"key": "cmd+left",
+		"command": "workbench.action.previousEditorInGroup",
+		"when": "activeEditorGroupEmpty == false"
+	},
+	{
+		"key": "cmd+right",
+		"command": "workbench.action.nextEditorInGroup",
+		"when": "activeEditorGroupEmpty == false"
+	},
+	{
+		"key": "shift+cmd+b",
+		"command": "-workbench.action.tasks.build",
+		"when": "taskCommandsRegistered"
+	},
+	{
+		"key": "shift+cmd+b",
+		"command": "bookmarks.toggleLabeled"
+	},
+	{
+		"key": "alt+cmd+b",
+		"command": "-workbench.action.toggleAuxiliaryBar"
+	},
+	{
+		"key": "cmd+d",
+		"command": "editor.action.duplicateSelection"
+	},
+	{
+		"key": "shift+alt+down",
+		"command": "-notebook.cell.copyDown",
+		"when": "notebookEditorFocused && !inputFocus"
+	},
+	{
+		"key": "shift+alt+down",
+		"command": "-editor.action.copyLinesDownAction",
+		"when": "editorTextFocus && !editorReadonly"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "workbench.action.closeSidebar",
+		"when": "sideBarVisible && activeViewlet == 'workbench.view.explorer'"
+	},
+	{
+		"key": "shift+cmd+l",
+		"command": "eslint.executeAutofix"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "editor.action.formatDocument",
+		"when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly && !inCompositeEditor"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "editor.action.formatDocument.none",
+		"when": "editorTextFocus && !editorHasDocumentFormattingProvider && !editorReadonly"
+	},
+	{
+		"key": "alt+cmd+j",
+		"command": "-bookmarks.jumpToPrevious",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "alt+cmd+j",
+		"command": "editor.action.insertSnippet",
+		"when": "editorTextFocus && !editorReadonly"
+	},
+	{
+		"key": "alt+cmd+j",
+		"command": "-editor.action.insertSnippet",
+		"when": "editorTextFocus && !editorReadonly && editorLangId == 'powershell'"
+	},
+	{
+		"key": "shift+cmd+w",
+		"command": "-workbench.action.closeWindow"
+	},
+	{
+		"key": "shift+cmd+w",
+		"command": "workbench.action.closeOtherEditors",
+		"when": "activeEditorGroupEmpty == false"
+	},
+	{
+		"key": "shift+cmd+t",
+		"command": "-workbench.action.reopenClosedEditor"
+	},
+	{
+		"key": "shift+cmd+t",
+		"command": "workbench.action.reopenClosedEditor"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "workbench.view.explorer",
+		"when": "!sideBarVisible"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "workbench.view.explorer",
+		"when": "sideBarVisible && activeViewlet != 'workbench.view.explorer'"
+	},
+	{
+		"key": "shift+cmd+e",
+		"command": "-workbench.view.explorer",
+		"when": "viewContainer.workbench.view.explorer.enabled"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "-editor.action.replaceOne",
+		"when": "editorFocus && findWidgetVisible"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "-search.action.replace",
+		"when": "isEditableItem && matchFocus && replaceActive && searchViewletVisible"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "-search.action.replaceAllInFile",
+		"when": "fileMatchFocus && isEditableItem && replaceActive && searchViewletVisible"
+	},
+	{
+		"key": "shift+cmd+1",
+		"command": "-search.action.replaceAllInFolder",
+		"when": "folderMatchFocus && isEditableItem && replaceActive && searchViewletVisible"
+	},
+	{
+		"key": "cmd+o",
+		"command": "-workbench.action.files.openLocalFileFolder",
+		"when": "remoteFileDialogVisible"
+	},
+	{
+		"key": "cmd+o",
+		"command": "-workbench.action.files.openFileFolder",
+		"when": "isMacNative && openFolderWorkspaceSupport"
+	},
+	{
+		"key": "cmd+o",
+		"command": "-workbench.action.files.openFolderViaWorkspace",
+		"when": "!openFolderWorkspaceSupport && workbenchState == 'workspace'"
+	},
+	{
+		"key": "cmd+o",
+		"command": "-workbench.action.showAllSymbols"
+	},
+	{
+		"key": "cmd+o",
+		"command": "workbench.action.files.openFolder"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-notebook.formatCell",
+		"when": "editorHasDocumentFormattingProvider && editorTextFocus && inCompositeEditor && notebookEditable && !editorReadonly && activeEditor == 'workbench.editor.notebook'"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-editor.action.formatDocument",
+		"when": "editorHasDocumentFormattingProvider && editorTextFocus && !editorReadonly && !inCompositeEditor"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-editor.action.formatDocument.none",
+		"when": "editorTextFocus && !editorHasDocumentFormattingProvider && !editorReadonly"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-editor.action.formatSelection",
+		"when": "editorHasDocumentSelectionFormattingProvider && editorHasSelection && editorTextFocus && !editorReadonly"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-notebook.format",
+		"when": "notebookEditable && !editorTextFocus && activeEditor == 'workbench.editor.notebook'"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-rest-client.rerun-last-request",
+		"when": "editorTextFocus && editorLangId == 'http'"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-rest-client.rerun-last-request",
+		"when": "editorTextFocus && editorLangId == 'plaintext'"
+	},
+	{
+		"key": "alt+cmd+l",
+		"command": "-rest-client.rerun-last-request",
+		"when": "httpResponsePreviewFocus"
+	},
+	{
+		"key": "cmd+k",
+		"command": "-git.commitAll",
+		"when": "!inDebugMode && !operationInProgress && !terminalFocus"
+	},
+	{
+		"key": "shift+cmd+=",
+		"command": "-editor.unfoldAll",
+		"when": "editorFocus && foldingEnabled"
+	},
+	{
+		"key": "cmd+=",
+		"command": "-editor.unfold",
+		"when": "editorFocus && foldingEnabled"
+	},
+	{
+		"key": "cmd+-",
+		"command": "-editor.fold",
+		"when": "editorFocus && foldingEnabled"
+	},
+	{
+		"key": "shift+cmd+-",
+		"command": "-editor.foldAll",
+		"when": "editorFocus && foldingEnabled"
+	},
+	{
+		"key": "ctrl+t",
+		"command": "-editor.action.refactor",
+		"when": "editorHasCodeActionsProvider && editorTextFocus && !editorReadonly"
+	},
+	{
+		"key": "cmd+backspace",
+		"command": "smartReferences.deleteFileWithoutAutoReveal",
+		"when": "filesExplorerFocus && !inputFocus"
+	},
+	{
+		"key": "delete",
+		"command": "smartReferences.deleteFileWithoutAutoReveal",
+		"when": "filesExplorerFocus && !inputFocus"
+	}
+]

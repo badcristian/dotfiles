@@ -1,0 +1,110 @@
+{
+	"name": "smart-references",
+	"displayName": "Smart References",
+	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
+	"version": "0.0.4",
+	"publisher": "local",
+	"engines": {
+		"vscode": "^1.67.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onLanguage:php",
+		"onLanguage:hack",
+		"onCommand:smartReferences.go",
+		"onCommand:smartReferences.showReferencesAt",
+		"onCommand:smartReferences.useQuickPickReferences",
+		"onCommand:smartReferences.useWebviewReferences",
+		"onCommand:smartReferences.smartBackspace",
+		"onCommand:smartReferences.smartEnter",
+		"onCommand:smartReferences.smartCopy",
+		"onCommand:smartReferences.smartPaste",
+		"onCommand:smartReferences.smartEquals",
+		"onCommand:smartReferences.smartCursorUp",
+		"onCommand:smartReferences.splitPhpChain",
+		"onCommand:smartReferences.applyPhpInlayHints",
+		"onCommand:smartReferences.deleteFileWithoutAutoReveal"
+	],
+	"main": "./extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "smartReferences.go",
+				"title": "Smart References: Go"
+			},
+			{
+				"command": "smartReferences.showReferencesAt",
+				"title": "Smart References: Show References"
+			},
+			{
+				"command": "smartReferences.useQuickPickReferences",
+				"title": "Smart References: Use QuickPick References"
+			},
+			{
+				"command": "smartReferences.useWebviewReferences",
+				"title": "Smart References: Use Webview References"
+			},
+			{
+				"command": "smartReferences.smartBackspace",
+				"title": "Smart References: Smart Backspace"
+			},
+			{
+				"command": "smartReferences.smartEnter",
+				"title": "Smart References: Smart Enter"
+			},
+			{
+				"command": "smartReferences.smartCopy",
+				"title": "Smart References: Smart Copy"
+			},
+			{
+				"command": "smartReferences.smartPaste",
+				"title": "Smart References: Smart Paste"
+			},
+			{
+				"command": "smartReferences.smartEquals",
+				"title": "Smart References: Smart Equals"
+			},
+			{
+				"command": "smartReferences.smartCursorUp",
+				"title": "Smart References: Smart Cursor Up"
+			},
+			{
+				"command": "smartReferences.splitPhpChain",
+				"title": "Smart References: Split PHP Chain"
+			},
+			{
+				"command": "smartReferences.applyPhpInlayHints",
+				"title": "Smart References: Add PHP Inlay Hints To Line"
+			},
+			{
+				"command": "smartReferences.deleteFileWithoutAutoReveal",
+				"title": "Smart References: Delete File Without Auto Reveal"
+			}
+		],
+		"configuration": {
+			"title": "Smart References",
+			"properties": {
+				"smartReferences.referenceView": {
+					"type": "string",
+					"enum": [
+						"webview",
+						"quickPick"
+					],
+					"default": "webview",
+					"description": "Controls how Smart References displays multiple references."
+				},
+				"smartReferences.webviewPlacement": {
+					"type": "string",
+					"enum": [
+						"active",
+						"beside"
+					],
+					"default": "active",
+					"description": "Controls where the Smart References Webview opens."
+				}
+			}
+		}
+	}
+}

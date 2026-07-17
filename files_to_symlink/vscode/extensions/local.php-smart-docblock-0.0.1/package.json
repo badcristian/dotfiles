@@ -1,0 +1,28 @@
+{
+  "name": "php-smart-docblock",
+  "displayName": "PHP Smart DocBlock",
+  "version": "0.0.4",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "activationEvents": [
+    "onLanguage:php",
+    "onLanguage:hack",
+    "onCommand:php-smart-docblock.generate",
+    "onCommand:php-smart-docblock.navigate"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "php-smart-docblock.generate",
+        "title": "PHP: Smart Generate DocBlock"
+      },
+      {
+        "command": "php-smart-docblock.navigate",
+        "title": "PHP: Smart Navigate"
+      }
+    ]
+  }
+}

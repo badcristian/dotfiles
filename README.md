@@ -11,6 +11,14 @@ bash check_dependencies.sh
 bash symlink.sh
 ```
 
+This also links VS Code user settings, keybindings, and local extensions from `files_to_symlink/vscode`.
+
+For VS Code-specific details, see:
+
+```
+files_to_symlink/vscode/README.md
+```
+
 3. Add PhpStorm command line command
 
 ```

@@ -1,0 +1,33 @@
+{
+  "name": "statusbar-toggle",
+  "displayName": "Status Bar Toggle",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:statusbar-toggle.toggle"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "statusbar-toggle.toggle",
+        "title": "Toggle Status Bar",
+        "icon": "$(layout-statusbar)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "statusbar-toggle.toggle",
+          "group": "navigation@99"
+        }
+      ]
+    }
+  }
+}

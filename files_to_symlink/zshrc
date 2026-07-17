@@ -2,12 +2,15 @@
 export PATH="$HOME/bin:/usr/local/bin:$PATH"
 # ALIAS
 
+alias dev="npm run dev"
+alias xx="codex"
 alias pr="vim ~/.zshrc"
 alias ccc="checks"
 alias profile="vim ~/.zshrc"
 alias v="nvim"
 alias py="python3"
-
+alias cl="claude --permission-mode auto"
+alias cx="codex"
 alias pa="php artisan"
 alias pa74="/opt/homebrew/Cellar/php@7.4/7.4.33_13/bin/php artisan"
 alias pa82="/opt/homebrew/Cellar/php@8.2/8.2.30/bin/php artisan"
@@ -29,7 +32,6 @@ alias php84="/opt/homebrew/Cellar/php@8.4/8.4.17/bin/php"
 alias switch="bash ~/switch_php_ver.sh"
 
 alias c="clear"
-alias cl="clear"
 alias u="bash ~/claude-usage.sh"
 alias g="git"
 alias growee="ssh forge@54.195.224.232"

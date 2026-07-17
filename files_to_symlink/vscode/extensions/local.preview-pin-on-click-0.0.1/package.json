@@ -1,0 +1,22 @@
+{
+  "name": "preview-pin-on-click",
+  "displayName": "Preview Pin On Click",
+  "description": "Pins preview tabs on click and keeps Markdown Preview/source mode global across Markdown files.",
+  "version": "0.0.3",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "markdown.previewStyles": [
+      "./markdown-preview.css"
+    ]
+  },
+  "main": "./extension.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

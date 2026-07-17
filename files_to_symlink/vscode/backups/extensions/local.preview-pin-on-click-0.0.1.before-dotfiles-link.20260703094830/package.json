@@ -1,0 +1,13 @@
+{
+  "name": "preview-pin-on-click",
+  "displayName": "Preview Pin On Click",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js"
+}

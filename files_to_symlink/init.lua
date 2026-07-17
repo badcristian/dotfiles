@@ -18,29 +18,132 @@ APPS = {
     {shortcut = "1", name = "Muxy"},
     -- {shortcut = "1", name = "iTerm"},
 	{shortcut = "2", name = "Google Chrome"},
-    {shortcut = "3", name = "PhpStorm"},
     -- {shortcut = "w", name = "WebStorm", modifiers = {"cmd", "shift"}}, -- cmd+shift+w
-    {shortcut = "4", name = "Visual Studio Code"},
-    {shortcut = "5", name = "WebStorm"},
-    {shortcut = "6", name = "Cursor"},
+    {shortcut = "8", name = "Visual Studio Code"},
+    -- {shortcut = "5", name = "WebStorm"},
+    -- {shortcut = "6", name = "Cursor"},
 	{shortcut = "g", name = "Github Desktop"},
-    {shortcut = "§", name = "TablePlus"},
-	{shortcut = "7", name = "TablePlus"},
-	{shortcut = "9", name = "Postman"},
+    -- {shortcut = "§", name = "TablePlus"},
+	{shortcut = "§", name = "TablePlus"},
+	-- {shortcut = "t", name = "TablePlus"},
+	-- {shortcut = "9", name = "Postman"},
     {shortcut = "l", name = "Slack"},
 	{shortcut = "e", name = "Tinkerwell", modifiers = {"cmd", "shift"}},
     -- {shortcut = "p", name = "Spotify"},
     -- {shortcut = "i", name = "IntelliJ IDEA"},
-    {shortcut = "i", name = "IntelliJ IDEA", modifiers = {"cmd", "shift"}}, -- cmd+shift+i
+    -- {shortcut = "i", name = "IntelliJ IDEA", modifiers = {"cmd", "shift"}}, -- cmd+shift+i
     -- {shortcut = "i", name = "Finder", modifiers = {"cmd", "shift"}}, -- cmd+shift+i
     {shortcut = "/", name = "Claude", modifiers = {"cmd", "shift"}} -- cmd+shift+/
 }
 
+local function bindHotkey(modifiers, key, action)
+    local ok, hotkey = pcall(hs.hotkey.bind, modifiers, key, action)
+    if ok then return hotkey end
+
+    hs.printf("Skipping invalid hotkey %s+%s: %s",
+              table.concat(modifiers, "+"), key, hotkey)
+    return nil
+end
+
 -- Bind each app shortcut; focuses the app if already open, launches it if not
 for _, app in ipairs(APPS) do
-    hs.hotkey.bind(app.modifiers or MODIFIERS, app.shortcut,
-                   function() hs.application.launchOrFocus(app.name) end)
+    bindHotkey(app.modifiers or MODIFIERS, app.shortcut,
+               function() hs.application.launchOrFocus(app.name) end)
 end
+
+-- =============================================================================
+-- Active IDE Shortcut
+-- cmd+3 opens the currently selected IDE.
+-- cmd+shift+3 opens a chooser to change the current IDE.
+-- =============================================================================
+
+local IDE_SETTING_KEY = "cmd3ActiveIde"
+local DEFAULT_IDE = "PhpStorm"
+local IDES = {
+    {name = "PhpStorm", subText = "Laravel / PHP"},
+    {name = "IntelliJ IDEA", subText = "Java / Kotlin"},
+    {name = "WebStorm", subText = "JavaScript / TypeScript"},
+    {name = "Cursor", subText = "AI editor"},
+    {name = "Visual Studio Code", subText = "General editor"}
+}
+
+local function isKnownIde(name)
+    for _, ide in ipairs(IDES) do
+        if ide.name == name then return true end
+    end
+    return false
+end
+
+local activeIde = hs.settings.get(IDE_SETTING_KEY)
+if not isKnownIde(activeIde) then activeIde = DEFAULT_IDE end
+
+local ideMenubar = hs.menubar.new()
+
+local function openActiveIde()
+    hs.application.launchOrFocus(activeIde)
+end
+
+local function setActiveIde(name, quiet)
+    if not isKnownIde(name) then return end
+
+    activeIde = name
+    hs.settings.set(IDE_SETTING_KEY, activeIde)
+
+    if ideMenubar then
+        ideMenubar:setTitle("IDE")
+    end
+
+    if not quiet then
+        hs.alert.show("cmd+3 -> " .. activeIde)
+    end
+end
+
+local ideChooser = hs.chooser.new(function(choice)
+    if choice then setActiveIde(choice.ideName) end
+end)
+
+local function showIdeChooser()
+    local choices = {}
+
+    for _, ide in ipairs(IDES) do
+        local prefix = ide.name == activeIde and "* " or "  "
+        table.insert(choices, {
+            text = prefix .. ide.name,
+            subText = ide.subText,
+            ideName = ide.name
+        })
+    end
+
+    ideChooser:choices(choices)
+    ideChooser:show()
+end
+
+local function activeIdeMenu()
+    local menu = {
+        {title = "Open " .. activeIde, fn = openActiveIde},
+        {title = "Choose IDE...", fn = showIdeChooser},
+        {title = "-"}
+    }
+
+    for _, ide in ipairs(IDES) do
+        local ideName = ide.name
+        local prefix = ideName == activeIde and "* " or "  "
+        table.insert(menu, {
+            title = prefix .. ideName,
+            fn = function() setActiveIde(ideName) end
+        })
+    end
+
+    return menu
+end
+
+if ideMenubar then
+    ideMenubar:setMenu(activeIdeMenu)
+end
+setActiveIde(activeIde, true)
+
+hs.hotkey.bind({"cmd"}, "3", openActiveIde)
+hs.hotkey.bind({"cmd", "shift"}, "3", showIdeChooser)
 
 -- =============================================================================
 -- Double Tap Shortcuts
