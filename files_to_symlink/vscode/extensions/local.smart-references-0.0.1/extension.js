@@ -2706,30 +2706,14 @@ function getPhpBlankLineArrayIndent(document, lineNumber) {
 }
 
 async function smartCursorUp() {
-	const editor = vscode.window.activeTextEditor;
-
-	if (!editor || !hasSingleEmptySelection(editor) || editor.selection.active.line === 0) {
-		await vscode.commands.executeCommand('cursorUp');
-		return;
-	}
-
-	const targetLineNumber = editor.selection.active.line - 1;
-	const indent = getPhpBlankLineArrayIndent(editor.document, targetLineNumber);
-
-	if (indent === undefined) {
-		await vscode.commands.executeCommand('cursorUp');
-		return;
-	}
-
-	const targetLine = editor.document.lineAt(targetLineNumber);
-	const position = new vscode.Position(targetLineNumber, indent.length);
-
-	await editor.edit((editBuilder) => {
-		editBuilder.replace(targetLine.range, indent);
-	});
-
-	editor.selection = new vscode.Selection(position, position);
-	editor.revealRange(new vscode.Range(position, position));
+	// A navigation key must NEVER mutate the document. The previous implementation
+	// rewrote the blank line above with indentation whitespace (editBuilder.replace)
+	// purely to pre-position the caret at the "smart" indent column. Combined with
+	// `files.autoSave: afterDelay`, merely pressing Up persisted phantom trailing
+	// whitespace into files and polluted the undo stack. Fall back to a plain,
+	// non-destructive cursor move; VS Code's on-type auto-indent handles indentation
+	// when the user actually starts typing on that line.
+	await vscode.commands.executeCommand('cursorUp');
 }
 
 async function splitPhpChainAtSelection() {
