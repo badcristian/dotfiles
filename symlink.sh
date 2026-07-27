@@ -33,7 +33,9 @@ ln -sf $DOTFILES/zshrc ~/.zshrc
 ln -sf $DOTFILES/editorconfig ~/.editorconfig
 
 # cloudflared tunnel configs (credentials JSON + cert.pem are secrets — NOT versioned)
-ln -sf $DOTFILES/cloudflared-vanta.yml ~/.cloudflared/vanta.yml
+ln -sf $DOTFILES/cloudflared/vanta.yml ~/.cloudflared/vanta.yml
+ln -sf $DOTFILES/cloudflared/growee.yml ~/.cloudflared/growee.yml
+ln -sf $DOTFILES/cloudflared/spro-marketing.yml ~/.cloudflared/spro-marketing.yml
 
 # bash scripts
 ln -sf $DOTFILES/init_tmux_sessions.sh ~/init_tmux_sessions.sh

@@ -27,7 +27,7 @@ Review those assumptions before using the repository on another machine.
 | Editor defaults | `files_to_symlink/editorconfig` | Global EditorConfig rules |
 | VS Code | `files_to_symlink/vscode/` | User settings, keybindings, marketplace extension list, installers, and repository-owned local extensions |
 | PHP tooling | `files_to_symlink/switch_php_ver.sh` | Switches the Homebrew CLI PHP link and persists the selected version |
-| Local routing | `files_to_symlink/cloudflared-vanta.yml` | Tracked Cloudflared tunnel routing; credentials remain outside the repository |
+| Local routing | `files_to_symlink/cloudflared/*.yml` | Tracked Cloudflared tunnel routing; credentials remain outside the repository |
 | Bootstrap | `check_dependencies.sh`, `symlink.sh` | Checks the expected tools and installs the repository links |
 
 ## How the repository is installed
@@ -45,7 +45,9 @@ The root installer currently manages:
 | `files_to_symlink/editorconfig` | `~/.editorconfig` |
 | `files_to_symlink/init.lua` | `~/.hammerspoon/init.lua` |
 | `files_to_symlink/ghostty.config` | `~/.config/ghostty/config` |
-| `files_to_symlink/cloudflared-vanta.yml` | `~/.cloudflared/vanta.yml` |
+| `files_to_symlink/cloudflared/vanta.yml` | `~/.cloudflared/vanta.yml` |
+| `files_to_symlink/cloudflared/growee.yml` | `~/.cloudflared/growee.yml` |
+| `files_to_symlink/cloudflared/spro-marketing.yml` | `~/.cloudflared/spro-marketing.yml` |
 | `files_to_symlink/init_tmux_sessions.sh` | `~/init_tmux_sessions.sh` |
 | `files_to_symlink/switch_php_ver.sh` | `~/switch_php_ver.sh` |
 | `files_to_symlink/vscode/User/*` | `~/Library/Application Support/Code/User/` |
@@ -74,8 +76,8 @@ At minimum, inspect:
   commands;
 - `files_to_symlink/init.lua` for installed applications and keyboard
   shortcuts;
-- `files_to_symlink/cloudflared-vanta.yml` for the local tunnel, hostname, and
-  credentials-file path.
+- `files_to_symlink/cloudflared/*.yml` for local tunnels, hostnames, and
+  credentials-file paths.
 
 ### 3. Check dependencies
 
@@ -209,7 +211,7 @@ host loaded the repository copy.
   Homebrew paths, app names, project directories, and keyboard shortcuts are
   expected to need maintenance.
 - Keep Cloudflared credential JSON files and `cert.pem` under `~/.cloudflared`;
-  only non-secret routing configuration belongs here.
+  only non-secret routing YAML files belong here and are symlinked individually.
 - Marketplace extensions and application binaries are external dependencies,
   not vendored artifacts.
 - `files_to_symlink/vscode/backups` exists for recovery and comparison. Do not

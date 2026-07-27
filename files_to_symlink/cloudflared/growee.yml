@@ -1,0 +1,10 @@
+tunnel: growee
+credentials-file: /Users/mac/.cloudflared/f1615425-b015-4bbf-ae6e-21f65da68d21.json
+
+ingress:
+  - hostname: growee.cerdac.org
+    service: https://growee.test
+    originRequest:
+      noTLSVerify: true
+      httpHostHeader: growee.test
+  - service: http_status:404

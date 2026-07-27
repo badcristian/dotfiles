@@ -1,0 +1,10 @@
+tunnel: spro-marketing
+credentials-file: /Users/mac/.cloudflared/5540b23c-7913-4de0-be36-6684375ec132.json
+
+ingress:
+  - hostname: spro-marketing.cerdac.org
+    service: https://spro-marketing.test
+    originRequest:
+      noTLSVerify: true
+      httpHostHeader: spro-marketing.test
+  - service: http_status:404
