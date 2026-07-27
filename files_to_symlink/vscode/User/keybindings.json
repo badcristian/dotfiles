@@ -23,6 +23,11 @@
 		"when": "editorTextFocus"
 	},
 	{
+		"key": "shift+cmd+.",
+		"command": "smartReferences.refreshLaravelHelpers",
+		"when": "editorLangId == php || editorLangId == blade"
+	},
+	{
 		"key": "cmd+enter",
 		"command": "php-smart-docblock.navigate",
 		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack)"
@@ -100,6 +105,11 @@
 		"key": "enter",
 		"command": "smartReferences.smartEnter",
 		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == hack) && !suggestWidgetVisible"
+	},
+	{
+		"key": "enter",
+		"command": "smartReferences.smartEnter",
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == json || editorLangId == jsonc) && !suggestWidgetVisible"
 	},
 	{
 		"key": "=",

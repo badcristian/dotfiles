@@ -51,9 +51,6 @@ The root installer currently manages:
 | `files_to_symlink/vscode/User/*` | `~/Library/Application Support/Code/User/` |
 | `files_to_symlink/vscode/extensions/local.*` | `~/.vscode/extensions/` |
 
-`files_to_symlink/claude-usage.sh` is retained in the repository but its link is
-currently disabled in `symlink.sh`.
-
 ## Set up a new Mac
 
 ### 1. Clone to the expected location

@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.4",
+	"version": "0.0.6",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -10,9 +10,16 @@
 	"categories": [
 		"Other"
 	],
+	"extensionKind": [
+		"ui",
+		"workspace"
+	],
 	"activationEvents": [
+		"onStartupFinished",
 		"onLanguage:php",
 		"onLanguage:hack",
+		"onLanguage:json",
+		"onLanguage:jsonc",
 		"onCommand:smartReferences.go",
 		"onCommand:smartReferences.showReferencesAt",
 		"onCommand:smartReferences.useQuickPickReferences",
@@ -25,7 +32,9 @@
 		"onCommand:smartReferences.smartCursorUp",
 		"onCommand:smartReferences.splitPhpChain",
 		"onCommand:smartReferences.applyPhpInlayHints",
-		"onCommand:smartReferences.deleteFileWithoutAutoReveal"
+		"onCommand:smartReferences.deleteFileWithoutAutoReveal",
+		"onCommand:smartReferences.movePhpClassFile",
+		"onCommand:smartReferences.refreshLaravelHelpers"
 	],
 	"main": "./extension.js",
 	"contributes": {
@@ -81,8 +90,25 @@
 			{
 				"command": "smartReferences.deleteFileWithoutAutoReveal",
 				"title": "Smart References: Delete File Without Auto Reveal"
+			},
+			{
+				"command": "smartReferences.movePhpClassFile",
+				"title": "PHP: Move Class File…"
+			},
+			{
+				"command": "smartReferences.refreshLaravelHelpers",
+				"title": "Laravel: Refresh IDE Helpers & Icons"
 			}
 		],
+		"menus": {
+			"explorer/context": [
+				{
+					"command": "smartReferences.movePhpClassFile",
+					"when": "resourceExtname == .php",
+					"group": "2_workspace@1"
+				}
+			]
+		},
 		"configuration": {
 			"title": "Smart References",
 			"properties": {

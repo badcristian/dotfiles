@@ -1,8 +1,21 @@
 const vscode = require('vscode');
 const path = require('path');
+// Laravel IDE-helper generator — a single on-demand COMMAND (no live providers). Safe: it never
+// registers a Definition/Reference provider, so it can't be auto-invoked into a re-analysis storm.
+const laravelIntelligence = require('./laravelIntelligence');
+const phpMove = require('./phpMove');
+const { shouldInsertJsonComma } = require('./jsonSmartEnter');
 
 const PHP_SEARCH_EXCLUDE = '{**/{.git,vendor,node_modules,storage,tmp,bootstrap/cache}/**,**/.phpstorm.meta.php,**/_ide_helper*.php}';
 let referencesPanel;
+
+// Opt-in debug log (Output panel → "Smart References Debug"). Only written when the channel exists.
+let smartRefDebugChannel = null;
+function logDebug(message) {
+	if (smartRefDebugChannel) {
+		smartRefDebugChannel.appendLine(message);
+	}
+}
 
 function sameUri(a, b) {
 	return a.toString() === b.toString();
@@ -329,6 +342,373 @@ function getPhpClassInfo(source) {
 	return getPhpClassInfoBeforeOffset(source, source.length);
 }
 
+// ---- Laravel accessor redirect ----------------------------------------------------------
+// The "Refresh IDE Helpers" generator writes _ide_helper_manual.php with @property-read tags so
+// Intelephense resolves $model->signature_count without a squiggle. But Go-to-Definition then lands
+// on that generated stub line, which is useless for navigation. These helpers detect that case and
+// hop to the REAL Eloquent accessor method (getSignatureCountAttribute / signatureCount(): Attribute)
+// in the model file. Everything here runs ONLY on an explicit Cmd+B, reads via workspace.fs (never
+// opens documents), and uses the workspace symbol index — so it can't trigger a re-analysis storm.
+
+const ACCESSOR_STUB_BASENAME = '_ide_helper_manual.php';
+
+async function tryReadWorkspaceText(uri) {
+	try {
+		return await readWorkspaceText(uri);
+	} catch (error) {
+		return undefined;
+	}
+}
+
+function offsetToPosition(text, offset) {
+	let line = 0;
+	let lineStart = 0;
+
+	for (let index = 0; index < offset; index++) {
+		if (text.charCodeAt(index) === 10) {
+			line++;
+			lineStart = index + 1;
+		}
+	}
+
+	return new vscode.Position(line, offset - lineStart);
+}
+
+function snakeToStudly(name) {
+	return String(name)
+		.split(/[_\s]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join('');
+}
+
+function studlyToSnake(name) {
+	return String(name)
+		.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+		.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+		.toLowerCase();
+}
+
+function isAccessorStubUri(uri) {
+	return Boolean(uri) && new RegExp(`(^|/)${escapeRegExp(ACCESSOR_STUB_BASENAME)}$`).test(uri.path);
+}
+
+// Locate the file that declares `className` in `namespace` using Intelephense's workspace symbol
+// index (fast, no document opened). Intelephense doesn't reliably populate containerName with the
+// namespace, so when name+containerName doesn't pin it we confirm by reading each candidate file's
+// actual `namespace` declaration.
+async function findClassFileUri(className, namespace) {
+	const symbols = await vscode.commands.executeCommand('vscode.executeWorkspaceSymbolProvider', className);
+
+	if (!Array.isArray(symbols) || symbols.length === 0) {
+		logDebug(`  findClassFileUri: no workspace symbols for "${className}"`);
+		return undefined;
+	}
+
+	const wantNamespace = (namespace || '').replace(/^\\/, '');
+	const classKinds = [vscode.SymbolKind.Class, vscode.SymbolKind.Struct, vscode.SymbolKind.Interface];
+	const classes = symbols.filter((symbol) =>
+		symbol
+		&& symbol.name === className
+		&& classKinds.includes(symbol.kind)
+		&& symbol.location
+		&& symbol.location.uri
+		// Exclude our own generated stub (it declares the same namespace\class) and vendor copies —
+		// the real Eloquent model is always first-party source.
+		&& !isAccessorStubUri(symbol.location.uri)
+		&& !isGeneratedLaravelHelper({ uri: symbol.location.uri })
+		&& !/\/(vendor|node_modules)\//.test(getUriPath(symbol.location.uri)));
+
+	logDebug(`  findClassFileUri: ${classes.length} candidate file(s) for "${className}" (stub/vendor excluded)`);
+
+	if (classes.length === 0) {
+		return undefined;
+	}
+
+	if (classes.length === 1) {
+		return classes[0].location.uri;
+	}
+
+	// Multiple same-named classes: prefer containerName match, else verify the file's namespace.
+	const byContainer = classes.find((symbol) =>
+		(symbol.containerName || '').replace(/^\\/, '') === wantNamespace);
+
+	if (byContainer) {
+		return byContainer.location.uri;
+	}
+
+	for (const symbol of classes) {
+		const text = await tryReadWorkspaceText(symbol.location.uri);
+		if (text && getPhpNamespace(text)?.trim() === wantNamespace) {
+			return symbol.location.uri;
+		}
+	}
+
+	return undefined;
+}
+
+// If `target` points at a @property-read line inside our generated stub, return a Location for the
+// originating accessor method in the real model file. Otherwise undefined (caller keeps `target`).
+async function resolveAccessorMethodFromStub(target) {
+	if (!target || !isAccessorStubUri(target.uri)) {
+		return undefined;
+	}
+
+	logDebug(`accessor redirect: target is stub ${target.uri.path}:${target.range.start.line + 1}`);
+
+	const stubText = await tryReadWorkspaceText(target.uri);
+
+	if (!stubText) {
+		logDebug('  could not read stub text');
+		return undefined;
+	}
+
+	const lines = stubText.split('\n');
+	const startLine = target.range.start.line;
+	// Intelephense usually points at the @property line; tolerate an off-by-one onto the /** opener.
+	let propertyLine = lines[startLine];
+	let propertyMatch = propertyLine && propertyLine.match(/@property(?:-read|-write)?\s+\S+\s+\$(\w+)/);
+	if (!propertyMatch) {
+		for (let index = startLine; index < Math.min(lines.length, startLine + 3); index++) {
+			const candidate = lines[index] && lines[index].match(/@property(?:-read|-write)?\s+\S+\s+\$(\w+)/);
+			if (candidate) {
+				propertyLine = lines[index];
+				propertyMatch = candidate;
+				break;
+			}
+		}
+	}
+
+	if (!propertyMatch) {
+		logDebug(`  no @property on/near line ${startLine + 1}: ${JSON.stringify(propertyLine)}`);
+		return undefined;
+	}
+
+	const property = propertyMatch[1];
+
+	// The class name appears just AFTER the property's docblock; the namespace just BEFORE it.
+	let className;
+	for (let index = startLine; index < lines.length; index++) {
+		const match = lines[index].match(/\bclass\s+(\w+)/);
+		if (match) {
+			className = match[1];
+			break;
+		}
+		if (index > startLine && /^\}/.test(lines[index])) {
+			break;
+		}
+	}
+
+	let namespace;
+	for (let index = startLine; index >= 0; index--) {
+		const match = lines[index].match(/\bnamespace\s+([^\s{;]+)/);
+		if (match) {
+			namespace = match[1];
+			break;
+		}
+	}
+
+	logDebug(`  property=${property} class=${className} namespace=${namespace}`);
+
+	if (!className) {
+		return undefined;
+	}
+
+	const modelUri = await findClassFileUri(className, namespace);
+
+	if (!modelUri) {
+		logDebug(`  could not locate file for ${namespace}\\${className}`);
+		return undefined;
+	}
+
+	const modelText = await tryReadWorkspaceText(modelUri);
+
+	if (!modelText) {
+		logDebug(`  could not read model file ${modelUri.path}`);
+		return undefined;
+	}
+
+	const studly = snakeToStudly(property);
+	const camel = studly.charAt(0).toLowerCase() + studly.slice(1);
+	// Classic accessor first (unambiguous getXAttribute), then new-style x(): Attribute.
+	const candidates = [
+		new RegExp(`\\bfunction\\s+(get${studly}Attribute)\\s*\\(`),
+		new RegExp(`\\bfunction\\s+(${escapeRegExp(camel)})\\s*\\([^)]*\\)\\s*:\\s*\\\\?Attribute\\b`),
+	];
+
+	for (const pattern of candidates) {
+		const match = pattern.exec(modelText);
+		if (match) {
+			const nameOffset = match.index + match[0].indexOf(match[1]);
+			const position = offsetToPosition(modelText, nameOffset);
+			logDebug(`  -> ${modelUri.path}:${position.line + 1} ${match[1]}()`);
+			return { uri: modelUri, range: new vscode.Range(position, position) };
+		}
+	}
+
+	logDebug(`  no accessor method (get${studly}Attribute / ${camel}(): Attribute) found in ${modelUri.path}`);
+	return undefined;
+}
+
+// ---- Reverse direction: accessor method -> magic-property usages ------------------------------
+// When Cmd+B is on an accessor method DECLARATION (getXAttribute / x(): Attribute), Intelephense
+// finds no callers (the method is invoked magically). These helpers instead surface every
+// $model->x usage, by (1) asking Intelephense for references to the stub's @property-read symbol —
+// which it DOES resolve to real accesses — and (2) falling back to a textual `->x` scan of app
+// source. Runs ONLY on an explicit Cmd+B (never in the auto CodeLens count), reads via workspace.fs.
+
+function getStubUri(contextUri) {
+	const folder = getWorkspaceFolderUri(contextUri);
+	return folder ? vscode.Uri.joinPath(folder, ACCESSOR_STUB_BASENAME) : undefined;
+}
+
+// Locate the @property line for namespace\class::$property inside the generated stub.
+function findStubPropertyPosition(stubText, namespace, className, property) {
+	const lines = stubText.split('\n');
+	const wantNamespace = (namespace || '').replace(/^\\/, '');
+	let currentNamespace;
+
+	for (let index = 0; index < lines.length; index++) {
+		const namespaceMatch = lines[index].match(/\bnamespace\s+([^\s{;]+)/);
+		if (namespaceMatch) {
+			currentNamespace = namespaceMatch[1].replace(/^\\/, '');
+			continue;
+		}
+
+		const propertyMatch = lines[index].match(
+			new RegExp(`@property(?:-read|-write)?\\s+\\S+\\s+\\$(${escapeRegExp(property)})\\b`));
+
+		if (!propertyMatch || currentNamespace !== wantNamespace) {
+			continue;
+		}
+
+		let enclosingClass;
+		for (let forward = index; forward < lines.length; forward++) {
+			const classMatch = lines[forward].match(/\bclass\s+(\w+)/);
+			if (classMatch) {
+				enclosingClass = classMatch[1];
+				break;
+			}
+			if (forward > index && /^\}/.test(lines[forward])) {
+				break;
+			}
+		}
+
+		if (enclosingClass === className) {
+			const dollarIndex = lines[index].indexOf(`$${property}`);
+			return new vscode.Position(index, dollarIndex >= 0 ? dollarIndex + 1 : 0);
+		}
+	}
+
+	return undefined;
+}
+
+// If `position` sits on an accessor method declaration, return the stub position of its magic
+// property (so a reference query there yields the property's real usages).
+async function resolveStubPropertyPositionForAccessor(uri, position) {
+	if (isAccessorStubUri(uri)) {
+		return undefined;
+	}
+
+	const source = await tryReadWorkspaceText(uri);
+	if (!source) {
+		return undefined;
+	}
+
+	const lines = source.split('\n');
+	const line = lines[position.line] || '';
+	let property;
+
+	const classic = line.match(/\bfunction\s+get(\w+)Attribute\s*\(/);
+	if (classic) {
+		property = studlyToSnake(classic[1]);
+	} else {
+		const newStyle = line.match(/\bfunction\s+(\w+)\s*\([^)]*\)\s*:\s*\??\\?Attribute\b/);
+		if (newStyle) {
+			property = studlyToSnake(newStyle[1]);
+		}
+	}
+
+	if (!property) {
+		return undefined;
+	}
+
+	const methodOffset = lines.slice(0, position.line).reduce((sum, text) => sum + text.length + 1, 0);
+	const namespace = getPhpNamespace(source)?.trim();
+	const className = getPhpClassNameBeforeOffset(source, methodOffset);
+
+	if (!className) {
+		return undefined;
+	}
+
+	const stubUri = getStubUri(uri);
+	const stubText = stubUri && await tryReadWorkspaceText(stubUri);
+
+	if (!stubText) {
+		return undefined;
+	}
+
+	const stubPosition = findStubPropertyPosition(stubText, namespace, className, property);
+
+	return stubPosition ? { stubUri, position: stubPosition, property } : undefined;
+}
+
+// Textual fallback: `->property` accesses across first-party source.
+async function findPropertyUsagesByText(property) {
+	const files = await vscode.workspace.findFiles(
+		'{app,tests,database,routes,resources}/**/*.php',
+		'{**/vendor/**,**/node_modules/**,**/_ide_helper*.php}',
+		4000,
+	);
+	const results = [];
+
+	for (const fileUri of files) {
+		const text = await tryReadWorkspaceText(fileUri);
+		if (!text || !text.includes(property)) {
+			continue;
+		}
+
+		const usagePattern = new RegExp(`->\\s*${escapeRegExp(property)}\\b`, 'g');
+		let match;
+		while ((match = usagePattern.exec(text)) !== null) {
+			const nameOffset = match.index + match[0].indexOf(property);
+			const position = offsetToPosition(text, nameOffset);
+			results.push(new vscode.Location(fileUri, new vscode.Range(position, position)));
+		}
+	}
+
+	return results;
+}
+
+async function getAccessorPropertyReferences(uri, position) {
+	let info;
+	try {
+		info = await resolveStubPropertyPositionForAccessor(uri, position);
+	} catch (error) {
+		logDebug(`accessor references threw: ${error && error.message ? error.message : error}`);
+		return [];
+	}
+
+	if (!info) {
+		return [];
+	}
+
+	logDebug(`accessor references: property=${info.property} via stub ${info.stubUri.path}:${info.position.line + 1}`);
+
+	// Semantic first: Intelephense references on the magic-property symbol.
+	let references = (await getLanguageProviderReferences(info.stubUri, info.position))
+		.filter((reference) => !isAccessorStubUri(reference.uri));
+	logDebug(`  semantic property refs: ${references.length}`);
+
+	// Fallback: textual ->property scan, only if the semantic index yielded nothing.
+	if (references.length === 0) {
+		references = await findPropertyUsagesByText(info.property);
+		logDebug(`  text-search property refs: ${references.length}`);
+	}
+
+	return references;
+}
+
 async function goToDefinition(uri, position) {
 	const definitions = await getDefinitionTargets(uri, position);
 
@@ -342,12 +722,24 @@ async function goToDefinition(uri, position) {
 		return 'missing';
 	}
 
-	if (isCurrentLocation(target, uri, position)) {
+	// If Intelephense resolved a magic property to our generated stub, hop to the real accessor.
+	// Wrapped so a redirect failure can NEVER break normal Go-to-Definition — it just falls back.
+	let finalTarget = target;
+	try {
+		const redirected = await resolveAccessorMethodFromStub(target);
+		if (redirected) {
+			finalTarget = redirected;
+		}
+	} catch (error) {
+		logDebug(`accessor redirect threw: ${error && error.message ? error.message : error}`);
+	}
+
+	if (isCurrentLocation(finalTarget, uri, position)) {
 		return 'current';
 	}
 
-	await vscode.window.showTextDocument(target.uri, {
-		selection: target.range,
+	await vscode.window.showTextDocument(finalTarget.uri, {
+		selection: finalTarget.range,
 		preserveFocus: false,
 		preview: false,
 	});
@@ -1974,13 +2366,14 @@ async function getLanguageProviderReferences(uri, position) {
 }
 
 async function getReferenceTargets(uri, position, options = {}) {
-	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences] = await Promise.all([
+	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences, accessorPropertyReferences] = await Promise.all([
 		getDefinitionTargets(uri, position),
 		getInvokeRouteReferences(uri, position),
 		getLaravelGatePolicyReferences(uri, position),
 		getLaravelGatePolicyMethodReferences(uri, position),
 		options.includeLanguageProviderReferences ? getLanguageProviderReferences(uri, position) : [],
 		getLaravelTranslationReferences(uri, position),
+		getAccessorPropertyReferences(uri, position),
 	]);
 	const customReferences = [
 		...languageProviderReferences,
@@ -1988,6 +2381,7 @@ async function getReferenceTargets(uri, position, options = {}) {
 		...gatePolicyReferences,
 		...gatePolicyMethodReferences,
 		...translationReferences,
+		...accessorPropertyReferences,
 	];
 
 	if (customReferences.length === 0) {
@@ -2619,6 +3013,18 @@ async function smartEnter() {
 	}
 
 	const position = editor.selection.active;
+
+	if (editor.document.languageId === 'json' || editor.document.languageId === 'jsonc') {
+		const offset = editor.document.offsetAt(position);
+
+		if (shouldInsertJsonComma(editor.document.getText(), offset)) {
+			await vscode.commands.executeCommand('default:type', { text: ',' });
+		}
+
+		await vscode.commands.executeCommand('default:type', { text: '\n' });
+		return;
+	}
+
 	const arrayInfo = getPhpEmptyArrayEnterInfo(editor.document, position);
 
 	if (arrayInfo) {
@@ -3457,10 +3863,352 @@ async function createLaravelBuilderCallbackTypeAction(document, range) {
 	return action;
 }
 
+function getUriDirectory(uri) {
+	return uri.with({
+		path: path.posix.dirname(uri.path),
+		query: '',
+		fragment: '',
+	});
+}
+
+function isUriInsideFolder(uri, folderUri) {
+	if (uri.scheme !== folderUri.scheme || uri.authority !== folderUri.authority) {
+		return false;
+	}
+
+	const relativePath = path.posix.relative(folderUri.path, uri.path);
+
+	return relativePath !== '..'
+		&& !relativePath.startsWith('../')
+		&& !path.posix.isAbsolute(relativePath);
+}
+
+async function getComposerContextForPhpUri(uri) {
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+
+	if (!workspaceFolder) {
+		return undefined;
+	}
+
+	let directoryUri = getUriDirectory(uri);
+
+	while (isUriInsideFolder(directoryUri, workspaceFolder.uri)) {
+		const composerUri = vscode.Uri.joinPath(directoryUri, 'composer.json');
+
+		if (await pathExists(composerUri)) {
+			try {
+				const composerJson = JSON.parse(await readWorkspaceText(composerUri));
+				const namespace = phpMove.resolvePsr4Namespace(composerJson, directoryUri.path, uri.path);
+
+				if (namespace) {
+					return {
+						composerUri,
+						namespace,
+					};
+				}
+			} catch (error) {
+				logDebug(`Unable to read ${composerUri.toString()}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+
+		if (directoryUri.path === workspaceFolder.uri.path) {
+			break;
+		}
+
+		const parentUri = getUriDirectory(directoryUri);
+
+		if (parentUri.path === directoryUri.path) {
+			break;
+		}
+
+		directoryUri = parentUri;
+	}
+
+	return undefined;
+}
+
+function getOpenDocument(uri) {
+	return vscode.workspace.textDocuments.find((document) => sameUri(document.uri, uri));
+}
+
+async function readCurrentWorkspaceText(uri) {
+	return getOpenDocument(uri)?.getText() ?? await readWorkspaceText(uri);
+}
+
+function getFullSourceRange(source) {
+	return new vscode.Range(
+		new vscode.Position(0, 0),
+		positionFromOffset(source, source.length)
+	);
+}
+
+async function findPhpTypeUriByFqn(fqn, workspaceFolder) {
+	const shortName = fqn.split('\\').pop();
+	const candidates = await vscode.workspace.findFiles(
+		new vscode.RelativePattern(workspaceFolder, `**/${shortName}.php`),
+		PHP_SEARCH_EXCLUDE,
+		50
+	);
+
+	for (const uri of candidates) {
+		const source = await readCurrentWorkspaceText(uri);
+		const namespace = phpMove.getPhpNamespace(source);
+		const declaresType = phpMove.getPhpDeclaredTypes(source)
+			.some((declaration) => declaration.name === shortName);
+
+		if (declaresType && `${namespace}\\${shortName}` === fqn) {
+			return uri;
+		}
+	}
+
+	return undefined;
+}
+
+async function getMovedPhpDependencyImports(source, oldNamespace, workspaceFolder) {
+	if (!oldNamespace) {
+		return [];
+	}
+
+	const imports = [];
+
+	for (const typeName of phpMove.getPhpPotentialTypeNames(source)) {
+		const fqn = `${oldNamespace}\\${typeName}`;
+
+		if (await findPhpTypeUriByFqn(fqn, workspaceFolder)) {
+			imports.push(fqn);
+		}
+	}
+
+	return imports;
+}
+
+async function applyPhpMoveRefactor(oldUri, newUri) {
+	if (path.posix.extname(newUri.path).toLowerCase() !== '.php') {
+		return undefined;
+	}
+
+	const movedSource = await readCurrentWorkspaceText(newUri);
+	const oldNamespace = phpMove.getPhpNamespace(movedSource);
+	const composerContext = await getComposerContextForPhpUri(newUri);
+
+	if (!composerContext) {
+		if (oldNamespace) {
+			vscode.window.showWarningMessage(
+				`Moved ${getFileName(newUri)}, but no Composer PSR-4 mapping matched its new directory. The namespace was not changed.`
+			);
+		}
+
+		return undefined;
+	}
+
+	if (/^namespace\s+/m.test(movedSource) && !oldNamespace) {
+		vscode.window.showWarningMessage(
+			`Moved ${getFileName(newUri)}, but its namespace syntax is not supported. Only semicolon-style PHP namespaces are updated automatically.`
+		);
+
+		return undefined;
+	}
+
+	if (oldNamespace === composerContext.namespace) {
+		return {
+			changedFiles: 0,
+			namespace: composerContext.namespace,
+		};
+	}
+
+	const plan = phpMove.buildPhpMovePlan(movedSource, composerContext.namespace);
+
+	if (plan.declarations.length === 0) {
+		vscode.window.showWarningMessage(
+			`Moved ${getFileName(newUri)}, but no class, interface, trait, or enum declaration was found.`
+		);
+
+		return undefined;
+	}
+
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(newUri);
+
+	if (!workspaceFolder) {
+		return undefined;
+	}
+
+	const movedDependencyImports = await getMovedPhpDependencyImports(
+		movedSource,
+		plan.oldNamespace,
+		workspaceFolder
+	);
+	const movedSourceWithNamespace = phpMove.addPhpUseImports(
+		plan.updatedSource,
+		movedDependencyImports
+	);
+	const phpFiles = await vscode.workspace.findFiles(
+		new vscode.RelativePattern(workspaceFolder, '**/*.php'),
+		PHP_SEARCH_EXCLUDE
+	);
+	const filesByUri = new Map(phpFiles.map((uri) => [uri.toString(), uri]));
+	filesByUri.set(newUri.toString(), newUri);
+	const edit = new vscode.WorkspaceEdit();
+	let changedFiles = 0;
+
+	for (const uri of filesByUri.values()) {
+		const source = await readCurrentWorkspaceText(uri);
+		const sourceWithNamespace = sameUri(uri, newUri) ? movedSourceWithNamespace : source;
+		const sourceWithReferences = phpMove.replacePhpTypeReferences(sourceWithNamespace, plan.replacements);
+		const updatedSource = sameUri(uri, newUri)
+			? sourceWithReferences
+			: phpMove.ensureMovedTypeImports(sourceWithReferences, plan.oldNamespace, plan.replacements);
+
+		if (updatedSource === source) {
+			continue;
+		}
+
+		edit.replace(uri, getFullSourceRange(source), updatedSource);
+		changedFiles++;
+	}
+
+	if (changedFiles === 0) {
+		return {
+			changedFiles,
+			namespace: composerContext.namespace,
+		};
+	}
+
+	if (!await vscode.workspace.applyEdit(edit)) {
+		throw new Error(`VS Code could not apply namespace updates for ${getFileName(newUri)}.`);
+	}
+
+	vscode.window.showInformationMessage(
+		`Moved ${getFileName(oldUri)} to ${composerContext.namespace}; updated ${changedFiles} PHP ${changedFiles === 1 ? 'file' : 'files'}.`
+	);
+
+	return {
+		changedFiles,
+		namespace: composerContext.namespace,
+	};
+}
+
+const phpMoveRefactors = new Map();
+
+function runPhpMoveRefactor(oldUri, newUri) {
+	const key = `${oldUri.toString()} -> ${newUri.toString()}`;
+	const existing = phpMoveRefactors.get(key);
+
+	if (existing) {
+		return existing;
+	}
+
+	const refactor = applyPhpMoveRefactor(oldUri, newUri)
+		.finally(() => phpMoveRefactors.delete(key));
+
+	phpMoveRefactors.set(key, refactor);
+
+	return refactor;
+}
+
+function getPhpMoveSourceUri(resourceUri) {
+	if (resourceUri && path.posix.extname(resourceUri.path).toLowerCase() === '.php') {
+		return resourceUri;
+	}
+
+	const editorUri = vscode.window.activeTextEditor?.document.uri;
+
+	return editorUri && path.posix.extname(editorUri.path).toLowerCase() === '.php'
+		? editorUri
+		: undefined;
+}
+
+const commandedPhpMoveTargets = new Set();
+
+async function movePhpClassFile(resourceUri) {
+	const sourceUri = getPhpMoveSourceUri(resourceUri);
+
+	if (!sourceUri) {
+		vscode.window.showWarningMessage('Open or select a PHP file to move.');
+		return;
+	}
+
+	const destinationFolders = await vscode.window.showOpenDialog({
+		canSelectFiles: false,
+		canSelectFolders: true,
+		canSelectMany: false,
+		defaultUri: getUriDirectory(sourceUri),
+		openLabel: 'Move Here',
+		title: `Move ${getFileName(sourceUri)} to a directory`,
+	});
+
+	if (!destinationFolders?.length) {
+		return;
+	}
+
+	const destinationFolder = destinationFolders[0];
+	const sourceWorkspace = vscode.workspace.getWorkspaceFolder(sourceUri);
+	const destinationWorkspace = vscode.workspace.getWorkspaceFolder(destinationFolder);
+
+	if (!sourceWorkspace || !destinationWorkspace || !sameUri(sourceWorkspace.uri, destinationWorkspace.uri)) {
+		vscode.window.showWarningMessage('The PHP file must stay inside the same workspace folder.');
+		return;
+	}
+
+	const destinationUri = vscode.Uri.joinPath(destinationFolder, getFileName(sourceUri));
+
+	if (sameUri(sourceUri, destinationUri)) {
+		return;
+	}
+
+	if (await pathExists(destinationUri)) {
+		vscode.window.showErrorMessage(`${getFileName(destinationUri)} already exists in that directory.`);
+		return;
+	}
+
+	const targetKey = destinationUri.toString();
+	const renameEdit = new vscode.WorkspaceEdit();
+	renameEdit.renameFile(sourceUri, destinationUri, { overwrite: false });
+	commandedPhpMoveTargets.add(targetKey);
+
+	try {
+		if (!await vscode.workspace.applyEdit(renameEdit)) {
+			throw new Error(`VS Code could not move ${getFileName(sourceUri)}.`);
+		}
+
+		await runPhpMoveRefactor(sourceUri, destinationUri);
+	} finally {
+		commandedPhpMoveTargets.delete(targetKey);
+	}
+}
+
+function createMovePhpClassFileAction(document, range) {
+	const source = document.getText();
+	const offset = document.offsetAt(range.start);
+	const declaration = phpMove.getPhpDeclaredTypes(source)
+		.find((candidate) => offset >= candidate.start && offset <= candidate.end);
+
+	if (!declaration) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction(
+		`Move PHP ${declaration.kind} file…`,
+		vscode.CodeActionKind.Refactor.append('move')
+	);
+	action.command = {
+		command: 'smartReferences.movePhpClassFile',
+		title: 'Move PHP class file',
+		arguments: [document.uri],
+	};
+
+	return action;
+}
+
 function createPhpCodeActionProvider() {
 	return {
 		async provideCodeActions(document, range) {
 			const actions = [];
+			const moveClassFileAction = createMovePhpClassFileAction(document, range);
+
+			if (moveClassFileAction) {
+				actions.push(moveClassFileAction);
+			}
+
 			const splitChainAction = createSplitPhpChainAction(document, range);
 
 			if (splitChainAction) {
@@ -3532,6 +4280,11 @@ async function deleteFileWithoutAutoReveal() {
 }
 
 function activate(context) {
+	smartRefDebugChannel = vscode.window.createOutputChannel('Smart References Debug');
+	context.subscriptions.push(smartRefDebugChannel);
+
+	laravelIntelligence.register(context); // registers the "Refresh Laravel IDE Helpers" command only
+
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.go', goToSmartReference));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.showReferencesAt', async (uri, position) => {
 		await showReferencesAtLocation(uri, position, {
@@ -3555,6 +4308,30 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpChain', splitPhpChainAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.movePhpClassFile', async (resourceUri) => {
+		try {
+			await movePhpClassFile(resourceUri);
+		} catch (error) {
+			vscode.window.showErrorMessage(
+				`Could not move PHP class file: ${error instanceof Error ? error.message : String(error)}`
+			);
+		}
+	}));
+	context.subscriptions.push(vscode.workspace.onDidRenameFiles((event) => {
+		for (const file of event.files) {
+			if (path.posix.extname(file.oldUri.path).toLowerCase() !== '.php'
+				|| path.posix.extname(file.newUri.path).toLowerCase() !== '.php'
+				|| commandedPhpMoveTargets.has(file.newUri.toString())) {
+				continue;
+			}
+
+			void runPhpMoveRefactor(file.oldUri, file.newUri).catch((error) => {
+				vscode.window.showErrorMessage(
+					`Moved ${getFileName(file.newUri)}, but could not update its PHP namespace: ${error instanceof Error ? error.message : String(error)}`
+				);
+			});
+		}
+	}));
 	context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
 		[
 			{ language: 'php', scheme: 'file' },
@@ -3564,7 +4341,10 @@ function activate(context) {
 		],
 		createPhpCodeActionProvider(),
 		{
-			providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+			providedCodeActionKinds: [
+				vscode.CodeActionKind.QuickFix,
+				vscode.CodeActionKind.Refactor,
+			],
 		}
 	));
 	context.subscriptions.push(vscode.languages.registerCodeLensProvider(
