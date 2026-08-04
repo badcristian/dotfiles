@@ -1,0 +1,126 @@
+{
+	"scopeName": "local.smart-references.phpdoc",
+	"injectionSelector": "L:comment.block.documentation.phpdoc.php",
+	"patterns": [
+		{
+			"include": "#generic-type"
+		},
+		{
+			"include": "#phpdoc-variable"
+		},
+		{
+			"include": "#nullable-marker"
+		}
+	],
+	"repository": {
+		"generic-type": {
+			"patterns": [
+				{
+					"name": "meta.type.generic.primitive.phpdoc.php",
+					"begin": "(\\??)(array|iterable|list|non-empty-array|class-string)(\\s*)(<)",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.nullable.phpdoc.php"
+						},
+						"2": {
+							"name": "storage.type.php"
+						},
+						"4": {
+							"name": "punctuation.definition.type.begin.phpdoc.php"
+						}
+					},
+					"end": ">",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.type.end.phpdoc.php"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#generic-body"
+						}
+					]
+				},
+				{
+					"name": "meta.type.generic.class.phpdoc.php",
+					"begin": "(\\??)(\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(\\s*)(<)",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.nullable.phpdoc.php"
+						},
+						"2": {
+							"name": "entity.name.type.class.php"
+						},
+						"4": {
+							"name": "punctuation.definition.type.begin.phpdoc.php"
+						}
+					},
+					"end": ">",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.type.end.phpdoc.php"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#generic-body"
+						}
+					]
+				}
+			]
+		},
+		"generic-body": {
+			"patterns": [
+				{
+					"include": "#generic-type"
+				},
+				{
+					"include": "#nullable-marker"
+				},
+				{
+					"match": "\\b(?:array|array-key|bool|boolean|callable|false|float|int|integer|iterable|mixed|never|null|object|resource|self|static|string|true|void)\\b",
+					"name": "storage.type.php"
+				},
+				{
+					"match": "\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*",
+					"name": "entity.name.type.class.php"
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.delimiter.phpdoc.php"
+				},
+				{
+					"match": "[|&]",
+					"name": "punctuation.separator.type.phpdoc.php"
+				},
+				{
+					"match": "[{}()\\[\\]:]",
+					"name": "punctuation.definition.type.phpdoc.php"
+				}
+			]
+		},
+		"nullable-marker": {
+			"patterns": [
+				{
+					"match": "\\?(?=\\\\?[A-Za-z_])",
+					"name": "punctuation.definition.nullable.phpdoc.php"
+				}
+			]
+		},
+		"phpdoc-variable": {
+			"patterns": [
+				{
+					"match": "(\\$)([A-Za-z_][A-Za-z0-9_]*)",
+					"captures": {
+						"1": {
+							"name": "punctuation.definition.variable.php"
+						},
+						"2": {
+							"name": "variable.other.readwrite.php"
+						}
+					}
+				}
+			]
+		}
+	}
+}

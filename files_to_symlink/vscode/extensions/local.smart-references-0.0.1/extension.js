@@ -6,6 +6,11 @@ const laravelIntelligence = require('./laravelIntelligence');
 const { getStubClassDeclaration, isMatchingPhpClassSource } = require('./laravelHelperNavigation');
 const phpMove = require('./phpMove');
 const { shouldInsertJsonComma } = require('./jsonSmartEnter');
+const {
+	findLaravelConfigKeyRange,
+	getLaravelConfigKeyAtOffset,
+} = require('./laravelConfigNavigation');
+const { getLaravelCollectionKeyTypeEdit } = require('./phpDocCollectionFix');
 const { appendGitignoreEntries, getGitignoreEntry } = require('./gitignore');
 const {
 	normalizeMarkedUris,
@@ -757,7 +762,66 @@ async function getAccessorPropertyReferences(uri, position) {
 	return references;
 }
 
+// Laravel resolves config('file.nested.key') dynamically, so Intelephense cannot connect the
+// string literal to config/file.php. Resolve that convention only for an explicit Cmd+B and only
+// when the cursor is inside config()'s first string argument; all other navigation stays native.
+async function resolveLaravelConfigTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const configKey = getLaravelConfigKeyAtOffset(document.getText(), document.offsetAt(position));
+
+	if (!configKey) {
+		return undefined;
+	}
+
+	const [configFile, ...keySegments] = configKey.split('.');
+	const workspaceFolderUri = getWorkspaceFolderUri(uri);
+
+	if (!workspaceFolderUri || !/^[A-Za-z0-9_-]+$/.test(configFile) || keySegments.length === 0) {
+		return undefined;
+	}
+
+	const configUri = vscode.Uri.joinPath(workspaceFolderUri, 'config', `${configFile}.php`);
+	let configDocument;
+
+	try {
+		configDocument = await vscode.workspace.openTextDocument(configUri);
+	} catch {
+		return undefined;
+	}
+
+	const configSource = configDocument.getText();
+	const targetRange = findLaravelConfigKeyRange(configSource, keySegments);
+
+	if (!targetRange) {
+		logDebug(`Laravel config target not found: ${configKey}`);
+		return undefined;
+	}
+
+	logDebug(`Laravel config redirect: ${configKey} -> ${configUri.path}`);
+
+	return {
+		uri: configUri,
+		range: rangeFromOffsets(configSource, targetRange.start, targetRange.end),
+	};
+}
+
 async function goToDefinition(uri, position) {
+	try {
+		const configTarget = await resolveLaravelConfigTarget(uri, position);
+
+		if (configTarget && !isCurrentLocation(configTarget, uri, position)) {
+			await vscode.window.showTextDocument(configTarget.uri, {
+				selection: configTarget.range,
+				preserveFocus: false,
+				preview: false,
+			});
+
+			return 'opened';
+		}
+	} catch (error) {
+		logDebug(`Laravel config redirect threw: ${error && error.message ? error.message : error}`);
+	}
+
 	const definitions = await getDefinitionTargets(uri, position);
 
 	if (definitions.length === 0) {
@@ -4251,10 +4315,32 @@ function createMovePhpClassFileAction(document, range) {
 	return action;
 }
 
+function createLaravelCollectionKeyTypeAction(document, range) {
+	const source = document.getText();
+	const edit = getLaravelCollectionKeyTypeEdit(source, document.offsetAt(range.start));
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Add missing Collection key type (int)', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, rangeFromOffsets(source, edit.start, edit.end), edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
 function createPhpCodeActionProvider() {
 	return {
 		async provideCodeActions(document, range) {
 			const actions = [];
+			const collectionKeyTypeAction = createLaravelCollectionKeyTypeAction(document, range);
+
+			if (collectionKeyTypeAction) {
+				actions.push(collectionKeyTypeAction);
+			}
+
 			const moveClassFileAction = createMovePhpClassFileAction(document, range);
 
 			if (moveClassFileAction) {

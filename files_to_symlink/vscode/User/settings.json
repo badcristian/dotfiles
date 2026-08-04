@@ -25,6 +25,7 @@
 		"file:///Users/mac/Library/Application%20Support/Code/User/custom-anchor-quick-input-to-command-center.js",
 	],
 	"editor.fontFamily": "'JetBrains Mono', monospace",
+	"terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Mono', monospace",
 	"editor.fontSize": 13.2,
 	"editor.fontWeight": 550,
 	"editor.fontLigatures": true,
@@ -402,7 +403,7 @@
 	// Turn on the cap
 	"workbench.editor.limit.enabled": true,
 	// Max number of open tabs
-	"workbench.editor.limit.value": 10,
+	"workbench.editor.limit.value": 8,
 	// Apply the limit per editor group (split pane) instead of globally
 	"workbench.editor.limit.perEditorGroup": true,
 	// Don't auto-close tabs with unsaved changes

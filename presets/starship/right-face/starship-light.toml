@@ -16,6 +16,8 @@ $php\
 $python\
 $rust\
 $golang\
+$fill\
+[◕‿◕ ](bold fg:blue)\
 $line_break\
 $character"""
 
@@ -92,7 +94,7 @@ detect_files = ["composer.json"]
 detect_folders = []
 format = "[ $symbol$version]($style)"
 style = "fg:text"
-symbol = " "
+symbol = "PHP"
 version_format = "${major}.${minor}"
 
 [python]
@@ -115,6 +117,9 @@ symbol = "🐹 "
 
 [package]
 disabled = true
+
+[fill]
+symbol = " "
 
 [character]
 format = "$symbol "

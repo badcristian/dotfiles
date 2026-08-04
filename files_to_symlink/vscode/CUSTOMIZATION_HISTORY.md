@@ -1,6 +1,6 @@
 # VS Code customization intent, decisions, and history
 
-Last reviewed: 2026-08-03
+Last reviewed: 2026-08-04
 
 This is the durable context for the VS Code configuration and repository-owned
 local extensions in this directory. It explains what exists, why it exists,
@@ -80,6 +80,11 @@ not need to change when the version inside `package.json` changes. Renaming
 them also requires coordinated installer and registry changes, so a manifest
 version bump alone must not rename a folder.
 
+After changing a local extension manifest version, rerun `install_vscode.sh`
+before reloading VS Code. The installer updates `extensions.json` and removes
+stale `local.*` entries from `.obsolete`; a symlink alone does not refresh
+those registry records.
+
 The root `symlink.sh` delegates VS Code installation to this installer. The
 marketplace installer stays separate because those packages come from the VS
 Code Marketplace rather than this repository.
@@ -103,8 +108,11 @@ place to implement a new feature.
 
 The settings intentionally create a compact, low-noise editor:
 
-- JetBrains Mono, compact tabs, no minimap, no sticky scroll, and a limit on
-  open editors;
+- JetBrains Mono, compact tabs, no minimap, no sticky scroll, and an eight-tab
+  limit per editor group;
+- the integrated terminal uses JetBrainsMono Nerd Font Mono so Starship's
+  monochrome language and Git glyphs render as single-cell symbols, while the
+  editor keeps the ordinary JetBrains Mono family;
 - preview tabs remain enabled, while the local preview extension pins a tab
   when it is deliberately clicked;
 - the status bar starts hidden and can be toggled from an editor-title action;
@@ -182,8 +190,14 @@ framework-specific bridges:
 - parent and trait method navigation and custom reference CodeLens counts;
 - Laravel route-controller, Gate/policy, policy-method, and translation-key
   references;
+- Laravel `config('file.nested.key')` definition navigation to the exact key in
+  `config/file.php`;
 - materializing selected PHP inlay hints into source code;
 - adding a more precise Laravel builder type to applicable callbacks;
+- fixing one-argument Laravel Collection PHPDoc types by adding their missing
+  integer key type through Option+Enter;
+- extending PHPDoc syntax highlighting so spaced generic arguments, annotation
+  variables, and nullable markers keep meaningful type/variable scopes;
 - Explorer deletion while temporarily preventing auto-reveal from moving the
   selection;
 - manually marking Explorer files with a persistent coral-red flag decoration;
@@ -1394,3 +1408,293 @@ Verification:
   checksum comparison, and `git diff --check` were checked;
 - the final rendered flag and green tint still require a restarted VS Code
   window for visual confirmation.
+
+### 2026-08-04 — Cmd+B gained Laravel config-key definitions
+
+Intent:
+
+- make `Cmd+B` on a Laravel config key such as
+  `config('management.all_backend_vm_names')` open the matching array key in
+  `config/management.php`, matching the useful PhpStorm behavior.
+
+Implementation:
+
+- added a pure Laravel config navigator that recognizes only the first string
+  argument of `config()`;
+- mapped the first dotted segment to `config/<segment>.php` and followed the
+  remaining segments through direct PHP array keys, including nested arrays;
+- resolved this focused Laravel convention before asking Intelephense for a
+  normal definition, while preserving the existing definition/reference path
+  for every non-matching cursor position;
+- bumped `local.smart-references` to `0.0.11` and added focused unit coverage.
+
+Decisions and lessons:
+
+- Intelephense cannot infer Laravel's runtime config-string convention, so the
+  missing target belongs in the existing Laravel navigation bridge rather than
+  in a second language server or a Ribeit-specific path rule;
+- both the config filename and array path are derived from the literal, and the
+  workspace folder is resolved through VS Code URIs so local and Remote SSH
+  workspaces use the same path;
+- parsing is deliberately conservative: unrelated strings, missing config
+  files, absent keys, and non-array intermediate segments fall back to normal
+  navigation without changing source.
+
+Verification:
+
+- the new focused tests, JavaScript syntax checks, and the complete Smart
+  References suite passed;
+- a read-only fixture check against Ribeit's real `Infra.php` and
+  `config/management.php` resolved `management.all_backend_vm_names` to line
+  63 and selected the exact `all_backend_vm_names` key;
+- `git diff --check`, manifest parsing, installed-symlink checks, and the broader
+  repository checks were run after the change;
+- the active VS Code window still requires **Developer: Reload Window** and one
+  real `Cmd+B` smoke test; repository checks do not claim that visual/runtime
+  interaction.
+
+### 2026-08-04 — Open-editor limit reduced to eight tabs
+
+Intent:
+
+- keep each editor group to eight open tabs and automatically make room when a
+  ninth editor is opened.
+
+Implementation and decision:
+
+- changed `workbench.editor.limit.value` from `10` to `8` while preserving the
+  existing per-editor-group scope and dirty-editor exclusion;
+- VS Code evicts the least-recently-used eligible editor when the limit is
+  exceeded. Unsaved editors remain protected, so the visible count may exceed
+  eight when every eviction candidate is dirty.
+
+Verification:
+
+- `settings.json` parsed successfully as JSONC, the live settings symlink still
+  resolved to this repository, and `git diff --check` passed;
+- runtime eviction order requires reloading the VS Code window and opening a
+  ninth clean editor, so that interaction is not claimed by static checks.
+
+### 2026-08-04 — Option+Enter gained a Laravel Collection generic fix
+
+Intent:
+
+- turn the Intelephense warning on PHPDocs such as
+  `Collection<ProcessedPage>` into an immediately actionable fix;
+- keep the fix on the existing Option+Enter workflow rather than adding a new
+  shortcut or command.
+
+Implementation:
+
+- extended the existing Smart References PHP code-action provider with **Add
+  missing Collection key type (int)**;
+- rewrote only the selected generic argument, producing
+  `Collection<int, ProcessedPage>`;
+- recognized imported, aliased, and fully qualified
+  `Illuminate\Support\Collection` and
+  `Illuminate\Database\Eloquent\Collection` types;
+- isolated the PHPDoc matcher and edit calculation in
+  `phpDocCollectionFix.js`, added focused tests, and bumped the extension to
+  `0.0.12`.
+
+Decisions and lessons:
+
+- the action is limited to Laravel's known two-template Collection classes;
+  an unrelated project class named `Collection` may validly accept one type
+  and must not be rewritten;
+- annotations that already have a top-level key/value pair are ignored, while
+  commas nested inside array shapes do not masquerade as a second Collection
+  argument;
+- the code action is preferred but remains explicit: it appears only when
+  Option+Enter is invoked on the relevant PHPDoc line and never edits a file in
+  the background.
+
+Verification:
+
+- the focused test was observed failing before the implementation existed,
+  then all focused and complete Smart References tests passed after wiring;
+- a read-only check against Ribeit's live `ActivityService.php` ignored the
+  already-correct `Collection<int, ProcessedPage>` annotation and produced
+  `Collection<int, ProcessedMetadata>` for the remaining one-argument
+  annotation;
+- JavaScript syntax, manifest parsing, the live extension symlink and registry
+  version, and `git diff --check` were verified;
+- the visible Option+Enter interaction requires **Developer: Reload Window**
+  and a manual invocation in the active Ribeit window.
+
+### 2026-08-04 — PHPDoc generics and variables gained complete syntax scopes
+
+Intent:
+
+- stop valid PHPDocs such as `Collection<int, ProcessedPage> $mapped` from
+  becoming base-comment gray after the space following a comma;
+- make PHPDoc properties easier to scan by highlighting `$variables` normally
+  and rendering nullable `?` markers as quiet type punctuation rather than red
+  operators.
+
+Root cause:
+
+- VS Code's built-in PHP grammar ends its PHPDoc type region at the first
+  whitespace and has no generic context that can span `Collection<int,
+  ProcessedPage>`;
+- annotation variables therefore fall back to the base comment scope, and the
+  built-in nullable marker inherits the theme's general operator color.
+
+Implementation:
+
+- contributed `syntaxes/phpdoc.tmLanguage.json` from `local.smart-references`
+  as a left-priority injection into `source.php` PHPDoc comments;
+- kept generic contexts open through whitespace and nested generic arguments;
+- assigned standard PHP class, scalar type, variable, delimiter, and nullable
+  punctuation scopes instead of hard-coded Monokai colors;
+- added manifest/grammar/regex regression tests and bumped the extension to
+  `0.0.13`.
+
+Decisions and lessons:
+
+- this is a TextMate grammar boundary, not an Intelephense type-analysis or
+  Custom CSS problem; a syntax injection is the smallest native mechanism;
+- standard scopes preserve compatibility with other themes and make **Developer:
+  Inspect Editor Tokens and Scopes** useful for future diagnosis;
+- the injection is limited to `comment.block.documentation.phpdoc.php`, so
+  ordinary comments and executable PHP tokens are unchanged.
+
+Verification:
+
+- the new contribution test failed before the grammar existed and passed after
+  it was registered;
+- JSON parsing and every injected regex were checked;
+- the actual VS Code PHP grammar was tokenized together with the injection:
+  `ProcessedPage` received `entity.name.type.class.php`, `$mapped` and
+  `$exported_at` received `variable.other.readwrite.php`, and `?` received
+  `punctuation.definition.nullable.phpdoc.php`;
+- the complete Smart References suite, manifest parsing, live extension link
+  and registered version, and `git diff --check` were verified;
+- the rendered colors still require **Developer: Reload Window** in the active
+  editor; token scopes prove grammar behavior but not the final pixels.
+
+### 2026-08-04 — PHPDoc grammar live registration was repaired
+
+Intent:
+
+- fix the PHPDoc colors after both **Developer: Reload Window** and a complete
+  VS Code relaunch left the old scopes visible.
+
+Root cause:
+
+- the tracked extension manifest was `0.0.13`, but VS Code's live
+  `extensions.json` still registered `local.smart-references` as `0.0.10`;
+- `.obsolete` also contained `local.smart-references-0.0.13`, and the shared
+  process log reported that version as removed;
+- the existing extension host could still activate JavaScript commands from
+  the stable symlink, but VS Code did not load the new grammar contribution
+  from a manifest version it considered removed.
+
+Implementation:
+
+- reran the existing `install_vscode.sh` deployment path rather than editing
+  the live registry as an independent configuration;
+- documented that every local manifest version change must be followed by the
+  installer, even though the symlink folder name remains stable.
+
+Decisions and lessons:
+
+- standalone TextMate tokenization verifies the grammar itself, but does not
+  prove the active VS Code extension scanner accepted its contribution;
+- `code --list-extensions --show-versions` was not sufficient evidence here:
+  the registry version and `.obsolete` state are the relevant deployment
+  boundaries.
+
+Verification:
+
+- the installer completed with `VS Code dotfiles links installed.`;
+- the live registry now records `local.smart-references` as `0.0.13` at the
+  repository-backed stable symlink path;
+- `.obsolete` no longer contains `local.smart-references-0.0.13`, and the Code
+  CLI reports `local.smart-references@0.0.13`;
+- a fresh reload and visual inspection remain required because the currently
+  running window started before the registry repair.
+
+### 2026-08-04 — PHPDoc injection now targets the live HTML-PHP root grammar
+
+Intent:
+
+- correct the still-dark PHPDoc generic tail after registry repair and repeated
+  VS Code reloads confirmed the injection was not reaching the document.
+
+Root cause:
+
+- **Developer: Inspect Editor Tokens and Scopes** showed the affected token had
+  only `comment.block.documentation.phpdoc.php` beneath a `text.html.php` root;
+- the extension injected only into `source.php`. Although `source.php` appeared
+  in the token's nested scope stack, VS Code attaches injection contributions
+  to the selected root grammar, which was `text.html.php` for normal `.php`
+  files containing `<?php` blocks;
+- the earlier standalone check loaded `source.php` directly and therefore did
+  not reproduce the live grammar-root selection.
+
+Implementation:
+
+- added `text.html.php` beside `source.php` in the grammar contribution's
+  `injectTo` targets;
+- expanded the manifest regression test and bumped Smart References to
+  `0.0.14`;
+- deployed the new manifest through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- a nested TextMate scope is not equivalent to the grammar root used for
+  injection registration;
+- future syntax tests must reproduce the root grammar shown by VS Code's token
+  inspector, not merely tokenize the embedded language grammar in isolation.
+
+Verification:
+
+- the manifest test failed with actual `['source.php']` versus expected
+  `['source.php', 'text.html.php']` before the change, then passed afterward;
+- the real VS Code `text.html.php` grammar, its embedded `source.php` grammar,
+  and the injection were tokenized together: `ProcessedMetadata` received
+  `entity.name.type.class.php` and `$mapped` received
+  `variable.other.readwrite.php` under the same `text.html.php` root shown in
+  the inspector;
+- all 45 Smart References tests passed, both JSON files parsed, and the
+  installer completed;
+- the final rendered colors still require one reload and visual confirmation
+  in the active editor.
+
+### 2026-08-04 — VS Code terminal gained a Nerd Font for Starship glyphs
+
+Intent:
+
+- render the selected compact PHP glyph and the existing Git branch glyph in
+  VS Code's integrated terminal without changing the editor typeface.
+
+Root cause:
+
+- the terminal inherited ordinary JetBrains Mono, which does not contain the
+  private-use Nerd Font glyphs `` and ``;
+- Ghostty could display those symbols through its own fallback behavior, while
+  VS Code rendered both as missing-glyph boxes.
+
+Implementation:
+
+- installed Homebrew cask `font-jetbrains-mono-nerd-font` version `3.5.0`;
+- set `terminal.integrated.fontFamily` to the registered monospaced family
+  `JetBrainsMono Nerd Font Mono`;
+- left `editor.fontFamily` on ordinary `JetBrains Mono`.
+
+Decisions and lessons:
+
+- use the Mono Nerd Font variant for terminal cell alignment rather than the
+  proportional variant;
+- prompt glyph verification must include VS Code's terminal as well as
+  Ghostty because the two applications have different font fallback behavior.
+
+Verification:
+
+- Homebrew reported the cask installed successfully;
+- Fontconfig read `JetBrainsMonoNerdFontMono-Regular.ttf` as family
+  `JetBrainsMono Nerd Font Mono`, style `Regular`;
+- the repository and live VS Code settings remain the same symlinked file;
+- a new integrated terminal is required for the visible glyph check because
+  existing terminal canvases can retain their original font selection.

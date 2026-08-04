@@ -1,7 +1,7 @@
 "$schema" = "https://starship.rs/config-schema.json"
 
 add_newline = false
-palette = "catppuccin_latte"
+palette = "catppuccin_frappe"
 
 format = """
 [┌╴](fg:blue)\
@@ -16,26 +16,28 @@ $php\
 $python\
 $rust\
 $golang\
+$fill\
+[◕‿◕ ](bold fg:blue)\
 $line_break\
 $character"""
 
 right_format = ""
 
-[palettes.catppuccin_latte]
-base = "#4c4f69"
-mantle = "#e6e9ef"
-surface0 = "#ccd0da"
-text = "#4c4f69"
-subtext = "#5c5f77"
-surface1 = "#bcc0cc"
-red = "#d20f39"
-peach = "#fe640b"
-yellow = "#df8e1d"
-green = "#40a02b"
-teal = "#179299"
+[palettes.catppuccin_frappe]
+base = "#303446"
+mantle = "#292c3c"
+surface0 = "#414559"
+text = "#c6d0f5"
+subtext = "#a5adce"
+surface1 = "#51576d"
+red = "#e78284"
+peach = "#ef9f76"
+yellow = "#e5c890"
+green = "#a6d189"
+teal = "#81c8be"
 blue = "#8caaee"
-mauve = "#8839ef"
-branch_icon = "#8caaee"
+mauve = "#ca9ee6"
+branch_icon = "#ca9ee6"
 
 [custom.ssh_identity]
 command = 'printf "%s@%s" "$USER" "$(hostname -s)"'
@@ -92,7 +94,7 @@ detect_files = ["composer.json"]
 detect_folders = []
 format = "[ $symbol$version]($style)"
 style = "fg:text"
-symbol = " "
+symbol = "PHP"
 version_format = "${major}.${minor}"
 
 [python]
@@ -115,6 +117,9 @@ symbol = "🐹 "
 
 [package]
 disabled = true
+
+[fill]
+symbol = " "
 
 [character]
 format = "$symbol "

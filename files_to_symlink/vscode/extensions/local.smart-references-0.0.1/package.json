@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.10",
+	"version": "0.0.14",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -40,6 +40,16 @@
 	],
 	"main": "./extension.js",
 	"contributes": {
+		"grammars": [
+			{
+				"scopeName": "local.smart-references.phpdoc",
+				"path": "./syntaxes/phpdoc.tmLanguage.json",
+				"injectTo": [
+					"source.php",
+					"text.html.php"
+				]
+			}
+		],
 		"colors": [
 			{
 				"id": "smartReferences.fileMarkerForeground",
