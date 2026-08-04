@@ -1,0 +1,128 @@
+"$schema" = "https://starship.rs/config-schema.json"
+
+add_newline = false
+palette = "catppuccin_frappe"
+
+format = """
+[┌╴](fg:blue)\
+${custom.ssh_identity}\
+$directory\
+$git_branch\
+$git_state\
+$java\
+$nodejs\
+${custom.js_framework}\
+$php\
+$python\
+$rust\
+$golang\
+$fill\
+[◕‿◕ ](bold fg:blue)\
+$line_break\
+$character"""
+
+right_format = ""
+
+[palettes.catppuccin_frappe]
+base = "#303446"
+mantle = "#292c3c"
+surface0 = "#414559"
+text = "#c6d0f5"
+subtext = "#a5adce"
+surface1 = "#51576d"
+red = "#e78284"
+peach = "#ef9f76"
+yellow = "#e5c890"
+green = "#a6d189"
+teal = "#81c8be"
+blue = "#8caaee"
+mauve = "#ca9ee6"
+branch_icon = "#ca9ee6"
+
+[custom.ssh_identity]
+command = 'printf "%s@%s" "$USER" "$(hostname -s)"'
+when = 'test -n "$SSH_CONNECTION" || test -n "$SSH_TTY"'
+format = '[ $output ](bold fg:base bg:yellow)[](fg:yellow)'
+
+[directory]
+format = "[\\[](fg:blue)[ $path ]($style)[\\]](fg:blue)"
+style = "bold fg:text"
+truncation_length = 0
+truncation_symbol = ""
+truncate_to_repo = false
+read_only = " 🔒"
+
+[git_branch]
+format = " [$symbol](fg:branch_icon)[$branch]($style)"
+style = "bold fg:text"
+symbol = " "
+
+[git_state]
+format = '[ \($state( $progress_current/$progress_total)\)]($style)'
+style = "bold fg:yellow"
+
+[java]
+disabled = false
+format = "[ $symbol$version]($style)"
+style = "bold fg:text"
+symbol = "☕ "
+
+[nodejs]
+disabled = false
+# A Node segment represents a manifest-backed project, not any directory with JS/TS files.
+detect_extensions = []
+detect_files = ["package.json"]
+detect_folders = []
+format = "[ $symbol$version]($style)"
+style = "fg:text"
+symbol = "⬡ "
+version_format = "v${major}"
+
+[custom.js_framework]
+# Higher-level frameworks win so Nuxt/Next/Astro do not also display Vue/React.
+command = '''node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json", "utf8")); const d={...(p.devDependencies||{}), ...(p.dependencies||{})}; const name=d.nuxt?"Nuxt":d.next?"Next":d.astro?"Astro":d.vue?"Vue":d.react?"React":""; if(name) process.stdout.write(name)' '''
+description = "JavaScript framework declared in package.json"
+detect_files = ["package.json"]
+format = "([ $output]($style))"
+style = "fg:text"
+
+[php]
+disabled = false
+# A PHP segment represents a Composer project, not a global version selection or loose PHP file.
+detect_extensions = []
+detect_files = ["composer.json"]
+detect_folders = []
+format = "[ $symbol$version]($style)"
+style = "fg:text"
+symbol = "PHP"
+version_format = "${major}.${minor}"
+
+[python]
+disabled = false
+format = "[ $symbol$version]($style)"
+style = "bold fg:text"
+symbol = "🐍 "
+
+[rust]
+disabled = false
+format = "[ $symbol$version]($style)"
+style = "bold fg:text"
+symbol = "🦀 "
+
+[golang]
+disabled = false
+format = "[ $symbol$version]($style)"
+style = "bold fg:text"
+symbol = "🐹 "
+
+[package]
+disabled = true
+
+[fill]
+symbol = " "
+
+[character]
+format = "$symbol "
+success_symbol = "[└╴](fg:blue)[›](green)"
+error_symbol = "[└╴](fg:blue)[›](red)"
+vimcmd_symbol = "[└╴](fg:blue)[‹](green)"

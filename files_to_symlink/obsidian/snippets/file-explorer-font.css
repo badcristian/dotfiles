@@ -1,0 +1,16 @@
+v-file-title-content, 
+.nav-folder-title-content {
+	font-size: 16px;
+}
+
+.nav-file-title, .nav-folder-title {
+  font-size: 16px;
+}
+
+
+/* Enhances folder names only */
+.nav-folder-title-content {
+  font-weight: 550; /* A tiny bit more bold (normal is 400, bold is 700) */
+	color: var(--text-accent); /* Automatically matches your theme color */
+	text-transform: uppercase !important;
+}

@@ -197,6 +197,11 @@
 		"command": "-workbench.action.closeWindow"
 	},
 	{
+		"key": "cmd+w",
+		"command": "workbench.action.closeWindow",
+		"when": "!editorIsOpen && !multipleEditorGroups"
+	},
+	{
 		"key": "shift+cmd+w",
 		"command": "workbench.action.closeOtherEditors",
 		"when": "activeEditorGroupEmpty == false"
@@ -265,7 +270,17 @@
 	},
 	{
 		"key": "cmd+o",
-		"command": "workbench.action.files.openFolder"
+		"command": "projectChooser.open"
+	},
+	{
+		"key": "cmd+enter",
+		"command": "projectChooser.acceptInOtherWindow",
+		"when": "projectChooser.visible"
+	},
+	{
+		"key": "alt+cmd+n",
+		"command": "projectChooser.toggleNewWindow",
+		"when": "projectChooser.visible"
 	},
 	{
 		"key": "alt+cmd+l",

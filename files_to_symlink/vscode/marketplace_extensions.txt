@@ -4,6 +4,7 @@ alefragnani.project-manager
 alexdauenhauer.catppuccin-noctis
 atommaterial.a-file-icon-vscode
 be5invis.theme-verdandi
+be5invis.vscode-custom-css
 bmewburn.vscode-intelephense-client
 bradlc.vscode-tailwindcss
 calebporzio.better-phpunit
@@ -11,7 +12,6 @@ catppuccin.catppuccin-vsc-icons
 chadalen.vscode-jetbrains-icon-theme
 dbaeumer.vscode-eslint
 docker.docker
-drcika.apc-extension
 eamodio.gitlens
 editorconfig.editorconfig
 eliverlara.sweet-vscode-icons

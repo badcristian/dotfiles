@@ -1,0 +1,63 @@
+{
+	"name": "project-chooser",
+	"displayName": "Project Chooser",
+	"description": "PhpStorm-style project picker listing recently opened projects and local repositories.",
+	"version": "0.0.1",
+	"publisher": "local",
+	"engines": {
+		"vscode": "^1.70.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"extensionKind": [
+		"ui",
+		"workspace"
+	],
+	"activationEvents": [
+		"onStartupFinished",
+		"onCommand:projectChooser.open",
+		"onCommand:projectChooser.toggleNewWindow",
+		"onCommand:projectChooser.acceptInOtherWindow"
+	],
+	"main": "./extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "projectChooser.open",
+				"title": "Open Project…",
+				"category": "Project Chooser"
+			},
+			{
+				"command": "projectChooser.toggleNewWindow",
+				"title": "Toggle Open In New Window",
+				"category": "Project Chooser"
+			},
+			{
+				"command": "projectChooser.acceptInOtherWindow",
+				"title": "Open Highlighted Project In The Other Window",
+				"category": "Project Chooser"
+			}
+		],
+		"configuration": {
+			"title": "Project Chooser",
+			"properties": {
+				"projectChooser.projectRoots": {
+					"type": "array",
+					"default": [
+						"~/dev"
+					],
+					"items": {
+						"type": "string"
+					},
+					"description": "Directories scanned one level deep for projects that are not in the recently opened list."
+				},
+				"projectChooser.scanRequiresGit": {
+					"type": "boolean",
+					"default": true,
+					"description": "Only list scanned directories that contain a .git entry. Recently opened projects are always listed."
+				}
+			}
+		}
+	}
+}

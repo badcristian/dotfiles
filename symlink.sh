@@ -23,6 +23,32 @@ if [ ! -d ~/.config/ghostty ]; then
     mkdir -p ~/.config/ghostty
 fi
 
+if [ ! -d ~/.config/ghostty/shaders ]; then
+    mkdir -p ~/.config/ghostty/shaders
+fi
+
+if [ ! -d ~/.config/ghostty/backgrounds ]; then
+    mkdir -p ~/.config/ghostty/backgrounds
+fi
+
+if [ ! -d ~/.config/ghostty/themes ]; then
+    mkdir -p ~/.config/ghostty/themes
+fi
+
+if [ ! -d ~/.config/nvim/lua/plugins ]; then
+    mkdir -p ~/.config/nvim/lua/plugins
+fi
+
+MUXY_CONFIG_DIR="$HOME/Library/Application Support/Muxy"
+if [ ! -d "$MUXY_CONFIG_DIR" ]; then
+    mkdir -p "$MUXY_CONFIG_DIR"
+fi
+
+OBSIDIAN_SNIPPETS_DIR="$HOME/Documents/mac_obisidian_vault/.obsidian/snippets"
+if [ ! -d "$OBSIDIAN_SNIPPETS_DIR" ]; then
+    mkdir -p "$OBSIDIAN_SNIPPETS_DIR"
+fi
+
 if [ ! -d ~/.cloudflared ]; then
     mkdir -p ~/.cloudflared
 fi
@@ -39,8 +65,35 @@ ln -sf $DOTFILES/cloudflared/spro-marketing.yml ~/.cloudflared/spro-marketing.ym
 
 # bash scripts
 ln -sf $DOTFILES/init_tmux_sessions.sh ~/init_tmux_sessions.sh
+ln -sf $DOTFILES/tmux-notes.lua ~/tmux-notes.lua
+ln -sf $DOTFILES/tmux-notes-core.lua ~/tmux-notes-core.lua
+ln -sf $DOTFILES/tmux-notes.sh ~/tmux-notes.sh
+ln -sf $DOTFILES/nvim/tmux-notes.lua ~/.config/nvim/lua/plugins/tmux-notes.lua
+bash "$DOTFILES/nvim/install-notes-support.sh"
+ln -sf $DOTFILES/tmux-project.sh ~/tmux-project.sh
+ln -sf $DOTFILES/tmux-session-ui.sh ~/tmux-session-ui.sh
+ln -sf $DOTFILES/tmux-status.sh ~/tmux-status.sh
+ln -sf $DOTFILES/tmux-agent-usage.sh ~/tmux-agent-usage.sh
+ln -sf $DOTFILES/tmux-background.sh ~/tmux-background.sh
+ln -sf $DOTFILES/tmux-ui.sh ~/tmux-ui.sh
+ln -sf $DOTFILES/tmux-open-url.sh ~/tmux-open-url.sh
 ln -sf $DOTFILES/switch_php_ver.sh ~/switch_php_ver.sh
 ln -sf $DOTFILES/ghostty.config ~/.config/ghostty/config
+ln -sf $DOTFILES/ghostty/shaders/cursor_warp.glsl ~/.config/ghostty/shaders/cursor_warp.glsl
+ln -sf $DOTFILES/ghostty/shaders/moving_stars.glsl ~/.config/ghostty/shaders/moving_stars.glsl
+ln -sf $DOTFILES/ghostty/backgrounds/stars-black.jpg ~/.config/ghostty/backgrounds/stars-black.jpg
+ln -sf $DOTFILES/ghostty/backgrounds/stars-blue.jpg ~/.config/ghostty/backgrounds/stars-blue.jpg
+ln -sf $DOTFILES/ghostty/backgrounds/stars-cyan.jpg ~/.config/ghostty/backgrounds/stars-cyan.jpg
+ln -sf $DOTFILES/ghostty/backgrounds/stars-purple.jpg ~/.config/ghostty/backgrounds/stars-purple.jpg
+ln -sf "$DOTFILES/ghostty/themes/Catppuccin Macchiato Stars" ~/.config/ghostty/themes/'Catppuccin Macchiato Stars'
+ln -sf $DOTFILES/starship.toml ~/.config/starship.toml
+ln -sf $DOTFILES/starship-light.toml ~/.config/starship-light.toml
+ln -sf "$DOTFILES/muxy/ghostty.conf" "$MUXY_CONFIG_DIR/ghostty.conf"
+ln -sf "$DOTFILES/obsidian/snippets/file-explorer-font.css" "$OBSIDIAN_SNIPPETS_DIR/file-explorer-font.css"
+
+# Preserve the user's moving-background choices while ensuring the generated
+# Ghostty override and active shader exist on a new installation.
+bash "$DOTFILES/tmux-background.sh" ensure
 
 # VS Code settings, keybindings, and local extensions
 bash $DOTFILES/vscode/install_vscode.sh

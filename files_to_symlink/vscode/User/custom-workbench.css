@@ -1,0 +1,115 @@
+/* Workbench CSS injected by be5invis.vscode-custom-css.
+ *
+ * These rules previously lived in the `apc.stylesheet` setting. APC 0.4.1 injects itself through
+ * the removed AMD bootstrap and stopped applying anything once VS Code moved to ESM, so the whole
+ * set moved here. The loader inlines this file into `workbench.html`, which means edits need
+ * "Reload Custom CSS and JS" followed by a restart before they take effect.
+ *
+ * Theme-conditional rules key off the workbench theme classes: `.vs` is light, `.vs-dark` is dark.
+ * High contrast themes (`.hc-black`, `.hc-light`) are left alone because they draw their own
+ * borders and contrast rules.
+ */
+
+/* Compact editor tabs. */
+.monaco-workbench .part.editor .title.tabs {
+	--editor-group-tab-height: 26px !important;
+}
+
+.monaco-workbench .part.editor .tabs-and-actions-container {
+	height: 30px !important;
+	padding-top: 2px !important;
+	padding-bottom: 2px !important;
+	align-items: center !important;
+}
+
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container {
+	height: 26px !important;
+	min-height: 26px !important;
+}
+
+/* `overflow: hidden` is what makes the radius actually clip. VS Code draws the active and dirty
+ * tab accents as absolutely positioned `left: 0; width: 100%` strips inside the tab, so without
+ * clipping they run straight across both rounded corners. To drop the accents entirely instead,
+ * hide `.tab-border-top-container` and `.tab-border-bottom-container`, which is what VS Code's own
+ * styled workbench does. */
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab {
+	height: 26px !important;
+	min-height: 26px !important;
+	border-radius: 5px !important;
+	box-shadow: none !important;
+	overflow: hidden !important;
+}
+
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label,
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label a {
+	line-height: 26px !important;
+}
+
+/* Explorer and tab label contrast, corrected per theme. */
+.monaco-workbench.vs-dark .explorer-folders-view .monaco-icon-label.folder-icon .label-name {
+	color: #f2f2f2 !important;
+}
+
+.monaco-workbench.vs .explorer-folders-view .monaco-list-row .monaco-icon-label .label-name {
+	color: #1f2328 !important;
+	opacity: 1 !important;
+}
+
+.monaco-workbench.vs .part.editor .title .tabs-container > .tab .tab-label a {
+	color: #1f2328 !important;
+	opacity: 1 !important;
+}
+
+.monaco-workbench.vs .part.editor .title .tabs-container > .tab .monaco-icon-label .label-name {
+	color: #1f2328 !important;
+	opacity: 1 !important;
+}
+
+/* Quick input: outline the picker so it separates from the editor behind it. VS Code has no
+ * `quickInput.border` theme color, and nothing in its stylesheet or theming participants draws a
+ * border on this widget, so the outline can only come from injected CSS.
+ *
+ * `overflow: hidden` clips the scrolled list to the widget's own radius. Without it the list paints
+ * square corners over the rounded bottom edge and interrupts the border there. Item hovers are
+ * rendered by the hover service outside this element, so clipping does not truncate them. */
+.monaco-workbench .quick-input-widget {
+	overflow: hidden !important;
+}
+
+.monaco-workbench.vs-dark .quick-input-widget {
+	box-sizing: border-box !important;
+	border: 1px solid rgba(255, 255, 255, 0.45) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget {
+	box-sizing: border-box !important;
+	border: 1px solid rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Smart References gives every row in its Test usages group a beaker icon. Tint those rows so
+ * low-priority test references remain visible without competing with production usages. Keep the
+ * native focused/selected background intact; the inset stripe and beaker still identify a test
+ * while navigating the list. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker):not(.selected):not(.focused) {
+	background-color: rgba(75, 180, 110, 0.14) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker):not(.selected):not(.focused) {
+	background-color: rgba(38, 148, 75, 0.1) !important;
+}
+
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker) {
+	box-shadow: inset 2px 0 0 rgba(116, 201, 145, 0.9) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker) {
+	box-shadow: inset 2px 0 0 rgba(46, 157, 85, 0.85) !important;
+}
+
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .codicon-beaker {
+	color: #74c991 !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .codicon-beaker {
+	color: #218c48 !important;
+}

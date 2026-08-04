@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.6",
+	"version": "0.0.10",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -33,11 +33,25 @@
 		"onCommand:smartReferences.splitPhpChain",
 		"onCommand:smartReferences.applyPhpInlayHints",
 		"onCommand:smartReferences.deleteFileWithoutAutoReveal",
+		"onCommand:smartReferences.toggleFileMarker",
+		"onCommand:smartReferences.addToGitignore",
 		"onCommand:smartReferences.movePhpClassFile",
 		"onCommand:smartReferences.refreshLaravelHelpers"
 	],
 	"main": "./extension.js",
 	"contributes": {
+		"colors": [
+			{
+				"id": "smartReferences.fileMarkerForeground",
+				"description": "Foreground color of manually marked files in the Explorer.",
+				"defaults": {
+					"dark": "#FF6B6B",
+					"light": "#D94F4F",
+					"highContrast": "#FF8A80",
+					"highContrastLight": "#B42318"
+				}
+			}
+		],
 		"commands": [
 			{
 				"command": "smartReferences.go",
@@ -92,6 +106,14 @@
 				"title": "Smart References: Delete File Without Auto Reveal"
 			},
 			{
+				"command": "smartReferences.toggleFileMarker",
+				"title": "Toggle File Marker"
+			},
+			{
+				"command": "smartReferences.addToGitignore",
+				"title": "Add to .gitignore"
+			},
+			{
 				"command": "smartReferences.movePhpClassFile",
 				"title": "PHP: Move Class File…"
 			},
@@ -103,9 +125,19 @@
 		"menus": {
 			"explorer/context": [
 				{
+					"command": "smartReferences.toggleFileMarker",
+					"when": "!explorerResourceIsFolder && (resourceScheme == file || resourceScheme == vscode-remote)",
+					"group": "2_workspace@1"
+				},
+				{
+					"command": "smartReferences.addToGitignore",
+					"when": "!explorerResourceIsFolder && (resourceScheme == file || resourceScheme == vscode-remote)",
+					"group": "2_workspace@2"
+				},
+				{
 					"command": "smartReferences.movePhpClassFile",
 					"when": "resourceExtname == .php",
-					"group": "2_workspace@1"
+					"group": "2_workspace@3"
 				}
 			]
 		},

@@ -3,10 +3,19 @@ const path = require('path');
 // Laravel IDE-helper generator — a single on-demand COMMAND (no live providers). Safe: it never
 // registers a Definition/Reference provider, so it can't be auto-invoked into a re-analysis storm.
 const laravelIntelligence = require('./laravelIntelligence');
+const { getStubClassDeclaration, isMatchingPhpClassSource } = require('./laravelHelperNavigation');
 const phpMove = require('./phpMove');
 const { shouldInsertJsonComma } = require('./jsonSmartEnter');
+const { appendGitignoreEntries, getGitignoreEntry } = require('./gitignore');
+const {
+	normalizeMarkedUris,
+	removeDeletedMarkedUris,
+	remapMarkedUris,
+	toggleMarkedUris,
+} = require('./fileMarkers');
 
 const PHP_SEARCH_EXCLUDE = '{**/{.git,vendor,node_modules,storage,tmp,bootstrap/cache}/**,**/.phpstorm.meta.php,**/_ide_helper*.php}';
+const MARKED_FILES_STORAGE_KEY = 'smartReferences.markedFiles.v1';
 let referencesPanel;
 
 // Opt-in debug log (Output panel → "Smart References Debug"). Only written when the channel exists.
@@ -342,13 +351,13 @@ function getPhpClassInfo(source) {
 	return getPhpClassInfoBeforeOffset(source, source.length);
 }
 
-// ---- Laravel accessor redirect ----------------------------------------------------------
+// ---- Laravel manual-helper redirects ---------------------------------------------------
 // The "Refresh IDE Helpers" generator writes _ide_helper_manual.php with @property-read tags so
 // Intelephense resolves $model->signature_count without a squiggle. But Go-to-Definition then lands
-// on that generated stub line, which is useless for navigation. These helpers detect that case and
-// hop to the REAL Eloquent accessor method (getSignatureCountAttribute / signatureCount(): Attribute)
-// in the model file. Everything here runs ONLY on an explicit Cmd+B, reads via workspace.fs (never
-// opens documents), and uses the workspace symbol index — so it can't trigger a re-analysis storm.
+// on the generated stub for both magic properties and sometimes the class itself. These helpers
+// detect those cases and hop to the real class or Eloquent accessor method in the model file.
+// Everything here runs ONLY on an explicit Cmd+B, reads via workspace.fs (never opens documents),
+// and uses the workspace symbol index — so it can't trigger a re-analysis storm.
 
 const ACCESSOR_STUB_BASENAME = '_ide_helper_manual.php';
 
@@ -393,16 +402,29 @@ function isAccessorStubUri(uri) {
 	return Boolean(uri) && new RegExp(`(^|/)${escapeRegExp(ACCESSOR_STUB_BASENAME)}$`).test(uri.path);
 }
 
+async function findClassFileBySource(className, namespace) {
+	const candidates = await vscode.workspace.findFiles(`**/${className}.php`, PHP_SEARCH_EXCLUDE, 100);
+
+	for (const candidate of candidates) {
+		const text = await tryReadWorkspaceText(candidate);
+
+		if (text && isMatchingPhpClassSource(text, className, namespace)) {
+			return candidate;
+		}
+	}
+
+	return undefined;
+}
+
 // Locate the file that declares `className` in `namespace` using Intelephense's workspace symbol
-// index (fast, no document opened). Intelephense doesn't reliably populate containerName with the
-// namespace, so when name+containerName doesn't pin it we confirm by reading each candidate file's
-// actual `namespace` declaration.
+// index (fast, no document opened). Intelephense doesn't reliably populate containerName or retain
+// both halves of a merged helper class, so source filenames provide a bounded fallback.
 async function findClassFileUri(className, namespace) {
 	const symbols = await vscode.commands.executeCommand('vscode.executeWorkspaceSymbolProvider', className);
 
 	if (!Array.isArray(symbols) || symbols.length === 0) {
 		logDebug(`  findClassFileUri: no workspace symbols for "${className}"`);
-		return undefined;
+		return findClassFileBySource(className, namespace);
 	}
 
 	const wantNamespace = (namespace || '').replace(/^\\/, '');
@@ -422,7 +444,7 @@ async function findClassFileUri(className, namespace) {
 	logDebug(`  findClassFileUri: ${classes.length} candidate file(s) for "${className}" (stub/vendor excluded)`);
 
 	if (classes.length === 0) {
-		return undefined;
+		return findClassFileBySource(className, namespace);
 	}
 
 	if (classes.length === 1) {
@@ -444,12 +466,12 @@ async function findClassFileUri(className, namespace) {
 		}
 	}
 
-	return undefined;
+	return findClassFileBySource(className, namespace);
 }
 
-// If `target` points at a @property-read line inside our generated stub, return a Location for the
-// originating accessor method in the real model file. Otherwise undefined (caller keeps `target`).
-async function resolveAccessorMethodFromStub(target) {
+// If `target` points inside our generated stub, return the matching real class or accessor method.
+// Otherwise return undefined so the caller keeps the language provider's original target.
+async function resolveLaravelHelperTarget(target) {
 	if (!target || !isAccessorStubUri(target.uri)) {
 		return undefined;
 	}
@@ -460,6 +482,32 @@ async function resolveAccessorMethodFromStub(target) {
 
 	if (!stubText) {
 		logDebug('  could not read stub text');
+		return undefined;
+	}
+
+	const stubClass = getStubClassDeclaration(stubText, target.range.start.line);
+
+	if (stubClass) {
+		const classUri = await findClassFileUri(stubClass.className, stubClass.namespace);
+		const classText = classUri && await tryReadWorkspaceText(classUri);
+		const classPattern = new RegExp(`\\b(?:abstract\\s+|final\\s+|readonly\\s+)*class\\s+(${escapeRegExp(stubClass.className)})\\b`);
+		const classMatch = classText && classText.match(classPattern);
+
+		if (classUri && classText && classMatch) {
+			const classNameOffset = classMatch.index + classMatch[0].lastIndexOf(classMatch[1]);
+			const classPosition = offsetToPosition(classText, classNameOffset);
+			logDebug(`  class redirect: ${stubClass.namespace}\\${stubClass.className} -> ${classUri.path}:${classPosition.line + 1}`);
+
+			return {
+				uri: classUri,
+				range: new vscode.Range(
+					classPosition,
+					classPosition.translate(0, stubClass.className.length),
+				),
+			};
+		}
+
+		logDebug(`  real class not found for ${stubClass.namespace}\\${stubClass.className}`);
 		return undefined;
 	}
 
@@ -722,11 +770,11 @@ async function goToDefinition(uri, position) {
 		return 'missing';
 	}
 
-	// If Intelephense resolved a magic property to our generated stub, hop to the real accessor.
+	// If Intelephense resolved a class or magic property to our generated stub, hop to real source.
 	// Wrapped so a redirect failure can NEVER break normal Go-to-Definition — it just falls back.
 	let finalTarget = target;
 	try {
-		const redirected = await resolveAccessorMethodFromStub(target);
+		const redirected = await resolveLaravelHelperTarget(target);
 		if (redirected) {
 			finalTarget = redirected;
 		}
@@ -964,7 +1012,7 @@ function withReferenceSeparators(items) {
 			if (item.sortKey.groupIndex !== 0) {
 				grouped.push({
 					kind: vscode.QuickPickItemKind.Separator,
-					label: item.sortKey.groupLabel,
+					label: item.sortKey.isTest ? `$(beaker) ${item.sortKey.groupLabel}` : item.sortKey.groupLabel,
 				});
 			}
 			previousGroupIndex = item.sortKey.groupIndex;
@@ -1012,8 +1060,9 @@ async function buildReferenceItems(references) {
 		const fileName = getFileName(reference.uri);
 		const uriPath = getUriPath(reference.uri);
 		const isTopLevel = context.symbolName === 'top level';
+		const isTest = isTestReferencePath(uriPath, fileName);
 		const group = getReferenceGroup({
-			isTest: isTestReferencePath(uriPath, fileName),
+			isTest,
 			isTopLevel,
 		});
 
@@ -1027,12 +1076,15 @@ async function buildReferenceItems(references) {
 			relativePath: getWorkspaceRelativePath(reference.uri),
 			sourceLine: context.line,
 			symbolKindLabel: context.symbolKindLabel,
-			iconPath: getSymbolThemeIcon(context.symbolKind),
+			iconPath: isTest
+				? new vscode.ThemeIcon('beaker', new vscode.ThemeColor('charts.green'))
+				: getSymbolThemeIcon(context.symbolKind),
 			reference,
 			sortKey: {
 				fileName: fileName.toLocaleLowerCase(),
 				groupIndex: group.index,
 				groupLabel: group.label,
+				isTest,
 				isTopLevel,
 				lineNumber,
 				symbolName: context.symbolName.toLocaleLowerCase(),
@@ -4279,11 +4331,277 @@ async function deleteFileWithoutAutoReveal() {
 	await executeWithExplorerAutoRevealDisabled('moveFileToTrash');
 }
 
+async function getGitRepositoryRootFromExtension(resourceUri) {
+	try {
+		const extension = vscode.extensions.getExtension('vscode.git');
+
+		if (!extension) {
+			return undefined;
+		}
+
+		const git = extension.isActive ? extension.exports : await extension.activate();
+		const repositories = git?.getAPI?.(1)?.repositories ?? [];
+
+		return repositories
+			.map((repository) => repository.rootUri)
+			.filter((rootUri) => rootUri && isUriInsideFolder(resourceUri, rootUri))
+			.sort((left, right) => right.path.length - left.path.length)[0];
+	} catch (error) {
+		logDebug(`Unable to query the VS Code Git extension: ${error instanceof Error ? error.message : String(error)}`);
+		return undefined;
+	}
+}
+
+async function findGitRepositoryRoot(resourceUri) {
+	const knownRoot = await getGitRepositoryRootFromExtension(resourceUri);
+
+	if (knownRoot) {
+		return knownRoot;
+	}
+
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(resourceUri);
+
+	if (!workspaceFolder) {
+		return undefined;
+	}
+
+	let directoryUri = getUriDirectory(resourceUri);
+
+	while (isUriInsideFolder(directoryUri, workspaceFolder.uri)) {
+		if (await pathExists(vscode.Uri.joinPath(directoryUri, '.git'))) {
+			return directoryUri;
+		}
+
+		if (directoryUri.path === workspaceFolder.uri.path) {
+			break;
+		}
+
+		const parentUri = getUriDirectory(directoryUri);
+
+		if (parentUri.path === directoryUri.path) {
+			break;
+		}
+
+		directoryUri = parentUri;
+	}
+
+	return undefined;
+}
+
+function getExplorerResourceUris(resourceUri, selectedResourceUris) {
+	const resources = Array.isArray(selectedResourceUris) && selectedResourceUris.length > 0
+		? selectedResourceUris
+		: [resourceUri];
+	const uniqueResources = new Map();
+
+	for (const resource of resources) {
+		if (resource?.scheme && resource?.path) {
+			uniqueResources.set(resource.toString(), resource);
+		}
+	}
+
+	return [...uniqueResources.values()];
+}
+
+async function updateGitignoreFile(gitignoreUri, entries) {
+	if (!await pathExists(gitignoreUri)) {
+		const createEdit = new vscode.WorkspaceEdit();
+		createEdit.createFile(gitignoreUri, { ignoreIfExists: true });
+
+		if (!await vscode.workspace.applyEdit(createEdit)) {
+			throw new Error(`VS Code could not create ${gitignoreUri.path}.`);
+		}
+	}
+
+	const document = await vscode.workspace.openTextDocument(gitignoreUri);
+	const result = appendGitignoreEntries(document.getText(), entries);
+
+	if (result.addedEntries.length === 0) {
+		return result;
+	}
+
+	const edit = new vscode.WorkspaceEdit();
+	edit.replace(gitignoreUri, getFullSourceRange(document.getText()), result.source);
+
+	if (!await vscode.workspace.applyEdit(edit)) {
+		throw new Error(`VS Code could not update ${gitignoreUri.path}.`);
+	}
+
+	if (!await document.save()) {
+		throw new Error(`VS Code could not save ${gitignoreUri.path}.`);
+	}
+
+	return result;
+}
+
+async function addExplorerFilesToGitignore(resourceUri, selectedResourceUris) {
+	const resources = getExplorerResourceUris(resourceUri, selectedResourceUris);
+
+	if (resources.length === 0) {
+		vscode.window.showWarningMessage('Select a file in the Explorer to add to .gitignore.');
+		return;
+	}
+
+	const repositories = new Map();
+
+	for (const resource of resources) {
+		const stat = await vscode.workspace.fs.stat(resource);
+
+		if ((stat.type & vscode.FileType.Directory) !== 0) {
+			continue;
+		}
+
+		const rootUri = await findGitRepositoryRoot(resource);
+
+		if (!rootUri) {
+			vscode.window.showWarningMessage(`Could not find a Git repository for ${getFileName(resource)}.`);
+			continue;
+		}
+
+		const key = rootUri.toString();
+		const repository = repositories.get(key) ?? { rootUri, resources: [] };
+		repository.resources.push(resource);
+		repositories.set(key, repository);
+	}
+
+	let addedCount = 0;
+	let unchangedCount = 0;
+
+	for (const { rootUri, resources: repositoryResources } of repositories.values()) {
+		const entries = repositoryResources
+			.map((resource) => getGitignoreEntry(rootUri.path, resource.path))
+			.filter(Boolean);
+		const gitignoreUri = vscode.Uri.joinPath(rootUri, '.gitignore');
+		const result = await updateGitignoreFile(gitignoreUri, entries);
+
+		if (result.addedEntries.length === 0) {
+			unchangedCount += entries.length;
+			continue;
+		}
+
+		addedCount += result.addedEntries.length;
+		unchangedCount += entries.length - result.addedEntries.length;
+	}
+
+	if (addedCount > 0) {
+		const suffix = unchangedCount > 0 ? `; ${unchangedCount} already present` : '';
+		vscode.window.showInformationMessage(
+			`Added ${addedCount} ${addedCount === 1 ? 'path' : 'paths'} to .gitignore${suffix}.`
+		);
+	} else if (unchangedCount > 0) {
+		vscode.window.showInformationMessage(
+			`${unchangedCount === 1 ? 'That path is' : 'Those paths are'} already present in .gitignore.`
+		);
+	}
+}
+
+function createFileMarkerController(context) {
+	let markedUris = new Set(normalizeMarkedUris(
+		context.workspaceState.get(MARKED_FILES_STORAGE_KEY, [])
+	));
+	const decorationEmitter = new vscode.EventEmitter();
+	const markedDecoration = new vscode.FileDecoration(
+		'⚑',
+		'Marked file — use Toggle File Marker to remove',
+		new vscode.ThemeColor('smartReferences.fileMarkerForeground')
+	);
+	markedDecoration.propagate = false;
+
+	async function replaceMarkedUris(nextMarkedUris, changedUris) {
+		await context.workspaceState.update(MARKED_FILES_STORAGE_KEY, nextMarkedUris);
+		markedUris = new Set(nextMarkedUris);
+
+		if (changedUris === undefined) {
+			decorationEmitter.fire(undefined);
+		} else if (changedUris.length > 0) {
+			decorationEmitter.fire(changedUris);
+		}
+	}
+
+	async function getSelectedFileUris(resourceUri, selectedResourceUris) {
+		const resources = getExplorerResourceUris(resourceUri, selectedResourceUris);
+		const files = [];
+
+		for (const resource of resources) {
+			const stat = await vscode.workspace.fs.stat(resource);
+			if ((stat.type & vscode.FileType.Directory) === 0) {
+				files.push(resource);
+			}
+		}
+
+		return files;
+	}
+
+	return {
+		dispose() {
+			decorationEmitter.dispose();
+		},
+		provider: {
+			onDidChangeFileDecorations: decorationEmitter.event,
+			provideFileDecoration(uri) {
+				return markedUris.has(uri.toString()) ? markedDecoration : undefined;
+			},
+		},
+		async toggle(resourceUri, selectedResourceUris) {
+			const files = await getSelectedFileUris(resourceUri, selectedResourceUris);
+
+			if (files.length === 0) {
+				vscode.window.showWarningMessage('Select a file in the Explorer to toggle its marker.');
+				return;
+			}
+
+			const result = toggleMarkedUris(
+				[...markedUris],
+				files.map((uri) => uri.toString())
+			);
+			await replaceMarkedUris(
+				result.markedUris,
+				result.changedUris.map((uri) => vscode.Uri.parse(uri))
+			);
+		},
+		async handleRenames(files) {
+			const nextMarkedUris = remapMarkedUris(
+				[...markedUris],
+				files.map((file) => ({
+					oldUri: file.oldUri.toString(),
+					newUri: file.newUri.toString(),
+				}))
+			);
+
+			if (nextMarkedUris.join('\n') === [...markedUris].join('\n')) {
+				return;
+			}
+
+			await replaceMarkedUris(
+				nextMarkedUris,
+				files.flatMap((file) => [file.oldUri, file.newUri])
+			);
+		},
+		async handleDeletes(uris) {
+			const nextMarkedUris = removeDeletedMarkedUris(
+				[...markedUris],
+				uris.map((uri) => uri.toString())
+			);
+
+			if (nextMarkedUris.length === markedUris.size) {
+				return;
+			}
+
+			await replaceMarkedUris(nextMarkedUris, uris);
+		},
+	};
+}
+
 function activate(context) {
 	smartRefDebugChannel = vscode.window.createOutputChannel('Smart References Debug');
 	context.subscriptions.push(smartRefDebugChannel);
 
 	laravelIntelligence.register(context); // registers the "Refresh Laravel IDE Helpers" command only
+	const fileMarkers = createFileMarkerController(context);
+	context.subscriptions.push(
+		fileMarkers,
+		vscode.window.registerFileDecorationProvider(fileMarkers.provider)
+	);
 
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.go', goToSmartReference));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.showReferencesAt', async (uri, position) => {
@@ -4308,6 +4626,24 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpChain', splitPhpChainAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.toggleFileMarker', async (resourceUri, selectedResourceUris) => {
+		try {
+			await fileMarkers.toggle(resourceUri, selectedResourceUris);
+		} catch (error) {
+			vscode.window.showErrorMessage(
+				`Could not toggle the selected file marker: ${error instanceof Error ? error.message : String(error)}`
+			);
+		}
+	}));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.addToGitignore', async (resourceUri, selectedResourceUris) => {
+		try {
+			await addExplorerFilesToGitignore(resourceUri, selectedResourceUris);
+		} catch (error) {
+			vscode.window.showErrorMessage(
+				`Could not add the selected file to .gitignore: ${error instanceof Error ? error.message : String(error)}`
+			);
+		}
+	}));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.movePhpClassFile', async (resourceUri) => {
 		try {
 			await movePhpClassFile(resourceUri);
@@ -4318,6 +4654,12 @@ function activate(context) {
 		}
 	}));
 	context.subscriptions.push(vscode.workspace.onDidRenameFiles((event) => {
+		void fileMarkers.handleRenames(event.files).catch((error) => {
+			vscode.window.showErrorMessage(
+				`Could not preserve file markers after a rename: ${error instanceof Error ? error.message : String(error)}`
+			);
+		});
+
 		for (const file of event.files) {
 			if (path.posix.extname(file.oldUri.path).toLowerCase() !== '.php'
 				|| path.posix.extname(file.newUri.path).toLowerCase() !== '.php'
@@ -4331,6 +4673,13 @@ function activate(context) {
 				);
 			});
 		}
+	}));
+	context.subscriptions.push(vscode.workspace.onDidDeleteFiles((event) => {
+		void fileMarkers.handleDeletes(event.files).catch((error) => {
+			vscode.window.showErrorMessage(
+				`Could not remove deleted file markers: ${error instanceof Error ? error.message : String(error)}`
+			);
+		});
 	}));
 	context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
 		[

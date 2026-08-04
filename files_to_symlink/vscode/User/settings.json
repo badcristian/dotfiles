@@ -1,7 +1,7 @@
 {
 	"files.autoSave": "afterDelay",
 	"workbench.editorAssociations": {
-		"*.md": "default"
+		"*.md": "vscode.markdown.preview.editor"
 	},
 	"workbench.colorTheme": "Monokai Pro",
 	"chat.commandCenter.enabled": false,
@@ -13,25 +13,19 @@
 	"workbench.editor.tabHeight": "compact",
 	// "window.density.editorTabHeight": "compact",
 	"workbench.editor.tabActionCloseVisibility": false,
-	"workbench.editor.tabActionUnpinVisibility": false,
+	"workbench.editor.tabActionUnpinVisibility": true,
 	"workbench.editor.preventPinnedEditorClose": "never",
 	"workbench.editor.decorations.badges": false,
-	"apc.stylesheet": {
-		".monaco-workbench .part.editor .title.tabs": "--editor-group-tab-height: 26px !important;",
-		".monaco-workbench .part.editor .tabs-and-actions-container": "height: 30px !important; padding-top: 2px !important; padding-bottom: 2px !important; align-items: center !important;",
-		".monaco-workbench .part.editor .editor-group-container > .title .tabs-container": "height: 26px !important; min-height: 26px !important;",
-		".monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab": "height: 26px !important; min-height: 26px !important; border-radius: 5px !important; box-shadow: none !important;",
-		".monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label, .monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label a": "line-height: 26px !important;",
-		".monaco-workbench.vs-dark .explorer-folders-view .monaco-icon-label.folder-icon .label-name": "color: #f2f2f2 !important;",
-		".monaco-workbench.vs .explorer-folders-view .monaco-list-row .monaco-icon-label .label-name": "color: #1f2328 !important; opacity: 1 !important;",
-		".monaco-workbench.vs .part.editor .title .tabs-container > .tab .tab-label a": "color: #1f2328 !important; opacity: 1 !important;",
-		".monaco-workbench.vs .part.editor .title .tabs-container > .tab .monaco-icon-label .label-name": "color: #1f2328 !important; opacity: 1 !important;",
-	},
-	"apc.imports": [
-		"/Users/mac/dev/dotfiles/files_to_symlink/vscode/User/apc-preserve-editor-horizontal-scroll.js",
+	// Workbench CSS and JS, injected by be5invis.vscode-custom-css from the symlinked User folder.
+	// Editing a listed file requires "Reload Custom CSS and JS" and a restart; the loader inlines
+	// their contents into workbench.html rather than linking to them.
+	"vscode_custom_css.imports": [
+		"file:///Users/mac/Library/Application%20Support/Code/User/custom-workbench.css",
+		"file:///Users/mac/Library/Application%20Support/Code/User/custom-preserve-editor-horizontal-scroll.js",
+		"file:///Users/mac/Library/Application%20Support/Code/User/custom-anchor-quick-input-to-command-center.js",
 	],
 	"editor.fontFamily": "'JetBrains Mono', monospace",
-	"editor.fontSize": 13,
+	"editor.fontSize": 13.2,
 	"editor.fontWeight": 550,
 	"editor.fontLigatures": true,
 	"editor.lineHeight": 1.4,
@@ -132,7 +126,7 @@
 	"editor.quickSuggestions": {
 		"strings": true,
 	},
-	"explorer.autoReveal": true,
+	"explorer.autoReveal": false,
 	"workbench.panel.opensMaximized": "never",
 	"security.workspace.trust.untrustedFiles": "open",
 	"javascript.suggest.completeFunctionCalls": true,
@@ -185,6 +179,8 @@
 	"workbench.colorCustomizations": {
 		// "tab.activeBackground": "#2b2b2b",
 		"tab.activeBorderTop": "#d09010",
+		"tab.hoverBorder": "#00000000",
+		"tab.unfocusedHoverBorder": "#00000000",
 		// Error Lens: no line background tint (squiggles only)
 		"errorLens.errorBackground": "#00000000",
 		"errorLens.warningBackground": "#00000000",
@@ -253,8 +249,8 @@
 			"tab.unfocusedActiveForeground": "#1f2328",
 			"tab.inactiveBackground": "#ffffff",
 			"tab.inactiveForeground": "#57606a",
-			"tab.hoverBackground": "#00000000",
-			"tab.unfocusedHoverBackground": "#00000000",
+			"tab.hoverBackground": "#dbeafe",
+			"tab.unfocusedHoverBackground": "#eaf3ff",
 			"tab.hoverForeground": "#1f2328",
 			"tab.unfocusedHoverForeground": "#1f2328",
 			"tab.border": "#d0d7de",
@@ -310,8 +306,8 @@
 			"tab.unfocusedActiveForeground": "#1f2328",
 			"tab.inactiveBackground": "#ffffff",
 			"tab.inactiveForeground": "#57606a",
-			"tab.hoverBackground": "#00000000",
-			"tab.unfocusedHoverBackground": "#00000000",
+			"tab.hoverBackground": "#dbeafe",
+			"tab.unfocusedHoverBackground": "#eaf3ff",
 			"tab.hoverForeground": "#1f2328",
 			"tab.unfocusedHoverForeground": "#1f2328",
 			"tab.border": "#d0d7de",
@@ -497,4 +493,5 @@
 		"editor.defaultFormatter": "esbenp.prettier-vscode",
 	},
 	"js/ts.updateImportsOnFileMove.enabled": "always",
+	"workbench.statusBar.visible": false,
 }

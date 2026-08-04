@@ -49,7 +49,14 @@ alias fresh="pa migrate:fresh --seed"
 alias gcm="git commit -m"
 alias n="tmux new-session -A -s"
 alias a="tmux a"
-alias init="bash ~/init_tmux_sessions.sh"
+unalias init 2>/dev/null
+init() {
+    if [[ -n "${TMUX:-}" ]]; then
+        tmux display-popup -E -w 56% -h 70% -T " Projects " "bash ~/tmux-project.sh"
+    else
+        bash ~/tmux-project.sh
+    fi
+}
 alias tko="tmux kill-server"
 alias t="tmux"
 alias ta="tmux a"
@@ -86,14 +93,84 @@ export PATH="$PATH:$HOME/.composer/vendor/bin"
 # autoload -U promptinit; promptinit
 # prompt pure
 
-# use starhisp instead of GEOMETRY
+# Match Starship to macOS appearance when a shell starts. Use
+# `prompt-theme light|dark|auto` to switch an already-open shell.
+_macos_effective_appearance() {
+  local appearance_cache="$HOME/.cache/macos-effective-appearance"
+  local appearance
+
+  if [[ -r "$appearance_cache" ]]; then
+    IFS= read -r appearance < "$appearance_cache"
+  else
+    appearance=$(/usr/bin/osascript -l JavaScript -e \
+      'ObjC.import("AppKit"); $.NSApplication.sharedApplication.effectiveAppearance.name.js' \
+      2>/dev/null)
+    [[ "$appearance" == *Dark* ]] && appearance="dark" || appearance="light"
+  fi
+
+  print -r -- "$appearance"
+}
+
+_select_starship_theme() {
+  local selected_theme="${STARSHIP_THEME:-auto}"
+
+  if [[ "$selected_theme" == "auto" ]]; then
+    if [[ "$(_macos_effective_appearance)" == "dark" ]]; then
+      selected_theme="dark"
+    else
+      selected_theme="light"
+    fi
+  fi
+
+  if [[ "$selected_theme" == "light" ]]; then
+    export STARSHIP_CONFIG="$HOME/.config/starship-light.toml"
+  else
+    export STARSHIP_CONFIG="$HOME/.config/starship.toml"
+  fi
+
+  STARSHIP_ACTIVE_THEME="$selected_theme"
+}
+
+prompt-theme() {
+  case "${1:-}" in
+    light|dark)
+      export STARSHIP_THEME="$1"
+      ;;
+    auto)
+      unset STARSHIP_THEME
+      ;;
+    *)
+      echo "Usage: prompt-theme light|dark|auto"
+      return 2
+      ;;
+  esac
+
+  _select_starship_theme
+  echo "Starship theme: $STARSHIP_ACTIVE_THEME"
+}
+
+_select_starship_theme
+
+# use Starship instead of Geometry
 eval "$(starship init zsh)"
+
+# Re-check macOS appearance before every prompt. Explicit
+# `prompt-theme light|dark` selections still override automatic mode.
+autoload -Uz add-zsh-hook
+add-zsh-hook -d precmd _select_starship_theme 2>/dev/null
+add-zsh-hook precmd _select_starship_theme
 
 # CARGO
 export PATH="$HOME/.cargo/bin:$PATH"
 
 # FZF
 source <(fzf --zsh)
+
+# Edit the current command in Neovim with Ctrl-X, then Ctrl-E.
+autoload -Uz edit-command-line
+zle -N edit-command-line
+zstyle ':zle:edit-command-line' editor nvim
+bindkey '^X^E' edit-command-line
 
 export FZF_DEFAULT_COMMAND='fd -I --type f --color=never --hidden'
 export FZF_DEFAULT_OPTS='--no-height --color=bg+:#343d46,gutter:-1,pointer:#ff3c3c,info:#0dbc79,hl:#0dbc79,hl+:#23d18b'
@@ -103,6 +180,14 @@ export FZF_CTRL_T_OPTS="--preview 'bat --color=always --line-range :50 {}'"
 
 export FZF_ALT_C_COMMAND='fd --type d . --color=never --hidden'
 export FZF_ALT_C_OPTS="--preview 'tree -C {} | head -50'"
+
+# Show the most recent matching history entry as muted inline text.
+# Right Arrow or End accepts it; Ctrl-R and Tab remain owned by fzf.
+if [ -r /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+  ZSH_AUTOSUGGEST_STRATEGY=(history)
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+  source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+fi
 
 
 # autoload -Uz compinit && compinit

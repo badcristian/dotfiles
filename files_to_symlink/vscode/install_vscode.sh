@@ -10,6 +10,7 @@ LOCAL_EXTENSIONS=(
   "local.php-smart-docblock-0.0.1"
   "local.phpstorm-project-icons-0.0.1"
   "local.preview-pin-on-click-0.0.1"
+  "local.project-chooser-0.0.1"
   "local.smart-references-0.0.1"
   "local.statusbar-toggle-0.0.1"
 )
@@ -114,27 +115,6 @@ register_extension() {
   ' "$id" "$name"
 }
 
-patch_apc_restart_prompt() {
-  local apc_utils="$VSCODE_EXTENSIONS_DIR/drcika.apc-extension-0.4.1/dist/utils.js"
-
-  if [ ! -f "$apc_utils" ]; then
-    return
-  fi
-
-  node -e '
-    const fs = require("fs");
-    const file = process.argv[1];
-    let source = fs.readFileSync(file, "utf8");
-    const next = source.replace(
-      /async function promptRestart\(\) \{\n[\s\S]*?\n\}/,
-      "async function promptRestart() {\n    return;\n}"
-    );
-    if (next !== source) {
-      fs.writeFileSync(file, next);
-    }
-  ' "$apc_utils"
-}
-
 relocate_extension_backups() {
   find "$VSCODE_EXTENSIONS_DIR" -maxdepth 1 -name 'local.*.before-dotfiles-link.*' -exec mv -n {} "$BACKUP_DIR/extensions/" \;
 }
@@ -165,8 +145,12 @@ clean_local_obsolete_entries() {
   ' "$obsolete_file"
 }
 
-link_file "$DOTFILES_DIR/User/settings.json" "$CODE_USER_DIR/settings.json"
-link_file "$DOTFILES_DIR/User/keybindings.json" "$CODE_USER_DIR/keybindings.json"
+# Settings, keybindings, and every injected workbench asset are linked, so the live User folder is
+# a complete mirror of the repository copy.
+for user_file in "$DOTFILES_DIR/User/"*; do
+  [ -f "$user_file" ] || continue
+  link_file "$user_file" "$CODE_USER_DIR/$(basename "$user_file")"
+done
 
 relocate_extension_backups
 
@@ -177,10 +161,10 @@ done
 register_extension "local.php-smart-docblock" "local.php-smart-docblock-0.0.1"
 register_extension "local.phpstorm-project-icons" "local.phpstorm-project-icons-0.0.1"
 register_extension "local.preview-pin-on-click" "local.preview-pin-on-click-0.0.1"
+register_extension "local.project-chooser" "local.project-chooser-0.0.1"
 register_extension "local.smart-references" "local.smart-references-0.0.1"
 register_extension "local.statusbar-toggle" "local.statusbar-toggle-0.0.1"
 
-patch_apc_restart_prompt
 clean_local_obsolete_entries
 
 echo "VS Code dotfiles links installed."
