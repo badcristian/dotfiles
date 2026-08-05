@@ -79,7 +79,7 @@ fi
 battery=$(/usr/bin/pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | /usr/bin/head -1)
 battery=${battery:-?}
 
-tmux_label="󰆍 TMUX"
+tmux_label="󰆍 tmux"
 battery_label="󰁹 $battery"
 # Health monitor. Reading one short line keeps the redraw fork-free; a refresh
 # is only spawned when the report is genuinely stale, which is hourly at most.
@@ -97,22 +97,22 @@ if [[ $health_state != checking ]] && (( health_now - health_stamp > 3600 )); th
 fi
 
 case "$health_state" in
-    ok)       health_icon="󰗠"; health_colour="$ui_accent" ;;
-    warn)     health_icon="󰀨"; health_colour="#e5c890" ;;
-    crit)     health_icon="󰅙"; health_colour="#e78284" ;;
-    checking) health_icon="󰓦"; health_colour="colour8" ;;
-    *)        health_icon="󰓦"; health_colour="colour8" ;;
+    ok)       health_icon="󰗠"; health_colour="$ui_accent"; health_text="ok" ;;
+    warn)     health_icon="󰀨"; health_colour="#e5c890"; health_text="warn" ;;
+    crit)     health_icon="󰅙"; health_colour="#e78284"; health_text="crit" ;;
+    checking) health_icon="󰓦"; health_colour="colour8"; health_text="scan" ;;
+    *)        health_icon="󰓦"; health_colour="colour8"; health_text="scan" ;;
 esac
-health_selector_visible="[$health_icon]"
-health_selector="#[range=user|health]#[fg=default][#[fg=${health_colour}]$health_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+health_selector_visible="[$health_icon $health_text]"
+health_selector="#[range=user|health]#[fg=default][#[fg=${health_colour}]$health_icon#[fg=default] $health_text]#[fg=${ui_accent}]#[norange]"
 
 pane_label="󱂬 $pane_index"
-vim_help_icon="󰘥"
-vim_help_selector_visible="[$vim_help_icon]"
-vim_help_selector="#[range=user|vimhelp]#[fg=default][#[fg=${ui_accent}]$vim_help_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+vim_help_icon=""
+vim_help_selector_visible="[$vim_help_icon vi]"
+vim_help_selector="#[range=user|vimhelp]#[fg=default][#[fg=${ui_accent}]$vim_help_icon#[fg=default] vi]#[fg=${ui_accent}]#[norange]"
 colour_picker_icon="󰏘"
-accent_selector_visible="[$colour_picker_icon]"
-accent_selector="#[range=user|accent]#[fg=default][#[fg=${ui_accent}]$colour_picker_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+accent_selector_visible="[$colour_picker_icon col]"
+accent_selector="#[range=user|accent]#[fg=default][#[fg=${ui_accent}]$colour_picker_icon#[fg=default] col]#[fg=${ui_accent}]#[norange]"
 # Five groups a side. The two clickable buttons sit together on the left, the
 # other two on the right, so each edge carries the same weight.
 left_visible=" [$tmux_label] [$battery_label] $health_selector_visible $vim_help_selector_visible $accent_selector_visible [$pane_label]"
@@ -147,8 +147,8 @@ repo_selector=""
 repo_selector_visible=""
 if [[ -n $repo_url ]]; then
     repo_icon="󰖟"
-    repo_selector_visible=" [$repo_icon]"
-    repo_selector=" #[range=user|repo]#[fg=default][#[fg=${ui_accent}]$repo_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+    repo_selector_visible=" [$repo_icon git]"
+    repo_selector=" #[range=user|repo]#[fg=default][#[fg=${ui_accent}]$repo_icon#[fg=default] git]#[fg=${ui_accent}]#[norange]"
 fi
 
 window_label="󰖯 $window_name"
@@ -159,8 +159,8 @@ background_state_file="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-ui/moving-back
 if [[ ! -f $background_state_file ]] || ! /usr/bin/grep -qx 'enabled=off' "$background_state_file"; then
     background_colour="$ui_accent"
 fi
-background_selector_visible="[$background_icon]"
-background_selector="#[range=user|background]#[fg=default][#[fg=${background_colour}]$background_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+background_selector_visible="[$background_icon bg]"
+background_selector="#[range=user|background]#[fg=default][#[fg=${background_colour}]$background_icon#[fg=default] bg]#[fg=${ui_accent}]#[norange]"
 right_visible=" [$agent_label]$repo_selector_visible $background_selector_visible [$window_label] [$command_label] "
 right=" #[range=user|agents]#[bold][$agent_label]#[nobold]#[norange]$repo_selector $background_selector [$window_label] [$command_label] "
 right_visible_width=${#right_visible}

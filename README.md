@@ -240,6 +240,10 @@ bar to reorder them, or use `Option-Up` / `Option-Down` on a running project in
 the picker. Click a status-bar session name to switch to it. In the picker,
 `Ctrl-X` deletes the selected running session; deleting the current session
 first switches the client to the next session in the manual order.
+Each clickable button carries a short lowercase label — `vi`, `col`, `git`, `bg`,
+and the health state — because five bare icons in a row said nothing about what
+they opened. Read-only groups need none: their value is the label.
+
 The bar is balanced five groups a side: tmux, battery, the Vim reference, the
 color picker and the pane counter on the left; usage, the repository link, the
 moving background, the window name and the running command on the right. The
@@ -280,19 +284,19 @@ only normalized percentages and reset times for five minutes under
 When the current session directory belongs to a Git repository with a web
 remote, a `󰖟` button appears beside usage. Click it to open that repository in
 the default browser; SSH-style Git remotes are converted to their HTTPS page.
-The colored dot on the left of the bar opens a live accent selector. Its menu previews
+The `󰏘 col` button on the left of the bar opens a live accent selector. Its menu previews
 the standard and bright Catppuccin palette colors plus Omarchy's default Tokyo
 Night window-border accent (`#7aa2f7`), applies the choice across status and
 pane UI immediately, and persists it under `~/.local/state/tmux-ui/accent`.
 The menu remains open after the launching mouse button is released, so a
 separate click selects the desired color.
 
-The `󰗠` item on the left runs periodic system health checks. It reports disk
+The `󰗠 ok` button on the left runs periodic system health checks. It reports disk
 space, memory pressure, swap use, CPU load, thermal throttling, the highest
 sustained power draw, and orphaned development processes. The icon is the
-status: `󰗠` when everything passes, `󰀨` in amber when something needs
-attention, `󰅙` in red when a threshold is breached, and `󰓦` while a check
-runs. Click it, press `Ctrl-A` then `h`, or `Option-H`, to open the report;
+status, and the label follows it: `󰗠 ok` when everything passes, `󰀨 warn` in amber
+when something needs attention, `󰅙 crit` in red when a threshold is breached,
+and `󰓦 scan` while a check runs. Click it, press `Ctrl-A` then `h`, or `Option-H`, to open the report;
 `r` re-runs the checks with per-check progress, `q` or `Esc` closes.
 
 The checks exist because every one of them caught something that had gone
@@ -304,7 +308,7 @@ reads only a one-line state file, so a redraw stays fork-free; a refresh is
 spawned in the background only once the report is genuinely stale. Results are
 cached under `~/.cache/tmux-health/`.
 
-The `󰘥` item on the left of the bar, just after the battery percentage, opens a
+The ` vi` button on the left of the bar opens a
 searchable Vim keybinding reference. Alongside the editor sections it carries a
 command-line section for zsh's vi mode and a tmux scrollback section, so the
 same window answers "how do I jump to the start of the line" wherever you are. Press `Ctrl-A`, then `k`, or `Option-K`,
