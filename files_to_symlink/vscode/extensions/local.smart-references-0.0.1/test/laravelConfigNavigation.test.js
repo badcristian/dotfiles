@@ -20,6 +20,32 @@ test('does not treat an unrelated string as a Laravel config key', () => {
 	assert.equal(getLaravelConfigKeyAtOffset(source, offset), undefined);
 });
 
+test('resolves a Log::channel name to its key under logging.channels', () => {
+	const source = "$log = Log::channel('facebook_sync');";
+	const offset = source.indexOf('facebook_sync') + 5;
+
+	assert.equal(getLaravelConfigKeyAtOffset(source, offset), 'logging.channels.facebook_sync');
+});
+
+test('resolves a Log::channel name through a root-namespaced or fully qualified facade', () => {
+	const rootNamespaced = "$log = \\Log::channel('facebook_sync');";
+	const fullyQualified = "$log = \\Illuminate\\Support\\Facades\\Log::channel('facebook_sync');";
+
+	for (const source of [rootNamespaced, fullyQualified]) {
+		const offset = source.indexOf('facebook_sync') + 5;
+
+		assert.equal(getLaravelConfigKeyAtOffset(source, offset), 'logging.channels.facebook_sync');
+	}
+});
+
+test('does not treat another Log call or another class named channel as a config key', () => {
+	for (const source of ["Log::info('facebook_sync');", "Audit::channel('facebook_sync');"]) {
+		const offset = source.indexOf('facebook_sync') + 5;
+
+		assert.equal(getLaravelConfigKeyAtOffset(source, offset), undefined);
+	}
+});
+
 test('finds the exact top-level key in a Laravel config file', () => {
 	const source = `<?php
 

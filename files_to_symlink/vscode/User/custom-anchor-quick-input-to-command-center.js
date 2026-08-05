@@ -9,7 +9,13 @@
 //
 // Positions are written as ordinary inline styles rather than `!important` declarations. VS Code
 // keeps one widget element for the lifetime of the window, and an important inline value would
-// permanently outrank its own layout writes, including dragging.
+// permanently outrank its own layout writes.
+//
+// The correction is applied synchronously from a MutationObserver and a ResizeObserver, both of
+// which run before the browser paints, and on every layout VS Code performs rather than only when
+// the picker is shown. Anything deferred — a frame callback, a timeout — paints VS Code's position
+// first and then jumps to this one, and correcting only on show leaves later layouts, such as the
+// one after typing into Quick Search, sitting wherever VS Code moved them.
 (() => {
 	const WORKBENCH_SELECTOR = '.monaco-workbench';
 	const WIDGET_SELECTOR = '.quick-input-widget';
@@ -19,11 +25,8 @@
 	const MIN_WIDTH = 420;
 	const VIEWPORT_MARGIN = 8;
 	const TITLE_BAR_GAP = 4;
-	const SETTLE_DELAY = 60;
 
 	let widget = null;
-	let wasVisible = false;
-	let scheduled = false;
 
 	function getCommandCenterRect() {
 		const element = document.querySelector(COMMAND_CENTER_SELECTOR);
@@ -75,54 +78,44 @@
 		const left = Math.round(Math.min(Math.max(centeredLeft, VIEWPORT_MARGIN), maxLeft) - origin.left);
 		const top = Math.round(pill.bottom + TITLE_BAR_GAP - origin.top);
 
-		widget.style.width = `${width}px`;
-		widget.style.left = `${left}px`;
-		widget.style.top = `${top}px`;
-	}
+		const nextWidth = `${width}px`;
+		const nextLeft = `${left}px`;
+		const nextTop = `${top}px`;
 
-	// VS Code lays the widget out synchronously while showing it, and again once its list has
-	// rendered. Re-applying across two frames and one short timeout keeps the anchored position
-	// without polling.
-	function scheduleAnchor() {
-		if (scheduled) {
+		// Writing only on a real change is what stops the observer below from re-entering: our own
+		// writes are mutations too, and the second pass computes the same three values and returns.
+		if (widget.style.width === nextWidth && widget.style.left === nextLeft && widget.style.top === nextTop) {
 			return;
 		}
 
-		scheduled = true;
-		window.requestAnimationFrame(() => {
-			scheduled = false;
-			anchorWidget();
-			window.requestAnimationFrame(anchorWidget);
-			window.setTimeout(anchorWidget, SETTLE_DELAY);
-		});
+		widget.style.width = nextWidth;
+		widget.style.left = nextLeft;
+		widget.style.top = nextTop;
 	}
 
-	// Only the hidden-to-visible transition re-anchors, so a picker dragged elsewhere stays where
-	// it was put until it is closed and opened again.
-	function handleWidgetMutation() {
-		if (!widget) {
-			return;
-		}
-
-		const visible = isAnchorable(widget);
-
-		if (visible && !wasVisible) {
-			scheduleAnchor();
-		}
-
-		wasVisible = visible;
-	}
-
+	// Anchoring runs synchronously inside the observers, never from a frame callback or a timeout.
+	// A MutationObserver callback is a microtask, so it runs after VS Code's layout writes but
+	// before the browser paints, and the widget is never rendered at the position VS Code chose.
+	// Deferring by even one frame is what made the picker appear off to one side and jump back.
+	//
+	// Every mutation re-anchors, not just the hidden-to-visible transition. VS Code lays the widget
+	// out again whenever its content changes — typing into Quick Search is enough — and correcting
+	// only on show left those later layouts in place, which is the same jump in reverse. The cost
+	// is that the widget can no longer be dragged elsewhere: a drag is layout too, and it is undone
+	// on the next microtask.
 	function observeWidget(element) {
 		widget = element;
-		wasVisible = false;
 
-		new MutationObserver(handleWidgetMutation).observe(element, {
+		new MutationObserver(anchorWidget).observe(element, {
 			attributes: true,
 			attributeFilter: ['style', 'class'],
 		});
 
-		handleWidgetMutation();
+		// A size change that VS Code makes without touching the inline style would move the pill
+		// relationship without a mutation record. ResizeObserver delivers before paint as well.
+		new ResizeObserver(anchorWidget).observe(element);
+
+		anchorWidget();
 	}
 
 	function findWidget() {
@@ -151,15 +144,11 @@
 		new MutationObserver(() => findWidget()).observe(workbench, { childList: true });
 	}
 
-	window.addEventListener('resize', () => {
-		if (widget && isAnchorable(widget)) {
-			scheduleAnchor();
-		}
-	});
+	window.addEventListener('resize', anchorWidget);
 
 	window.__anchorQuickInputToCommandCenter = {
-		version: 1,
-		anchor: () => scheduleAnchor(),
+		version: 2,
+		anchor: () => anchorWidget(),
 	};
 
 	watchForWidget();
