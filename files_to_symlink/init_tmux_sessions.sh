@@ -1,7 +1,7 @@
 #!/bin/bash
 
 tmux new-session -d -s downloads -c /Users/mac/Downloads
-tmux new-session -d -s ~ -c ~/
+tmux new-session -d -s home -c "$HOME"
 
 # ── ribeit-api ────────────────────────────────────────────────────────────────
 tmux new-session -d -s ribeit-api -c /Users/mac/dev/ribeit-api

@@ -152,7 +152,15 @@ if [[ -n $repo_url ]]; then
 fi
 
 window_label="󰖯 $window_name"
-command_label="󰘳 $pane_command"
+# A shell name tells you nothing you did not already know, so the group only
+# appears when something is actually running. Claude Code's binary is named by
+# version, which reads as noise, so it is shown by name instead.
+command_group=""
+case "$pane_command" in
+    zsh | bash | sh | fish | "") ;;
+    [0-9]*.[0-9]*.[0-9]*) command_group=" [󰘳 claude]" ;;
+    *) command_group=" [󰘳 $pane_command]" ;;
+esac
 background_icon="󰸉"
 background_colour="colour8"
 background_state_file="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-ui/moving-background"
@@ -161,8 +169,8 @@ if [[ ! -f $background_state_file ]] || ! /usr/bin/grep -qx 'enabled=off' "$back
 fi
 background_selector_visible="[$background_icon bg]"
 background_selector="#[range=user|background]#[fg=default][#[fg=${background_colour}]$background_icon#[fg=default] bg]#[fg=${ui_accent}]#[norange]"
-right_visible=" [$agent_label]$repo_selector_visible $background_selector_visible [$window_label] [$command_label] "
-right=" #[range=user|agents]#[bold][$agent_label]#[nobold]#[norange]$repo_selector $background_selector [$window_label] [$command_label] "
+right_visible=" [$agent_label]$repo_selector_visible $background_selector_visible [$window_label]$command_group "
+right=" #[range=user|agents]#[bold][$agent_label]#[nobold]#[norange]$repo_selector $background_selector [$window_label]$command_group "
 right_visible_width=${#right_visible}
 
 session_ids=()

@@ -246,7 +246,10 @@ they opened. Read-only groups need none: their value is the label.
 
 The bar is balanced five groups a side: tmux, battery, the Vim reference, the
 color picker and the pane counter on the left; usage, the repository link, the
-moving background, the window name and the running command on the right. The
+moving background and the window name on the right. The running command joins
+them only when something is actually running: a pane sitting at a shell prompt
+adds nothing by saying so, and Claude Code's binary is named by version, which
+reads as a meaningless "2.1.222", so it is shown by name. The
 two clickable pickers sit together at each edge rather than bunching on one
 side. It uses single-cell Nerd Font glyphs for tmux, battery, usage,
 window, pane, and command metadata, drawn from the Material Design range through
