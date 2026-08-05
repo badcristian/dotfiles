@@ -96,15 +96,41 @@ check_swap() {
 }
 
 check_load() {
-    local cores load1 ratio state fix=''
+    local cores line kbt tps mbs us sy idle load1 busy ratio state fix='' detail
+
     cores="$(sysctl -n hw.ncpu 2>/dev/null || printf '8')"
-    load1="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
+
+    # Load average alone cannot tell CPU pressure from I/O wait: macOS counts
+    # processes blocked on disk in it too. Three minutes after a reboot this
+    # read 39.6 while the CPU was 68% idle, and the check cried wolf. iostat's
+    # second sample is an interval measurement carrying CPU idle, disk
+    # throughput and the load average together, so one call settles which it is.
+    line="$(iostat -c 2 -w 1 2>/dev/null | tail -1)"
+    read -r kbt tps mbs us sy idle load1 _ <<< "$line"
+
+    [[ $idle =~ ^[0-9]+$ ]] || idle=100
+    [[ $tps =~ ^[0-9]+$ ]] || tps=0
+    [[ $load1 =~ ^[0-9.]+$ ]] || load1="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
+    busy=$(( 100 - idle ))
     ratio="$(awk -v l="$load1" -v c="$cores" 'BEGIN {printf "%d", (l/c)*100}')"
+
+    # Only a queue that is actually competing for CPU counts as CPU pressure.
     state=ok
-    (( ratio >= 150 )) && state=warn
-    (( ratio >= 300 )) && state=crit
-    [[ $state != ok ]] && fix='Load above core count means work is queueing. Check the Energy row for the cause.'
-    emit load "CPU load" "$state" "$load1 on ${cores} cores" "$(( ratio ))% of capacity" "$fix"
+    (( ratio >= 150 && busy >= 60 )) && state=warn
+    (( ratio >= 300 && busy >= 80 )) && state=crit
+
+    # State the two measurements rather than asserting a cause: a high load with
+    # an idle CPU is disk wait at boot, but it is also just a one-minute average
+    # still draining after a spike. Both are "not CPU pressure", which is the
+    # only claim worth making from one sample.
+    if (( ratio >= 150 && busy < 60 )); then
+        detail="not CPU-bound: ${busy}% busy, ${tps} tps"
+    else
+        detail="CPU ${busy}% busy"
+    fi
+
+    [[ $state != ok ]] && fix='Processes are queueing for CPU, not disk. Check the Energy row for what is holding it.'
+    emit load "CPU load" "$state" "$load1 on ${cores} cores" "$detail" "$fix"
 }
 
 check_thermal() {
