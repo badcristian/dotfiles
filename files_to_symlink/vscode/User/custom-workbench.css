@@ -86,24 +86,131 @@
 	border: 1px solid rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Smart References gives every row in its Test usages group a beaker icon. Tint those rows so
- * low-priority test references remain visible without competing with production usages. Keep the
- * native focused/selected background intact; the inset stripe and beaker still identify a test
- * while navigating the list. */
-.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker):not(.selected):not(.focused) {
-	background-color: rgba(75, 180, 110, 0.14) !important;
+/* Two-line picker rows, as used by the Smart References picker, are drawn as inset cards.
+ *
+ * Row height is decided in TypeScript — 22px for a label, 44px once an item carries a detail — and
+ * written to each row as an inline style, so it cannot be raised from here: the list positions the
+ * next row at a fixed offset regardless, and a taller row would simply overlap it. Whitespace alone
+ * therefore has very little room to work with, and whitespace between transparent rows is invisible
+ * anyway. Giving the row's inner element its own background, radius, and vertical margin turns the
+ * leftover height into a visible gutter instead: the eye separates the entries by the card edges
+ * rather than by the distance between two pieces of text.
+ *
+ * The card is deliberately not given an explicit height. It hugs its content, so the gutter is
+ * whatever the row has left over and stays correct if VS Code changes the row metrics.
+ *
+ * Padding inside the card and gutter between cards come out of one fixed 44px row, so they compete
+ * with each other and with the text. Compressing the two lines to 27px (see below) leaves 17px:
+ * 5px of padding top and bottom, and a 7px gutter. That is the whole budget — there is no
+ * arrangement of these rules that yields materially more of either. Group headers are separate
+ * 22px rows now, so every reference card gets the full budget, including the first of each group.
+ *
+ * Scoped to rows whose detail line is actually rendered. Every row template contains the detail
+ * label, and VS Code hides it with an inline `display: none` when an item carries no detail, so
+ * that inline style is what distinguishes a two-line row from a one-line one. Single-line pickers —
+ * the command palette, file open — keep their native density. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-entry {
+	margin: 3.5px 0 !important;
+	padding: 5px 8px !important;
+	border-radius: 5px !important;
 }
 
-.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker):not(.selected):not(.focused) {
-	background-color: rgba(38, 148, 75, 0.1) !important;
+/* The card sits slightly darker than the picker behind it, so a reference reads as a well rather
+ * than as a raised tile, and the hover below lifts it back up by a comparable amount. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-entry {
+	background-color: rgba(0, 0, 0, 0.16) !important;
 }
 
-.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker) {
-	box-shadow: inset 2px 0 0 rgba(116, 201, 145, 0.9) !important;
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-entry {
+	background-color: rgba(0, 0, 0, 0.06) !important;
 }
 
-.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-beaker) {
-	box-shadow: inset 2px 0 0 rgba(46, 157, 85, 0.85) !important;
+/* The filename carries the row, so give it weight over the description beside it and the code line
+ * below it. Only the first of the two text rows is the label; the second is the detail, which is
+ * built from the same `.label-name` element and would otherwise be caught by this too. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-rows > .quick-input-list-row:first-child .label-name {
+	color: var(--vscode-quickInput-foreground, var(--vscode-foreground)) !important;
+	font-weight: 600 !important;
+}
+
+/* Card metrics — the two text lines are compressed to 27px so the remaining 17px of the row can be
+ * spent on padding inside the card and gutter between cards.
+ *
+ * Three things set those line heights and all three have to be trimmed together. The row icon is
+ * prepended into the first text line rather than placed beside both, so its native 22px is that
+ * line's floor. The codicons in the description carry `font: ... 16px/1 codicon`, so their own
+ * line-height is a second floor. Only then does the inherited text line-height decide anything. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-icon {
+	height: 14px !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-rows .codicon {
+	font-size: 14px !important;
+	line-height: 14px !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-rows > .quick-input-list-row {
+	line-height: 14px !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) .quick-input-list-label-meta {
+	line-height: 13px !important;
+}
+
+/* Hover, focus, and the focus outline all paint on the row, which would draw a full-bleed highlight
+ * behind a floating card and swallow the gutter. Move each of them onto the card. The extra
+ * `.monaco-list` class keeps these ahead of VS Code's own list rules, which are equally important
+ * and equally specific. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)) {
+	background-color: transparent !important;
+	outline: none !important;
+}
+
+/* Hover is written out rather than taken from `--vscode-list-hoverBackground`, which several themes
+ * leave close to invisible against a card that already has a fill of its own. It deliberately does
+ * not exclude the focused row: brightening is the pointer's job alone, so the focused card responds
+ * to hover exactly like every other card. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):hover .quick-input-list-entry {
+	background-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):hover .quick-input-list-entry {
+	background-color: rgba(0, 0, 0, 0.13) !important;
+}
+
+/* Focus is drawn as an outline only. A QuickPick always focuses its first row on open, and a focus
+ * background made that card look permanently highlighted; the outline still says what Enter will
+ * open, which the list would otherwise not show at all during keyboard navigation. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)).focused .quick-input-list-entry,
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)).selected .quick-input-list-entry {
+	outline: 1px solid var(--vscode-list-focusOutline) !important;
+	outline-offset: -1px !important;
+}
+
+/* Smart References gives every row in its Test usages group a beaker icon. Tint those cards so
+ * low-priority test references remain visible without competing with production usages. The tint is
+ * a dark green rather than a pale wash, because the cards themselves are recessed now and a lighter
+ * green would make the tests the most prominent thing in the list — the opposite of the intent.
+ * Keep the native focused/selected treatment intact; the tint and beaker still identify a test while
+ * navigating the list. The rows carried an inset left stripe as well, which read as an unexplained
+ * accent next to the group rule and was dropped. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):has(.quick-input-list-icon.codicon-beaker) .quick-input-list-entry {
+	background-color: rgba(24, 92, 54, 0.34) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):has(.quick-input-list-icon.codicon-beaker) .quick-input-list-entry {
+	background-color: rgba(38, 148, 75, 0.16) !important;
+}
+
+/* A test card hovers green too. The generic hover is more specific than the tint above, so without
+ * these it would take the green away at exactly the moment the pointer is on the row. Matching on
+ * both `:has()` conditions puts these back in front. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):has(.quick-input-list-icon.codicon-beaker):hover .quick-input-list-entry {
+	background-color: rgba(46, 140, 88, 0.34) !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-label-meta > .monaco-icon-label:not([style*="display: none"])):not(:has(.quick-input-list-separator-as-item)):has(.quick-input-list-icon.codicon-beaker):hover .quick-input-list-entry {
+	background-color: rgba(38, 148, 75, 0.26) !important;
 }
 
 .monaco-workbench.vs-dark .quick-input-widget .quick-input-list .codicon-beaker {
@@ -112,4 +219,110 @@
 
 .monaco-workbench.vs .quick-input-widget .quick-input-list .codicon-beaker {
 	color: #218c48 !important;
+}
+
+/* Everything below has to be written twice, once per picker widget.
+ *
+ * A QuickPick is backed by EITHER a list or a tree, and the two have entirely separate class
+ * namespaces: `.quick-input-list` with `.quick-input-list-entry`, `.quick-input-list-rows`, and so
+ * on, against `.quick-input-tree` with `.quick-input-tree-entry`, `.quick-input-tree-rows`. A picker
+ * created with `useSeparators: true` gets the tree; everything else, including every extension
+ * quick pick, gets the list. Quick Search is a tree, which is why the card and header rules further
+ * up — all written against `.quick-input-list` — do not reach it. Anything meant to apply to pickers
+ * in general needs both selectors. */
+
+/* Group headings are orange wherever they appear. The two widgets need different hooks: in the list
+ * this is Smart References' own `blank`-codicon item, or a separator that VS Code promoted to a row
+ * of its own because it carries buttons; in the tree a heading is a parent node, which monaco marks
+ * by putting `collapsible` on its twistie — still in the DOM even when the twistie is hidden. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .quick-input-list-separator-as-item .label-name,
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-tree .monaco-list-row:has(.monaco-tl-twistie.collapsible) .label-name {
+	color: #fc9867 !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .quick-input-list-separator-as-item .label-name,
+.monaco-workbench.vs .quick-input-widget .quick-input-tree .monaco-list-row:has(.monaco-tl-twistie.collapsible) .label-name {
+	color: #b45309 !important;
+}
+
+/* A QuickPick focuses its first row on open, and the theme's focus background then makes that row
+ * look hovered before the pointer has gone anywhere near it. Drop the fill in both widgets and let
+ * VS Code's own focus outline say where focus is; the outline is drawn separately and survives. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row.focused,
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row.selected,
+.monaco-workbench .quick-input-widget .quick-input-tree .monaco-list .monaco-list-row.focused,
+.monaco-workbench .quick-input-widget .quick-input-tree .monaco-list .monaco-list-row.selected {
+	background-color: transparent !important;
+}
+
+/* Quick pick descriptions are dimmed to `opacity: .7` in dark themes, and restored to 1 only on the
+ * focused row. Several pickers — bookmarks, symbols, anything listing a location — put the filename
+ * there, which leaves it the least legible thing on the row. Raise it for every dark-theme picker.
+ * Light themes already sit at .95 and are left alone. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-icon-label > .monaco-icon-label-container > .monaco-icon-description-container > .label-description,
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-tree .monaco-icon-label > .monaco-icon-label-container > .monaco-icon-description-container > .label-description {
+	opacity: 0.95 !important;
+}
+
+/* The vertical scrollbar is positioned over the right edge of the scrolled content, so it lands on
+ * top of the cards. Pull the card in when that scrollbar is actually showing, which gives it its own
+ * lane and leaves the cards full width in a list short enough not to scroll. VS Code solves the same
+ * problem the same way in its chat editing session list. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-scrollable-element:has(.visible.scrollbar.vertical) .quick-input-list-entry {
+	margin-right: 12px !important;
+}
+
+/* Group headers. Smart References emits Usages, Top level usages, and Test usages as items rather
+ * than as separators — a separator cannot occupy a row of its own, see the extension for why — and
+ * marks each with the `blank` codicon, which draws nothing and exists only as this hook.
+ *
+ * A header row is 22px, since VS Code sizes any item without a detail at 22px. The header is a bare
+ * label on that row — no fill, so it reads as a heading rather than as another card — laid out as a
+ * 14px line inside 2px of padding, under the group rule, with the icon slot removed so the label
+ * starts where the cards' text does.
+ *
+ * It is also completely passive: inert to the mouse, because a click would otherwise accept a row
+ * that opens nothing, and painted with no background in any state. The rule that moves hover and
+ * focus onto the card applies to two-line rows only, so without the transparent override below a
+ * header would keep VS Code's native row highlight and light up under the pointer. */
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-entry {
+	margin: 1px 0 2px 0 !important;
+	padding: 2px 8px !important;
+	font-size: 10px !important;
+	font-weight: 700 !important;
+	letter-spacing: 0.06em !important;
+	text-transform: uppercase !important;
+	pointer-events: none !important;
+}
+
+/* Orange rather than `pickerGroup.foreground`, which most themes keep quiet enough to disappear
+ * against the cards. Written per theme like the beaker greens above: the dark value is Monokai Pro's
+ * own orange, and the light one is darkened so it still carries against a white picker. */
+.monaco-workbench.vs-dark .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-entry {
+	color: #fc9867 !important;
+}
+
+.monaco-workbench.vs .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-entry {
+	color: #b45309 !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank),
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank):hover,
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank).focused,
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank).selected {
+	background-color: transparent !important;
+	outline: none !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-entry,
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank):hover .quick-input-list-entry {
+	background-color: transparent !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-icon {
+	display: none !important;
+}
+
+.monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-rows > .quick-input-list-row {
+	line-height: 14px !important;
 }

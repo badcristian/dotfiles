@@ -68,6 +68,7 @@ The root installer currently manages:
 | `files_to_symlink/tmux-background.sh` | `~/tmux-background.sh` |
 | `files_to_symlink/tmux-ui.sh` | `~/tmux-ui.sh` |
 | `files_to_symlink/tmux-open-url.sh` | `~/tmux-open-url.sh` |
+| `files_to_symlink/tmux-repo.sh` | `~/tmux-repo.sh` |
 | `files_to_symlink/switch_php_ver.sh` | `~/switch_php_ver.sh` |
 | `files_to_symlink/vscode/User/*` | `~/Library/Application Support/Code/User/` |
 | `files_to_symlink/vscode/extensions/local.*` | `~/.vscode/extensions/` |
@@ -239,11 +240,19 @@ bar to reorder them, or use `Option-Up` / `Option-Down` on a running project in
 the picker. Click a status-bar session name to switch to it. In the picker,
 `Ctrl-X` deletes the selected running session; deleting the current session
 first switches the client to the next session in the manual order.
-The status bar uses compact native Unicode icons for tmux, battery, usage,
-window, pane, and command metadata. Sessions use a filled triangle for the
-active project and an outlined triangle for inactive projects. Status icons use
-the same JetBrains Mono face as their labels with a single-cell separator,
-keeping them readable and vertically aligned. The bar sits at the top of the
+The bar is balanced five groups a side: tmux, battery, the Vim reference, the
+color picker and the pane counter on the left; usage, the repository link, the
+moving background, the window name and the running command on the right. The
+two clickable pickers sit together at each edge rather than bunching on one
+side. It uses single-cell Nerd Font glyphs for tmux, battery, usage,
+window, pane, and command metadata, drawn from the Material Design range through
+Ghostty's bundled symbol fallback. Drawing every icon from one family keeps them
+at a consistent size and optical centre, which mixed Unicode blocks do not:
+JetBrains Mono renders `󱂬` and `󰸉` at the same weight as the rest,
+where the earlier `▪` and `✧` were drawn small and high respectively.
+Sessions carry no marker glyph at all — the active project renders its name and
+its brackets in orange, while inactive projects keep accent brackets around a
+plain name. The bar sits at the top of the
 client, with the manually ordered session group centered between the fixed
 system details on the left and pane metadata on the right. A second,
 one-cell status row draws the native double pane rule directly underneath,
@@ -262,20 +271,53 @@ visible. Click once inside the pane to clear the highlight, leave copy mode, and
 forward the click to the terminal application; `q` or `Escape` also returns to
 the live bottom.
 
-The `✦` item beside the active window in the bottom status bar shows the
-highest current Codex or Claude usage window. Click it, press `Option-U`, or
+The `󰚩` item in the right side of the status bar shows the highest current
+Codex or Claude usage window. Click it, press `Option-U`, or
 press `Ctrl-A`, then `u` to open the detailed usage popup. The popup reads the
 providers' existing local OAuth credentials, refreshes on demand, and caches
 only normalized percentages and reset times for five minutes under
 `~/.cache/tmux-agent-usage/`; it does not run a background process.
-The colored dot beside usage opens a live accent selector. Its menu previews
+When the current session directory belongs to a Git repository with a web
+remote, a `󰖟` button appears beside usage. Click it to open that repository in
+the default browser; SSH-style Git remotes are converted to their HTTPS page.
+The colored dot on the left of the bar opens a live accent selector. Its menu previews
 the standard and bright Catppuccin palette colors plus Omarchy's default Tokyo
 Night window-border accent (`#7aa2f7`), applies the choice across status and
 pane UI immediately, and persists it under `~/.local/state/tmux-ui/accent`.
 The menu remains open after the launching mouse button is released, so a
 separate click selects the desired color.
 
-The `✧` item beside the color selector opens the moving-background popup.
+The `󰗠` item on the left runs periodic system health checks. It reports disk
+space, memory pressure, swap use, CPU load, thermal throttling, the highest
+sustained power draw, and orphaned development processes. The icon is the
+status: `󰗠` when everything passes, `󰀨` in amber when something needs
+attention, `󰅙` in red when a threshold is breached, and `󰓦` while a check
+runs. Click it, press `Ctrl-A` then `h`, or `Option-H`, to open the report;
+`r` re-runs the checks with per-check progress, `q` or `Esc` closes.
+
+The checks exist because every one of them caught something that had gone
+unnoticed: a disk that reached 95% full, six orphaned Neovim processes holding
+190 MB for five days, and a terminal shader repainting every frame. The whole
+sweep costs about two seconds, of which `top -l 2` is 1.7, and runs at most
+hourly, so it cannot become the problem it looks for. The status bar itself
+reads only a one-line state file, so a redraw stays fork-free; a refresh is
+spawned in the background only once the report is genuinely stale. Results are
+cached under `~/.cache/tmux-health/`.
+
+The `󰘥` item on the left of the bar, just after the battery percentage, opens a
+searchable Vim keybinding reference. Alongside the editor sections it carries a
+command-line section for zsh's vi mode and a tmux scrollback section, so the
+same window answers "how do I jump to the start of the line" wherever you are. Press `Ctrl-A`, then `k`, or `Option-K`,
+for the same popup. Rows are grouped by task, starting
+with whole recipes such as select-all-and-copy or move-to-the-bottom-and-paste,
+and every description is phrased in the words you would type to look it up, so
+searching `select a few lines and copy` finds the binding directly. `Enter`
+copies the key sequence itself to the clipboard, and `Esc` closes. Descriptions
+carry their own search vocabulary rather than a hidden synonym column because
+fzf applies `--with-nth` before it matches, leaving only the visible column
+searchable.
+
+The `󰸉` item beside the color selector opens the moving-background popup.
 Press `Ctrl-A`, then `b` for the same menu. Selecting a row cycles animation
 on/off, speed, density, or brightness and applies the change immediately while
 leaving the popup open. The choice persists under

@@ -1035,18 +1035,19 @@ function isTestReferencePath(uriPath, fileName) {
 	return /\/tests?\//i.test(uriPath) || /(?:Test|Spec)\.php$/i.test(fileName);
 }
 
+// Tests sort last, so a top-level reference that lives in a test file still belongs to Test usages.
 function getReferenceGroup(sortKey) {
-	if (sortKey.isTopLevel) {
+	if (sortKey.isTest) {
 		return {
 			index: 2,
-			label: 'Top level usages',
+			label: 'Test usages',
 		};
 	}
 
-	if (sortKey.isTest) {
+	if (sortKey.isTopLevel) {
 		return {
 			index: 1,
-			label: 'Test usages',
+			label: 'Top level usages',
 		};
 	}
 
@@ -1067,18 +1068,24 @@ function compareReferenceItems(a, b) {
 		|| a.sortKey.lineNumber - b.sortKey.lineNumber;
 }
 
-function withReferenceSeparators(items) {
+// Each group is introduced by a header on a row of its own. A QuickPick separator cannot do this:
+// VS Code renders a separator as part of the row that follows it unless the separator carries
+// buttons, and the extension host drops `buttons` from separators on the way across. A header is
+// therefore an ordinary item, which is also why navigation has to be walked past it below. The
+// `blank` codicon draws nothing and gives the workbench stylesheet a class to recognise the row by.
+const REFERENCE_HEADER_ICON = new vscode.ThemeIcon('blank');
+
+function withReferenceHeaders(items) {
 	const grouped = [];
 	let previousGroupIndex = null;
 
 	for (const item of items) {
 		if (item.sortKey.groupIndex !== previousGroupIndex) {
-			if (item.sortKey.groupIndex !== 0) {
-				grouped.push({
-					kind: vscode.QuickPickItemKind.Separator,
-					label: item.sortKey.isTest ? `$(beaker) ${item.sortKey.groupLabel}` : item.sortKey.groupLabel,
-				});
-			}
+			grouped.push({
+				label: item.sortKey.groupLabel,
+				iconPath: REFERENCE_HEADER_ICON,
+				isReferenceHeader: true,
+			});
 			previousGroupIndex = item.sortKey.groupIndex;
 		}
 
@@ -1086,6 +1093,16 @@ function withReferenceSeparators(items) {
 	}
 
 	return grouped;
+}
+
+function findReferenceItem(items, startIndex, step) {
+	for (let index = startIndex; index >= 0 && index < items.length; index += step) {
+		if (!items[index].isReferenceHeader) {
+			return items[index];
+		}
+	}
+
+	return undefined;
 }
 
 function uniqueReferenceItems(items) {
@@ -1163,19 +1180,68 @@ async function buildReferenceItems(references) {
 }
 
 async function showReferencesPicker(references) {
-	const items = await buildReferenceItems(references);
-	const selected = await vscode.window.showQuickPick(withReferenceSeparators(items), {
-		matchOnDescription: true,
-		matchOnDetail: true,
-		placeHolder: 'Select a reference',
-		title: 'References',
+	const referenceItems = await buildReferenceItems(references);
+	const groupedItems = withReferenceHeaders(referenceItems);
+	const picker = vscode.window.createQuickPick();
+
+	picker.title = 'References';
+	picker.placeholder = 'Select a reference';
+	picker.matchOnDescription = true;
+	picker.matchOnDetail = true;
+	picker.items = groupedItems;
+
+	// Headers exist only in the unfiltered list. Left in, a header would survive a query that its
+	// own group has no match for, and the skip below could target a row that is no longer visible.
+	let showingHeaders = true;
+	picker.onDidChangeValue((value) => {
+		const shouldShowHeaders = value.length === 0;
+
+		if (shouldShowHeaders !== showingHeaders) {
+			showingHeaders = shouldShowHeaders;
+			picker.items = shouldShowHeaders ? groupedItems : referenceItems;
+		}
 	});
 
-	if (!selected) {
-		return;
-	}
+	// Nothing in the QuickPick API marks a row unfocusable, so keyboard navigation is walked past a
+	// header in whichever direction it arrived from, and falls back the other way at either end.
+	let previousIndex = -1;
+	picker.onDidChangeActive((active) => {
+		const current = active[0];
 
-	if (!selected.reference) {
+		if (!current) {
+			return;
+		}
+
+		const index = picker.items.indexOf(current);
+
+		if (!current.isReferenceHeader) {
+			previousIndex = index;
+
+			return;
+		}
+
+		const step = index >= previousIndex ? 1 : -1;
+		const next = findReferenceItem(picker.items, index + step, step)
+			|| findReferenceItem(picker.items, index - step, -step);
+
+		if (next) {
+			picker.activeItems = [next];
+		}
+	});
+
+	const selected = await new Promise((resolve) => {
+		picker.onDidAccept(() => {
+			resolve(picker.selectedItems[0]);
+			picker.hide();
+		});
+		picker.onDidHide(() => {
+			resolve(undefined);
+			picker.dispose();
+		});
+		picker.show();
+	});
+
+	if (!selected || !selected.reference) {
 		return;
 	}
 

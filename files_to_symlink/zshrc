@@ -152,6 +152,14 @@ prompt-theme() {
 _select_starship_theme
 
 # use Starship instead of Geometry
+# starship's init wraps any pre-existing zle-keymap-select widget so it can add
+# its own prompt redraw. Re-sourcing this file makes it wrap its own wrapper,
+# and from the second reload onwards that wrapper calls itself: every Esc then
+# prints "maximum nested function level reached" and tears the prompt redraw in
+# half. Clearing the widget and starship's saved handle first makes sourcing
+# this file idempotent, so `rr` is safe to run as often as you like.
+unset __starship_preserved_zle_keymap_select
+zle -D zle-keymap-select 2>/dev/null
 eval "$(starship init zsh)"
 
 # Re-check macOS appearance before every prompt. Explicit
@@ -165,6 +173,47 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 # FZF
 source <(fzf --zsh)
+
+# ─── VI MODE ─────────────────────────────────────────── added 2026-08-05 ────
+# Vi keybindings on the command line. Press Esc to leave typing and get Vim
+# motions: b w 0 $ to move, ciw to change a word, cia to change a whole shell
+# argument, D to kill to the end, u to undo. i or a returns to typing.
+#
+# This is not a new preference so much as an unset variable being corrected:
+# zsh and tmux both pick emacs keys unless $EDITOR or $VISUAL contains "vi",
+# and both were empty. Starship already carried a vimcmd_symbol that could
+# never fire. Setting the editor here also gives git, less, and crontab nvim.
+#
+# TO REVERT: delete this whole block. Nothing else depends on it.
+#
+# Must stay ABOVE the bindkey on the next few lines: a bindkey without -M
+# targets whichever keymap is current, so ^X^E would land in the emacs keymap
+# and be unreachable if the switch happened afterwards.
+export EDITOR=nvim
+export VISUAL=nvim
+bindkey -v
+# Esc registers instantly instead of after zsh's default 0.4s wait.
+KEYTIMEOUT=1
+# Escape hatches: vi mode turns these two into self-insert, which would silently
+# break muscle memory. DELETE JUST THESE TWO LINES for a pure-vi command line.
+# (^A is absent on purpose: tmux takes it as the prefix, so it never arrives.)
+bindkey -M viins '^E' end-of-line
+bindkey -M viins '^K' kill-line
+# zsh's viins keymap uses the vi-* delete widgets, and every one of them refuses
+# to delete back past the point where insert mode began. Real vi behaves this
+# way, but in a shell it means Backspace goes dead on any text typed before the
+# last Esc, and Cmd-Backspace stops clearing the whole line. Swap in the plain
+# widgets so deleting always reaches the start of the line.
+bindkey -M viins '^?' backward-delete-char
+bindkey -M viins '^H' backward-delete-char
+bindkey -M viins '^U' kill-whole-line
+bindkey -M viins '^W' backward-kill-word
+bindkey -M viins '^[^?' backward-kill-word
+# The live mode indicator comes from starship's own zle-keymap-select widget,
+# which reruns the prompt on every keymap change so character.vimcmd_symbol can
+# swap ‹ in for ›. It needs no setup here: starship installs it at line 155 and
+# it simply had nothing to react to until vi mode existed.
+# ─── END VI MODE ─────────────────────────────────────────────────────────────
 
 # Edit the current command in Neovim with Ctrl-X, then Ctrl-E.
 autoload -Uz edit-command-line

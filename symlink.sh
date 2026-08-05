@@ -77,6 +77,9 @@ ln -sf $DOTFILES/tmux-agent-usage.sh ~/tmux-agent-usage.sh
 ln -sf $DOTFILES/tmux-background.sh ~/tmux-background.sh
 ln -sf $DOTFILES/tmux-ui.sh ~/tmux-ui.sh
 ln -sf $DOTFILES/tmux-open-url.sh ~/tmux-open-url.sh
+ln -sf $DOTFILES/tmux-repo.sh ~/tmux-repo.sh
+ln -sf $DOTFILES/tmux-vim-cheatsheet.sh ~/tmux-vim-cheatsheet.sh
+ln -sf $DOTFILES/tmux-health.sh ~/tmux-health.sh
 ln -sf $DOTFILES/switch_php_ver.sh ~/switch_php_ver.sh
 ln -sf $DOTFILES/ghostty.config ~/.config/ghostty/config
 ln -sf $DOTFILES/ghostty/shaders/cursor_warp.glsl ~/.config/ghostty/shaders/cursor_warp.glsl

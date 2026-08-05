@@ -70,6 +70,27 @@
 		"**/_ide_helper.php": true,
 	},
 	"search.maxResults": 200,
+	// Filesystem watching is its own consumer, separate from search and from
+	// Intelephense indexing. VS Code's defaults only cover node_modules and
+	// .git/objects, which leaves vendor/ and the generated storage trees fully
+	// watched: 178,810 unguarded files in spro-marketing and 25,157 in
+	// ribeit-api, measured with find. Excluding them here does not affect
+	// Intelephense, which still indexes vendor/ for completion; vendor only
+	// changes on composer install. storage/app stays watched because real
+	// source lives there, such as storage/app/scripts.
+	"files.watcherExclude": {
+		"**/vendor/**": true,
+		"**/node_modules/**": true,
+		"**/.git/**": true,
+		"**/storage/clockwork/**": true,
+		"**/storage/debugbar/**": true,
+		"**/storage/framework/**": true,
+		"**/storage/logs/**": true,
+		"**/bootstrap/cache/**": true,
+		"**/dist/**": true,
+		"**/.output/**": true,
+		"**/target/**": true,
+	},
 	"window.restoreWindows": "all",
 	"intelephense.files.exclude": [
 		"**/.git/**",
@@ -127,7 +148,7 @@
 	"editor.quickSuggestions": {
 		"strings": true,
 	},
-	"explorer.autoReveal": false,
+	"explorer.autoReveal": true,
 	"workbench.panel.opensMaximized": "never",
 	"security.workspace.trust.untrustedFiles": "open",
 	"javascript.suggest.completeFunctionCalls": true,
@@ -408,67 +429,6 @@
 	"workbench.editor.limit.perEditorGroup": true,
 	// Don't auto-close tabs with unsaved changes
 	"workbench.editor.limit.excludeDirty": true,
-	// SonarLint lints every file you OPEN, independent of intelephense.files.exclude.
-	// Since Go-to-Definition now jumps into the generated _ide_helper.php (facade stubs),
-	// and Blade compiles into storage/framework/views, exclude all generated/build artifacts
-	// so SonarLint stops flooding Problems with php:S836 etc. on code you never hand-edit.
-	"sonarlint.analysisExcludesStandalone": "**/_ide_helper.php,**/_ide_helper_manual.php,**/_ide_helper_models.php,**/_ide_helper_models_*.php,**/.phpstorm.meta.php,**/storage/framework/**,**/bootstrap/cache/**,**/vendor/**,**/node_modules/**,**/*.min.js",
-	"sonarlint.rules": {
-		"php:S116": {
-			"level": "off",
-		},
-		"php:S100": {
-			"level": "off",
-		},
-		"php:S115": {
-			"level": "off",
-		},
-		"java:S106": {
-			"level": "off",
-		},
-		"php:S5693": {
-			"level": "off",
-		},
-		"php:S1172": {
-			"level": "off",
-		},
-		"php:S1192": {
-			"level": "off",
-		},
-		"php:S138": {
-			"level": "off",
-		},
-		"php:S1131": {
-			"level": "off",
-		},
-		"php:S3776": {
-			"level": "off",
-		},
-		"php:S1448": {
-			"level": "off",
-		},
-		"php:S1186": {
-			"level": "off",
-		},
-		"php:S1135": {
-			"level": "off",
-		},
-		"php:S112": {
-			"level": "off",
-		},
-		"php:S1142": {
-			"level": "off",
-		},
-		"php:S125": {
-			"level": "off",
-		},
-		"php:S107": {
-			"level": "off",
-		},
-		"typescript:S2486": {
-			"level": "off",
-		},
-	},
 	// Error Lens: keep native squiggles only — no inline message text
 	"errorLens.messageEnabled": false,
 	"errorLens.gutterIconsEnabled": false,

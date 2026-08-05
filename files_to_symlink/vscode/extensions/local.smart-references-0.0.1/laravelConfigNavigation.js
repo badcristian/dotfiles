@@ -64,8 +64,16 @@ function getLaravelConfigKeyAtOffset(source, offset) {
 
 		if (offset >= literal.start && offset <= literal.end) {
 			const prefix = source.slice(0, index);
-			return /(?:^|[^A-Za-z0-9_\\])config\s*\(\s*$/s.test(prefix)
-				? literal.value
+
+			if (/(?:^|[^A-Za-z0-9_\\])config\s*\(\s*$/s.test(prefix)) {
+				return literal.value;
+			}
+
+			// Laravel resolves Log::channel('name') through config('logging.channels.name'), so the
+			// literal names a config key exactly as directly as config() does. The facade is matched
+			// imported, fully qualified, and root-namespaced, because all three appear in practice.
+			return /(?:^|[^A-Za-z0-9_])\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*Log\s*::\s*channel\s*\(\s*$/s.test(prefix)
+				? `logging.channels.${literal.value}`
 				: undefined;
 		}
 

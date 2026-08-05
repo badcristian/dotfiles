@@ -9,9 +9,10 @@ pane_index=${4:-0}
 pane_command=${5:-shell}
 prefix_active=${6:-0}
 window_target=${7:-}
-render_mode=${8:-content}
+session_path=${8:-}
+render_mode=${9:-content}
 ui_accent="${TMUX_UI_ACCENT:-colour4}"
-active_session_icon_colour="#eb927b"
+active_session_colour="#eb927b"
 case "$ui_accent" in
     [0-9] | 1[0-5]) ui_accent="colour${ui_accent}" ;;
 esac
@@ -78,13 +79,47 @@ fi
 battery=$(/usr/bin/pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | /usr/bin/head -1)
 battery=${battery:-?}
 
-tmux_label="◈ TMUX"
-battery_label="■ $battery"
-left_visible=" [$tmux_label] [$battery_label]"
-left="$left_visible"
+tmux_label="󰆍 TMUX"
+battery_label="󰁹 $battery"
+# Health monitor. Reading one short line keeps the redraw fork-free; a refresh
+# is only spawned when the report is genuinely stale, which is hourly at most.
+health_state="unknown"
+health_stamp=0
+health_state_file="${XDG_CACHE_HOME:-$HOME/.cache}/tmux-health/state"
+if [[ -f $health_state_file ]]; then
+    read -r health_state health_stamp < "$health_state_file" 2>/dev/null || true
+fi
+[[ $health_stamp =~ ^[0-9]+$ ]] || health_stamp=0
+printf -v health_now '%(%s)T' -1
+if [[ $health_state != checking ]] && (( health_now - health_stamp > 3600 )); then
+    nohup bash "$HOME/tmux-health.sh" refresh >/dev/null 2>&1 &
+    disown 2>/dev/null || true
+fi
+
+case "$health_state" in
+    ok)       health_icon="󰗠"; health_colour="$ui_accent" ;;
+    warn)     health_icon="󰀨"; health_colour="#e5c890" ;;
+    crit)     health_icon="󰅙"; health_colour="#e78284" ;;
+    checking) health_icon="󰓦"; health_colour="colour8" ;;
+    *)        health_icon="󰓦"; health_colour="colour8" ;;
+esac
+health_selector_visible="[$health_icon]"
+health_selector="#[range=user|health]#[fg=default][#[fg=${health_colour}]$health_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+
+pane_label="󱂬 $pane_index"
+vim_help_icon="󰘥"
+vim_help_selector_visible="[$vim_help_icon]"
+vim_help_selector="#[range=user|vimhelp]#[fg=default][#[fg=${ui_accent}]$vim_help_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+colour_picker_icon="󰏘"
+accent_selector_visible="[$colour_picker_icon]"
+accent_selector="#[range=user|accent]#[fg=default][#[fg=${ui_accent}]$colour_picker_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+# Five groups a side. The two clickable buttons sit together on the left, the
+# other two on the right, so each edge carries the same weight.
+left_visible=" [$tmux_label] [$battery_label] $health_selector_visible $vim_help_selector_visible $accent_selector_visible [$pane_label]"
+left=" [$tmux_label] [$battery_label] $health_selector $vim_help_selector $accent_selector [$pane_label]"
 if [[ $prefix_active != 0 ]]; then
-    left_visible+=" [⌨ ^A]"
-    left+=" [⌨ ^A]"
+    left_visible+=" [󰌌 ^A]"
+    left+=" [󰌌 ^A]"
 fi
 
 agent_usage=""
@@ -98,18 +133,27 @@ if [[ -f "$agent_usage_cache" ]] && command -v jq >/dev/null 2>&1; then
     )"
 fi
 
-agent_label="◆"
+agent_label="󰚩"
 if [[ -n "$agent_usage" ]]; then
     agent_label+=" $agent_usage%"
 fi
 
-window_label="□ $window_name"
-pane_label="▪ $pane_index"
-command_label="⌘ $pane_command"
-colour_picker_icon="◐"
-accent_selector_visible="[$colour_picker_icon]"
-accent_selector="#[range=user|accent]#[fg=default][#[fg=${ui_accent}]$colour_picker_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
-background_icon="✧"
+repo_url=""
+if [[ -n $session_path ]]; then
+    repo_url="$(bash "$HOME/tmux-repo.sh" url "$session_path" 2>/dev/null || true)"
+fi
+
+repo_selector=""
+repo_selector_visible=""
+if [[ -n $repo_url ]]; then
+    repo_icon="󰖟"
+    repo_selector_visible=" [$repo_icon]"
+    repo_selector=" #[range=user|repo]#[fg=default][#[fg=${ui_accent}]$repo_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
+fi
+
+window_label="󰖯 $window_name"
+command_label="󰘳 $pane_command"
+background_icon="󰸉"
 background_colour="colour8"
 background_state_file="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-ui/moving-background"
 if [[ ! -f $background_state_file ]] || ! /usr/bin/grep -qx 'enabled=off' "$background_state_file"; then
@@ -117,8 +161,8 @@ if [[ ! -f $background_state_file ]] || ! /usr/bin/grep -qx 'enabled=off' "$back
 fi
 background_selector_visible="[$background_icon]"
 background_selector="#[range=user|background]#[fg=default][#[fg=${background_colour}]$background_icon#[fg=default]]#[fg=${ui_accent}]#[norange]"
-right_visible=" [$agent_label] $background_selector_visible $accent_selector_visible [$window_label] [$pane_label] [$command_label] "
-right=" #[range=user|agents]#[bold][$agent_label]#[nobold]#[norange] $background_selector $accent_selector [$window_label] [$pane_label] [$command_label] "
+right_visible=" [$agent_label]$repo_selector_visible $background_selector_visible [$window_label] [$command_label] "
+right=" #[range=user|agents]#[bold][$agent_label]#[nobold]#[norange]$repo_selector $background_selector [$window_label] [$command_label] "
 right_visible_width=${#right_visible}
 
 session_ids=()
@@ -157,14 +201,14 @@ for ((session_index = 0; session_index < session_count; session_index++)); do
     session_id="${session_ids[$session_index]#\$}"
     session_name="${session_names[$session_index]}"
     if [[ $session_name == "$current_session" ]]; then
-        session_label="▼ $session_name"
-        token="[#[fg=${active_session_icon_colour},bold]▼#[fg=default,bold,underscore] $session_name#[fg=${ui_accent},nobold,nounderscore]]"
+        # The whole token changes colour, brackets included, so the active
+        # session reads at a glance without a marker glyph or an underline.
+        token="#[fg=${active_session_colour},bold][$session_name]#[fg=${ui_accent},nobold]"
     else
-        session_label="▽ $session_name"
-        token="[#[fg=default]$session_label#[fg=${ui_accent}]]"
+        token="[#[fg=default]$session_name#[fg=${ui_accent}]]"
     fi
     token="#[range=user|s:$session_id]$token#[norange]"
-    token_visible="[$session_label]"
+    token_visible="[$session_name]"
 
     candidate="$sessions $token"
     candidate_visible="$sessions_visible $token_visible"

@@ -301,9 +301,37 @@ refresh_cache() {
     mv -f "$temporary_cache" "$usage_cache_file"
 }
 
+# Interior width of the popup. tput reports the popup's own size, so the rules
+# and bars stretch to whatever width the popup was opened at instead of the
+# hard-coded 60 that used to leave a ragged gap down the right-hand side.
+# `tput cols` reports the terminfo default of 80 inside a popup rather than the
+# real pane size, which silently ran every full-width line off the edge, wrapped
+# it, and pushed the first provider off the top. `stty size` reads the actual
+# window size from the tty and is correct.
+popup_width() {
+    local size
+    local width=""
+
+    size="$(stty size 2>/dev/null || printf '')"
+    width="${size#* }"
+    if [[ ! $width =~ ^[0-9]+$ ]] || (( width < 40 )); then
+        width=76
+    fi
+    printf '%s' "$width"
+}
+
+rule() {
+    local character="$1"
+    local width="$2"
+    local line
+
+    printf -v line '%*s' "$width" ''
+    printf '%s' "${line// /$character}"
+}
+
 progress_bar() {
     local percent="$1"
-    local bar_width=18
+    local bar_width="${2:-18}"
     local filled=$((percent * bar_width / 100))
     local empty=$((bar_width - filled))
     local filled_text=""
@@ -349,6 +377,8 @@ reset_label() {
 
 render_provider() {
     local provider="$1"
+    local width="$2"
+    local bar_width
     local name
     local plan
     local state
@@ -365,61 +395,85 @@ render_provider() {
     state="$(jq -r '.state' <<< "$provider")"
 
     if [[ -n "$plan" ]]; then
-        printf '\033[1m%s\033[0m  \033[2m%s\033[0m\n' "$name" "$plan"
+        printf ' \033[1m%s\033[0m  \033[2m%s\033[0m\n' "$name" "$plan"
     else
-        printf '\033[1m%s\033[0m\n' "$name"
+        printf ' \033[1m%s\033[0m\n' "$name"
     fi
 
     if [[ "$state" != "available" ]]; then
         message="$(jq -r '.message // "No usage data"' <<< "$provider")"
-        printf '  \033[2m%s\033[0m\n\n' "$message"
+        printf '   \033[2m%s\033[0m\n' "$message"
         return
     fi
 
+    # 1 indent + 5 label + 2 + bar + 2 + 4 percent + 2 + 18 reset + 2 right margin
+    bar_width=$((width - 36))
+    (( bar_width < 10 )) && bar_width=10
+
     while IFS= read -r row; do
-        if (( row_index > 0 )); then
-            printf '\n'
-        fi
+        (( row_index > 0 )) && printf '\n'
+        row_index=$((row_index + 1))
 
         label="$(jq -r '.label' <<< "$row")"
         percent="$(jq -r '(.percent // 0) | round' <<< "$row")"
         reset_at="$(jq -r '.reset_at // 0 | floor' <<< "$row")"
         reset_text="$(reset_label "$reset_at")"
 
-        printf '  %-11s %s  %3d%% used' \
+        printf '   %-4s %s  %3d%%' \
             "$label" \
-            "$(progress_bar "$percent")" \
+            "$(progress_bar "$percent" "$bar_width")" \
             "$percent"
 
         if [[ -n "$reset_text" ]]; then
             printf '  \033[2m%s\033[0m' "$reset_text"
         fi
         printf '\n'
-        ((row_index += 1))
     done < <(jq -c '.rows[]' <<< "$provider")
-
-    printf '\n'
 }
 
 render_usage() {
     local fetched_at
     local fetched_text
     local provider
+    local width
+    local inner
+    local header_right
+    local first=1
+    local footer_left="r refresh   q / Esc close"
+    local footer_right="cached for 5 min"
+    local gap
 
-    printf '\033[2J\033[H'
-    printf '\033[1m%s✦ AI Usage\033[0m\n' "$ui_accent_sgr"
-    printf '════════════════════════════════════════════════════════════\n\n'
-
-    while IFS= read -r provider; do
-        render_provider "$provider"
-    done < <(jq -c '.providers[]' "$usage_cache_file")
-
+    width="$(popup_width)"
+    # One column of left margin, two on the right, so nothing sits on the frame.
+    inner=$((width - 3))
     fetched_at="$(jq -r '.fetched_at // 0' "$usage_cache_file")"
     fetched_text="$(date -r "$fetched_at" '+%H:%M' 2>/dev/null || printf '?')"
-    printf '────────────────────────────────────────────────────────────\n'
-    printf '\033[2mUpdated %s · cached for 5 min\033[0m\n' "$fetched_text"
-    printf '%sr\033[0m refresh   %sq / Esc\033[0m close\n' \
-        "$ui_accent_sgr" "$ui_accent_sgr"
+
+    printf '\033[2J\033[H'
+
+    # The popup frame already reads " AI Usage ", so the title is not repeated
+    # here. The header carries when the reading was taken; the footer carries how
+    # long it is kept, which keeps the two facts apart.
+    header_right="updated $fetched_text"
+    gap=$((inner - ${#header_right}))
+    (( gap < 1 )) && gap=1
+    printf ' %*s\033[2m%s\033[0m\n' "$gap" '' "$header_right"
+    printf ' %s\n' "$(rule '═' "$inner")"
+
+    # A blank line before each provider after the first. The name line alone read
+    # too tight against the metric above it, so providers get a clear break while
+    # a provider's own metrics stay one row apart.
+    while IFS= read -r provider; do
+        (( first == 0 )) && printf '\n'
+        first=0
+        render_provider "$provider" "$width"
+    done < <(jq -c '.providers[]' "$usage_cache_file")
+
+    printf ' %s\n' "$(rule '─' "$inner")"
+    gap=$((inner - ${#footer_left} - ${#footer_right}))
+    (( gap < 1 )) && gap=1
+    printf ' %sr\033[0m refresh   %sq / Esc\033[0m close%*s\033[2m%s\033[0m' \
+        "$ui_accent_sgr" "$ui_accent_sgr" "$gap" '' "$footer_right"
 }
 
 if (( force_refresh == 1 )) || ! cache_is_fresh; then
@@ -432,8 +486,12 @@ fi
 render_usage
 
 if (( print_only == 1 )); then
+    printf '\n'
     exit 0
 fi
+
+printf '\033[?25l'
+trap 'printf "\033[?25h"' EXIT
 
 while IFS= read -rsn1 key; do
     case "$key" in

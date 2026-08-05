@@ -21,3 +21,16 @@ For every meaningful VS Code feature, behavior change, or lesson:
 
 Preserve unrelated working-tree changes and use the existing installer,
 extensions, commands, and tests before introducing parallel mechanisms.
+
+## Tests
+
+Run the Neovim suites with `bash tests/run.sh`. It runs each file with
+`nvim --headless`, bounds it with a wall-clock limit, and refuses to exit while
+a test process is still alive.
+
+Never launch Neovim with `--embed` to run a test. An `--embed` instance waits
+for a UI to attach over stdio; when the caller goes away it is reparented to
+init and runs forever, unreachable and invisible. Six of those accumulated over
+five days holding 190 MB and roughly 6% of a core. The workspace test needs real
+windows, which is what makes `--embed` look necessary — it is not, headless
+Neovim has windows and buffers too.
