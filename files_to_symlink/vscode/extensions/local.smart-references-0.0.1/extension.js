@@ -10,6 +10,12 @@ const {
 	findLaravelConfigKeyRange,
 	getLaravelConfigKeyAtOffset,
 } = require('./laravelConfigNavigation');
+const {
+	findMacroCallRanges,
+	findMacroRegistrationRange,
+	getMacroCallNameAtOffset,
+	getMacroRegistrationNameAtOffset,
+} = require('./laravelMacroNavigation');
 const { getLaravelCollectionKeyTypeEdit } = require('./phpDocCollectionFix');
 const { appendGitignoreEntries, getGitignoreEntry } = require('./gitignore');
 const {
@@ -805,6 +811,45 @@ async function resolveLaravelConfigTarget(uri, position) {
 	};
 }
 
+// Laravel adds macros to a class at runtime, so Intelephense reports `Rule::uniqueCaseInsensitive()`
+// as undefined and has no target to offer. Only once native resolution has come back empty do we
+// scan first-party source for the matching `::macro('name', …)` registration — normal navigation
+// never pays for this, and a macro call has nothing to lose by it.
+async function resolveLaravelMacroTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const macroName = getMacroCallNameAtOffset(document.getText(), document.offsetAt(position));
+
+	if (!macroName) {
+		return undefined;
+	}
+
+	const files = await vscode.workspace.findFiles(
+		'{app,routes,bootstrap,database,tests}/**/*.php',
+		PHP_SEARCH_EXCLUDE,
+		4000,
+	);
+
+	for (const fileUri of files) {
+		const text = await tryReadWorkspaceText(fileUri);
+
+		if (!text || !text.includes(macroName)) {
+			continue;
+		}
+
+		const range = findMacroRegistrationRange(text, macroName);
+
+		if (range) {
+			logDebug(`Laravel macro redirect: ${macroName} -> ${fileUri.path}`);
+
+			return { uri: fileUri, range: rangeFromOffsets(text, range.start, range.end) };
+		}
+	}
+
+	logDebug(`Laravel macro registration not found: ${macroName}`);
+
+	return undefined;
+}
+
 async function goToDefinition(uri, position) {
 	try {
 		const configTarget = await resolveLaravelConfigTarget(uri, position);
@@ -825,6 +870,22 @@ async function goToDefinition(uri, position) {
 	const definitions = await getDefinitionTargets(uri, position);
 
 	if (definitions.length === 0) {
+		try {
+			const macroTarget = await resolveLaravelMacroTarget(uri, position);
+
+			if (macroTarget && !isCurrentLocation(macroTarget, uri, position)) {
+				await vscode.window.showTextDocument(macroTarget.uri, {
+					selection: macroTarget.range,
+					preserveFocus: false,
+					preview: false,
+				});
+
+				return 'opened';
+			}
+		} catch (error) {
+			logDebug(`Laravel macro redirect threw: ${error && error.message ? error.message : error}`);
+		}
+
 		return false;
 	}
 
@@ -2284,6 +2345,46 @@ async function getLaravelTranslationReferences(uri, position) {
 	return references;
 }
 
+// The reverse of the macro definition jump: from the name in `Rule::macro('uniqueCaseInsensitive', …)`
+// find everywhere it is called. Intelephense relates neither side to the other — it sees an ordinary
+// `macro()` call here and undefined methods there. Every reference request runs this, so the cursor
+// check comes first and the workspace is touched only once it matches. Views are included because a
+// Request or Blueprint macro is reachable from Blade, unlike a registration.
+async function getLaravelMacroCallReferences(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const macroName = getMacroRegistrationNameAtOffset(document.getText(), document.offsetAt(position));
+
+	if (!macroName) {
+		return [];
+	}
+
+	const files = await vscode.workspace.findFiles(
+		'{app,routes,bootstrap,database,tests,resources}/**/*.php',
+		PHP_SEARCH_EXCLUDE,
+		4000,
+	);
+	const references = [];
+
+	for (const fileUri of files) {
+		const text = await tryReadWorkspaceText(fileUri);
+
+		if (!text || !text.includes(macroName)) {
+			continue;
+		}
+
+		for (const range of findMacroCallRanges(text, macroName)) {
+			references.push({
+				uri: fileUri,
+				range: rangeFromOffsets(text, range.start, range.end),
+			});
+		}
+	}
+
+	logDebug(`Laravel macro references: ${macroName} -> ${references.length} call site(s)`);
+
+	return references;
+}
+
 function getPhpClassMethodSymbols(symbols) {
 	const methods = [];
 
@@ -2548,7 +2649,7 @@ async function getLanguageProviderReferences(uri, position) {
 }
 
 async function getReferenceTargets(uri, position, options = {}) {
-	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences, accessorPropertyReferences] = await Promise.all([
+	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences, accessorPropertyReferences, macroCallReferences] = await Promise.all([
 		getDefinitionTargets(uri, position),
 		getInvokeRouteReferences(uri, position),
 		getLaravelGatePolicyReferences(uri, position),
@@ -2556,6 +2657,7 @@ async function getReferenceTargets(uri, position, options = {}) {
 		options.includeLanguageProviderReferences ? getLanguageProviderReferences(uri, position) : [],
 		getLaravelTranslationReferences(uri, position),
 		getAccessorPropertyReferences(uri, position),
+		getLaravelMacroCallReferences(uri, position),
 	]);
 	const customReferences = [
 		...languageProviderReferences,
@@ -2564,6 +2666,7 @@ async function getReferenceTargets(uri, position, options = {}) {
 		...gatePolicyMethodReferences,
 		...translationReferences,
 		...accessorPropertyReferences,
+		...macroCallReferences,
 	];
 
 	if (customReferences.length === 0) {

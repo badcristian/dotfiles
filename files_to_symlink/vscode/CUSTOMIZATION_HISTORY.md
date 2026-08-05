@@ -193,6 +193,9 @@ framework-specific bridges:
 - Laravel `config('file.nested.key')` definition navigation to the exact key in
   `config/file.php`, and `Log::channel('name')` to that channel in
   `config/logging.php`;
+- Laravel macro navigation in both directions: `Rule::uniqueCaseInsensitive(...)`
+  opens the `Rule::macro('uniqueCaseInsensitive', ...)` registration, and the
+  name in that registration finds every call site;
 - materializing selected PHP inlay hints into source code;
 - adding a more precise Laravel builder type to applicable callbacks;
 - fixing one-argument Laravel Collection PHPDoc types by adding their missing
@@ -234,6 +237,18 @@ results. This distinction is intentional:
 accessor, and can find magic-property usages when navigating from the accessor.
 Semantic locations are preferred; bounded text search is a fallback for cases
 the language server cannot model.
+
+Macros are the same shape of problem in the opposite direction: the method is
+added at runtime, so no stub declares it and Intelephense returns no definition
+at all. `laravelMacroNavigation.js` closes the loop from both ends.
+
+From a `Foo::bar(` or `$foo->bar(` call it locates the `::macro('bar', ...)`
+registration, running only after native resolution has already come back empty
+so ordinary navigation never pays for it. From the name inside that
+registration it finds the call sites, joining the other custom reference
+providers. Call sites are matched against source with comments, strings, and
+heredoc bodies blanked out, because the usage example in a docblock above a
+registration is documentation rather than a reference.
 
 #### PHP class-file move
 
@@ -460,6 +475,7 @@ git diff --check
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/extension.js
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/phpMove.js
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/laravelIntelligence.js
+node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/laravelMacroNavigation.js
 node --test files_to_symlink/vscode/extensions/local.smart-references-0.0.1/test/*.test.js
 
 node --check files_to_symlink/vscode/extensions/local.php-smart-docblock-0.0.1/extension.js
@@ -2065,3 +2081,83 @@ enabled globally at ~112 MB resident. Per-workspace enablement is stored in
 a manual step: disable the extension globally, then use Enable (Workspace) in
 `spro-app`. Keep `graphql.vscode-graphql-syntax` enabled everywhere; it is 1 MB
 and provides only highlighting.
+
+### 2026-08-05 — Cmd+B connects Laravel macros to their registration and back
+
+Intent:
+
+- make `Cmd+B` on `Rule::uniqueCaseInsensitive('companies', 'identification_number')`
+  in a Restify repository open the `Rule::macro('uniqueCaseInsensitive', ...)`
+  closure in `app/Providers/MacroServiceProvider.php`, and `Cmd+B` on the name
+  in that registration list every call site — matching PhpStorm with Laravel
+  Idea. `Macroable` installs the method at runtime, so the call names a method
+  that exists in no class body and Intelephense can relate neither side to the
+  other.
+
+Implementation:
+
+- added `laravelMacroNavigation.js` with pure helpers for both directions:
+  recognizing a `Foo::bar(` or `$foo->bar(` call spanning the cursor, finding
+  that name's `::macro('bar', ...)` registration, recognizing the cursor inside
+  a registration's name literal, and listing that macro's call sites;
+- resolved the definition direction in `goToDefinition` only on the branch where
+  the language provider returned no usable definition, scanning
+  `{app,routes,bootstrap,database,tests}/**/*.php` through `workspace.fs` with an
+  `includes(name)` pre-filter;
+- joined the reference direction to the existing custom providers in
+  `getReferenceTargets`, widened to `resources` because a Request or Blueprint
+  macro is reachable from Blade;
+- matched call sites against source with comments, strings, and heredoc bodies
+  blanked to spaces at their original offsets;
+- bumped `local.smart-references` to `0.0.18` and added 22 focused tests.
+
+Decisions and lessons:
+
+- placement is the whole design. The config navigator has to run *before*
+  Intelephense because a config key is a string literal the language server
+  would resolve to nothing meaningful; a macro call is the opposite — the
+  language server is simply empty, so running after it costs normal navigation
+  nothing and cannot preempt a real definition;
+- only the name *literal* opens the reverse direction, never the `macro`
+  keyword. On the keyword Intelephense correctly resolves the real
+  `Macroable::macro()`, and preempting that would be a regression;
+- comment and string blanking is what separates references from text matches.
+  This repository's own provider carries a usage example in the comment directly
+  above the registration, and `UniqueCaseInsensitiveRule`'s docblock carries
+  another; reporting either as a call site is worse than missing it. Strings are
+  tracked in the same pass only because `'https://x'` would otherwise look like
+  the start of a `//` comment, and heredocs because a quote inside raw SQL would
+  otherwise blank the rest of the file;
+- recognition is deliberately narrow: a call name must be both preceded by `::`
+  or `->` and followed by `(`. A plain function call, a property read, and the
+  `macro` method itself are all rejected, so a failed lookup falls through to the
+  existing reference picker unchanged;
+- `macro()` is matched positionally *and* with PHP 8 named arguments. The
+  Ribeit provider switched to `macro(name: ..., macro: ...)` mid-change and the
+  first implementation silently stopped finding it — a reminder that a call-shape
+  assumption needs a fixture check against real source, not just unit tests. A
+  registration that puts `macro:` first, closure and all, is still not matched;
+  it falls back to ordinary navigation rather than guessing;
+- the scan is bounded to first-party source. A macro registered inside `vendor/`
+  is not found by design — that is a vendor method with real declarations of its
+  own, and indexing vendor here would reintroduce the analysis cost this
+  extension avoids everywhere else.
+
+Verification:
+
+- 22 new tests and the full Smart References suite pass (70 tests, 0 failures);
+- `node --check` clean on `extension.js` and `laravelMacroNavigation.js`;
+- a read-only fixture round trip against the real Ribeit files: the cursor at
+  `app/Restify/Companies/CompanyRepository.php:192` resolved to
+  `app/Providers/MacroServiceProvider.php:90` with `uniqueCaseInsensitive`
+  selected, and that literal resolved back to 22 call sites across six Restify
+  repositories, one trait, and the macro's own feature test — excluding both the
+  comment on line 88 of the provider and the docblock example in
+  `UniqueCaseInsensitiveRule`;
+- the same check found every other macro in that provider and its call sites:
+  `prefix` (15), `hasAdminPrefix` (2), `shouldLogActivity` (2), `creator` (37),
+  `terminator` (5), `fs` (24), `vault` (8);
+- `bash -n` on the three shell scripts and `git diff --check` are clean;
+- not verified: the live editor. This needs **Developer: Reload Window** and one
+  real `Cmd+B` in each direction; no repository check exercises the VS Code
+  runtime.
