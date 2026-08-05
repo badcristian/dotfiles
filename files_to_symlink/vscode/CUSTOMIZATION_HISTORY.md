@@ -180,8 +180,8 @@ framework-specific bridges:
 
 - PhpStorm-style `Cmd+B`: prefer a useful definition, then fall back to
   references when a definition is missing, self-referential, or ambiguous;
-- grouped reference picking with generated helper locations filtered out and
-  test usages visually de-emphasized;
+- grouped reference picking with generated helper locations filtered out, a
+  labelled rule introducing every group, and test usages tinted and sorted last;
 - PHP-aware copy/paste that can copy a variable token or replace a target
   variable with a copied expression;
 - smart Backspace, Enter, equals insertion, and chain splitting;
@@ -191,7 +191,8 @@ framework-specific bridges:
 - Laravel route-controller, Gate/policy, policy-method, and translation-key
   references;
 - Laravel `config('file.nested.key')` definition navigation to the exact key in
-  `config/file.php`;
+  `config/file.php`, and `Log::channel('name')` to that channel in
+  `config/logging.php`;
 - materializing selected PHP inlay hints into source code;
 - adding a more precise Laravel builder type to applicable callbacks;
 - fixing one-argument Laravel Collection PHPDoc types by adding their missing
@@ -1698,3 +1699,369 @@ Verification:
 - the repository and live VS Code settings remain the same symlinked file;
 - a new integrated terminal is required for the visible glyph check because
   existing terminal canvases can retain their original font selection.
+
+### 2026-08-04 — References picker groups labelled, spaced, and reordered
+
+Intent:
+
+- introduce each References group the same way, so **Usages**, **Top level
+  usages**, and **Test usages** all begin with a labelled rule rather than only
+  the two secondary groups;
+- keep test references at the very bottom of the picker;
+- separate the two-line reference rows, which ran together;
+- drop the green left stripe on test rows.
+
+Implementation:
+
+- moved **Test usages** to the last group index and **Top level usages** to the
+  middle, and checked the test predicate first, so a top-level reference inside
+  a test file still sorts with the tests;
+- emitted a separator for the first group as well, and removed the `$(beaker)`
+  prefix from the test separator label;
+- replaced the group separators with header items, so each of Usages, Top level
+  usages, and Test usages occupies a 22px row of its own under a full-width rule,
+  drawn as a bare label with no fill and no highlight in any state, and marked
+  those items with the `blank` codicon so the stylesheet can recognise the row;
+- rebuilt the picker on `createQuickPick`, which the header items require: they
+  are ordinary rows, so navigation is walked past them in the direction it
+  arrived from, they are dropped from the list as soon as a query is typed, and
+  their cards are made inert to the mouse;
+- drew each two-line picker row as an inset card: the row's inner element gained
+  a faint background, a 5px radius, and a vertical margin, and hover, focus, and
+  the focus outline were moved onto the card so the highlight no longer paints
+  full width behind it;
+- compressed the two text lines to 27px by trimming the row icon, the
+  description codicons, and both line-heights together, and spent the 17px that
+  freed on 5px of padding inside a 37px card and a 7px gutter between cards;
+- pulled the card in by 12px while the vertical scrollbar is visible, so the
+  scrollbar stops overlapping the cards but short lists keep full-width ones;
+- deleted the inset stripe rules, moved the test tint onto the card, and kept the
+  green beaker;
+- inverted the card fill from a light tile to a slightly recessed dark one, wrote
+  the hover out explicitly instead of taking `--vscode-list-hoverBackground`,
+  which several themes leave invisible against a card that has its own fill, and
+  gave the filename weight over the description and the code line beside it;
+- darkened the test tint to match, and gave test cards their own hover: the
+  generic hover is more specific than the tint, so without a matching rule the
+  green disappeared exactly while the pointer was on the row;
+- reduced focus to an outline, so the row a QuickPick focuses on open no longer
+  looks permanently highlighted, and made hover the only thing that brightens a
+  card, on the focused row as much as on any other;
+- dropped the rule above the first group, which has nothing to divide it from,
+  and made the test tint unconditional — with no focus background left to sit
+  under, its `:not(.focused)` guard would have turned a focused test card grey;
+- coloured the group headings orange at weight 700, per theme like the beaker
+  greens, rather than leaving them on `pickerGroup.foreground`, which most themes
+  keep quiet enough to disappear against the cards;
+- bumped `local.smart-references` to `0.0.16`.
+
+Decisions and lessons:
+
+- a QuickPick separator without buttons is not rendered as its own row: VS Code
+  draws its rule on the following row and prints the label in a small
+  right-aligned span. That span is plain text, which is why the previous
+  `$(beaker)` prefix appeared literally in the picker;
+- an extension cannot obtain a standalone group *separator* at all.
+  `setElements` returns early for a separator unless it carries buttons, and the
+  extension host builds `{type: "separator", label}` for every separator in both
+  `showQuickPick` and `createQuickPick`, forwarding `buttons` only for ordinary
+  items. A header on its own row therefore has to be an ordinary item, with the
+  focus handling that implies. An intermediate attempt carved the label out of
+  the following row instead; it kept navigation untouched but left the first card
+  of each group visibly tighter than the rest, and headers as items replaced it;
+- a rule under `.quick-input-widget` reaches every picker in the workbench, not
+  only this one. The carved-out label positioned `.quick-input-list-separator`
+  absolutely, which would have displaced the group labels in any other QuickPick
+  that uses separators. Prefer a hook the extension itself emits — the `blank`
+  codicon here, the beaker for test rows — over a class VS Code puts on rows we
+  do not own;
+- card height and gutter are one budget, not two: the row is a fixed 44px, so
+  every pixel of card is a pixel of gutter. Asking for a taller card and a larger
+  gap at the same time is not satisfiable in a QuickPick;
+- and the gutter is the half that matters. A 39px card over a 5px gutter was
+  tried first and read as a solid wall — with a filled card, adjacent entries are
+  told apart by the space between them, not by the size of the block;
+- three separate floors set the height of the first text line, and trimming any
+  one alone does nothing: the row icon is prepended into that line rather than
+  placed beside both, the description codicons carry `font: ... 16px/1 codicon`
+  and so bring their own line-height, and only then does the inherited text
+  line-height matter. Trimming all three brought the two lines to 27px, which is
+  what finally paid for both padding and gutter;
+- 27px of text, 10px of padding, and a 7px gutter is the end of the 44px row.
+  Padding inside the card, space between cards, and legible text are one budget
+  in a QuickPick. Moving the headers onto their own 22px rows did not enlarge
+  that budget, but it did stop the first card of each group from paying for a
+  label out of it, so every reference card now gets the full amount. Anything
+  beyond this needs the webview view, where the extension owns the row height;
+- an absolutely positioned child of the card escapes the card's own
+  `overflow: hidden` because the tree makes `.monaco-tl-row` relative, and that
+  ancestor sits above both clipping boxes. That is what lets the label sit in
+  the strip while the card still clips its own contents;
+- picker row height is decided in TypeScript — 22px for a label, 44px once an
+  item carries a detail — and written to each row as an inline style, so it
+  cannot be raised from injected CSS: the list still positions the next row at
+  the original offset and a taller row would overlap it. Spacing has to be
+  reclaimed from inside the row instead;
+- a first attempt that only tightened line-heights barely moved anything, for a
+  reason worth remembering: the item icon is prepended into the first text line
+  rather than placed beside both lines, so that line is 22px tall no matter what
+  line-height it inherits. The two lines already filled the 44px row, which is
+  why the entries ran together. Trimming the icon is the actual lever;
+- whitespace between transparent rows is invisible in any case. The card gives
+  the eye an edge, so a 7px gutter separates better than a larger gap between
+  two pieces of unbounded text;
+- the card rules are scoped to rows whose detail label is not inline-hidden, so
+  single-line pickers such as the command palette keep native density;
+- the card carries no explicit height. It hugs its content, so the gutter is
+  whatever the row has left over and stays correct if VS Code changes its row
+  metrics;
+- the stripe was removed rather than recoloured: with every group now carrying
+  its own labelled rule, a second per-row accent marked the same thing twice;
+- the checksum repair must be the last action before restarting. The loader
+  stamps a fresh `VSCODE-CUSTOM-CSS-SESSION-ID` UUID into `workbench.html` on
+  every patch, so each **Reload Custom CSS and JS** produces a different hash
+  even when the stylesheet is byte-identical. Running the reload again after the
+  repair — the natural reaction to still seeing the warning — silently
+  re-invalidates it, which is exactly what happened here.
+
+Verification:
+
+- `node --check extension.js` passed, `package.json` parsed, and all 45 Smart
+  References tests passed;
+- the separator, row-height, and detail-label class names in the rules were read
+  back out of the installed `workbench.desktop.main.css` and
+  `workbench.desktop.main.js` rather than assumed;
+- both edited files are the live symlink targets;
+- the rendered result requires **Reload Custom CSS and JS**, a restart, and a
+  real References picker, so the visual outcome is not claimed here;
+- that reload raised the corruption warning again, as expected. Only
+  `workbench.html` differed, it carried the loader marker and the new rules and
+  no longer carried the stripe rule, and `fix_vscode_checksums.sh` then brought
+  all ten checksums back into agreement.
+
+### 2026-08-05 — Cmd+B follows Log::channel, and picker descriptions brightened
+
+Intent:
+
+- make `Cmd+B` on `Log::channel('facebook_sync')` open that channel in
+  `config/logging.php`, the same way it already opens a `config()` key;
+- make the filename legible in pickers that put it in the row's description.
+
+Implementation:
+
+- recognized `Log::channel('name')` in the existing Laravel config navigator and
+  mapped it to the key `logging.channels.name`, which the rest of the navigator
+  already knows how to open;
+- matched the facade imported, root-namespaced, and fully qualified, since all
+  three spellings appear in practice, while leaving any other class that happens
+  to have a `channel()` method alone;
+- raised quick-pick descriptions from `opacity: .7` to `.95` in dark themes;
+- coloured Quick Search's filenames the same orange as the References group
+  headings, through `.quick-input-list-separator-as-item`;
+- excluded separator rows from all seventeen References card selectors, which is
+  what the orange actually needed: Quick Search's file rows were matching the
+  card rules and taking their filename colour;
+- wrote every picker-wide rule against both `.quick-input-list` and
+  `.quick-input-tree`, which is correct for pickers built on the tree widget,
+  though it was not what Quick Search needed;
+- dropped the focus background in every picker, leaving VS Code's focus outline
+  to say where focus is, so a picker no longer opens with its first row looking
+  hovered;
+- removed the rule above the References group headings;
+- bumped `local.smart-references` to `0.0.17` and added unit coverage;
+- rewrote the quick-input anchor to correct the widget synchronously, from a
+  MutationObserver and a ResizeObserver, on every layout rather than only when
+  the picker is shown.
+
+Decisions and lessons:
+
+- `Log::channel()` belongs in the config navigator rather than in a rule of its
+  own: Laravel resolves the channel name through `config('logging.channels.…')`,
+  so the literal names a config key exactly as directly as `config()` does, and
+  the file, key walk, and workspace resolution are all already there;
+- VS Code dims a quick-pick description and restores it only on the focused row.
+  Any picker that puts a location in the description therefore shows the
+  filename as the least legible text on the row. The rule is deliberately not
+  scoped to one picker, since the problem is not specific to one;
+- in the References picker this brightens the method name beside the filename,
+  which keeps its own emphasis from being bold rather than from being brighter
+  than its neighbour;
+- **a QuickPick is backed by one of two different widgets, with entirely
+  separate class namespaces.** `.quick-input-list` carries
+  `.quick-input-list-entry`, `.quick-input-list-rows`, `.quick-input-list-icon`;
+  `.quick-input-tree` carries `.quick-input-tree-entry`,
+  `.quick-input-tree-rows`, `.quick-input-tree-icon`. A picker created with
+  `useSeparators: true` gets the tree, everything else — including every
+  extension quick pick, so all of Smart References — gets the list. A rule
+  written against one namespace silently does nothing in the other, which is
+  exactly how the first attempt at Quick Search's filenames failed: the CSS was
+  injected, the stylesheet parsed, the selector was valid, and it matched no
+  element on the page. Any rule intended for pickers in general must list both;
+- **the two-widget split was not why the orange failed, and the correction is
+  worth recording as plainly as the fact.** Quick Search is an ordinary
+  `.quick-input-list`, its file rows are `separator-as-item`, and the very first
+  selector written for them was correct. What defeated it was a rule of ours: the
+  References "make the filename prominent" rule selects any row whose detail
+  label is not inline-hidden, and a separator row carries a detail element that
+  is never hidden, so Quick Search's file rows matched it — at specificity 11
+  against the orange rule's 6. Its `--vscode-quickInput-foreground` was the grey
+  that kept appearing. The card fill, padding, and line-height trims were landing
+  on those rows too;
+- so the References card selectors now exclude separator rows explicitly. A
+  predicate meant to say "our two-line reference row" was really saying "any row
+  with a visible detail", and separator rows satisfy that by construction;
+- the picker appeared to jump for two separate reasons, and both were in the
+  anchor script. It deferred its correction into `requestAnimationFrame` plus a
+  60ms timeout, so VS Code's own position was painted first and the widget then
+  moved; and it re-anchored only on the hidden-to-visible transition, so every
+  later layout — typing into Quick Search is enough to cause one — was left where
+  VS Code put it. A MutationObserver callback is a microtask and therefore runs
+  after VS Code's layout writes but before the browser paints, which is the only
+  place this correction can go without a visible frame at the wrong position;
+- the price is that the picker can no longer be dragged elsewhere: a drag is a
+  layout write like any other and is undone on the next microtask. That matches
+  the intent of anchoring to the pill, but it is a deliberate loss;
+- do not mistake VS Code's opening animation for a jerk. `.style-override
+  .monaco-enable-motion` gives the widget a 250ms `quick-input-widget-open`
+  animation from `transform-origin: top center`, so `getBoundingClientRect()`
+  reports a moving box for a quarter second after every open while the layout
+  position never changes. Measure `style.left` when the question is placement;
+- when a selector looks right and does nothing, read the DOM rather than
+  theorise. Three rounds went into hypotheses — separator shape, then widget
+  namespace — that a single look at the rendered row would have settled. VS Code
+  can be launched with `--remote-debugging-port` against a scratch
+  `--user-data-dir`, driven over CDP to open the picker, and asked directly for
+  the row's classes and computed styles. Note that such an instance still loads
+  the patched `workbench.html`, so the stale inlined stylesheet has to be removed
+  from the page before any measurement means anything;
+- clearing the focus background is safe for the References cards because it
+  applies to the row, while their fill is painted on the card inside it. The two
+  rules never meet.
+
+Verification:
+
+- `node --check`, `package.json` parsing, and all 48 Smart References tests,
+  including four new ones covering the imported, root-namespaced, and fully
+  qualified facade and the calls that must not match;
+- resolved against the real files rather than fixtures alone:
+  `Log::channel('facebook_sync')` in `SyncFacebookLoginDataJob.php` produced
+  `logging.channels.facebook_sync` and located line 159 of that project's
+  `config/logging.php`, while the `const LOG_CHANNEL = 'facebook_sync'` earlier
+  in the same file correctly produced nothing;
+- `git diff --check` was clean;
+- the brightened description needs **Reload Custom CSS and JS**, a restart, and
+  the checksum repair, so the rendered result is not claimed here.
+
+### 2026-08-05 — Filesystem watching scoped away from vendor and generated storage
+
+Intent:
+
+- the laptop was running hot; investigation of sustained CPU turned up VS Code's
+  main process and `kernel_task` as steady consumers alongside an unrelated
+  terminal shader;
+- `files.watcherExclude` had never been set, so VS Code watched every file the
+  built-in defaults do not already cover.
+
+Implementation:
+
+- added `files.watcherExclude` to `User/settings.json` covering `vendor`,
+  `node_modules`, `.git`, `storage/clockwork`, `storage/debugbar`,
+  `storage/framework`, `storage/logs`, `bootstrap/cache`, `dist`, `.output`,
+  and `target`.
+
+Decisions and lessons:
+
+- VS Code's default watcher exclusions are narrower than they look: only
+  `**/node_modules/*/**` and `**/.git/objects/**`. For a PHP project that leaves
+  the whole of `vendor/` and every generated `storage/` tree watched;
+- this follows decision 6. The watcher is a distinct consumer from search and
+  from Intelephense indexing, and is configured for its own purpose. Excluding
+  `vendor/` from watching does not remove it from Intelephense, which still
+  indexes it for completion. `vendor/` changes only on `composer install`;
+- `storage/app` is deliberately still watched. Real source lives there, for
+  example `storage/app/scripts`, which is tracked in git;
+- `storage/clockwork` and `storage/debugbar` are profiler output and are pure
+  churn: 10,251 and 998 files respectively in `spro-marketing`.
+
+Measurements taken before the change, with `find`:
+
+| project | vendor/ | storage/ | unguarded by defaults |
+| --- | --- | --- | --- |
+| `spro-marketing` | 160,604 | 18,206 | 178,810 |
+| `ribeit-api` | 21,937 | 3,220 | 25,157 |
+
+Verification evidence:
+
+- `files_to_symlink/vscode/User/settings.json` parses as JSON after comment and
+  trailing-comma stripping; 127 top-level keys, 11 `files.watcherExclude`
+  entries;
+- `~/Library/Application Support/Code/User/settings.json` confirmed to be a
+  symlink back to the repository copy;
+- `bash -n symlink.sh`, `bash -n files_to_symlink/vscode/install_vscode.sh`,
+  `bash -n files_to_symlink/vscode/install_marketplace_extensions.sh`, and
+  `git diff --check` all clean.
+
+Not verified: the CPU effect of the exclusion. It requires a VS Code window
+reload and a like-for-like measurement that was not taken.
+
+### 2026-08-05 — Unused language stacks and SonarLint removed
+
+Intent:
+
+- 109 extensions were installed against a repository whose active work is PHP,
+  Laravel, JS/TS and Swift. Extension inventory was audited against the actual
+  file types present under `~/dev`.
+
+Implementation:
+
+- removed 16 extensions: the Java stack (`redhat.java`, `vscjava.*` — pack,
+  debug, dependency, test, maven, gradle), the C/C++ stack (`ms-vscode.cpptools`
+  and its pack, themes, `cpp-devtools`, `cmake-tools`),
+  `rust-lang.rust-analyzer`, `ms-vscode-remote.remote-wsl`, the remote extension
+  pack, and `sonarsource.sonarlint-vscode`;
+- reconciled `marketplace_extensions.txt` from 100 to 84 entries;
+- deleted 61 lines of now-dead `sonarlint.*` configuration from
+  `User/settings.json`.
+
+Decisions and lessons:
+
+- **Uninstalling an extension pack uninstalls its members.** Removing
+  `ms-vscode-remote.vscode-remote-extensionpack` to make the `remote-wsl`
+  removal stick also took `remote-ssh`, `remote-ssh-edit`, `remote-containers`,
+  `remote-explorer` and `remote-server`. Those were reinstalled individually.
+  Remove the unwanted member and leave the pack, or expect to restore the rest;
+- **Audit against file types, not assumptions.** A scan of `~/dev` showed 618
+  Swift files in `muxy` and `growee-mobile`, so Swift stayed, and
+  `llvm-vs-code-extensions.lldb-dap` had to stay with it because the Swift
+  extension depends on it. PowerShell was believed to be used in one project but
+  is present in four (`ribeit-api`, `dfs-api`, `public-api`, `ribeit-ui`), so it
+  stayed too. Java, Rust and C++ hits were scratch projects and third-party
+  checkouts (`java-learning`, `hello-rust`, `SoftHSMv2`, `PKCS-11-Tutorials`);
+- SonarLint was removed on the evidence of its own configuration: all 18
+  configured rules were set to `off`, and those were its distinguishing ones —
+  complexity (`php:S3776`), size (`php:S138`, `php:S1448`), naming (`php:S116`,
+  `S100`, `S115`), duplication (`php:S1192`). With a long
+  `analysisExcludesStandalone` list on top, what remained did not justify 331 MB
+  and a bundled 119 MB JRE analysing every opened file;
+- `code --uninstall-extension` reports failures for pack members already removed
+  earlier in the same batch, and defers directory deletion until restart.
+  `code --list-extensions` is the source of truth, not the extensions directory.
+
+Verification evidence:
+
+- extension count 109 → 93; the diff of `code --list-extensions` before and
+  after contains exactly the 16 intended entries and nothing else;
+- `swiftlang.swift-vscode`, `ms-vscode.powershell`, `graphql.vscode-graphql`,
+  `bmewburn.vscode-intelephense-client`, `ms-vscode-remote.remote-ssh` and
+  `ms-python.python` all confirmed still installed;
+- `settings.json` parses as JSON after comment and trailing-comma stripping;
+  125 keys, zero `sonarlint.*` keys, `files.watcherExclude` intact;
+- `bash -n` clean on `symlink.sh`, `install_vscode.sh` and
+  `install_marketplace_extensions.sh`; `git diff --check` clean.
+
+Not done: `graphql.vscode-graphql` is used only by `spro-app` but remains
+enabled globally at ~112 MB resident. Per-workspace enablement is stored in
+`state.vscdb`, a binary SQLite file that cannot be version-controlled, so it is
+a manual step: disable the extension globally, then use Enable (Workspace) in
+`spro-app`. Keep `graphql.vscode-graphql-syntax` enabled everywhere; it is 1 MB
+and provides only highlighting.
