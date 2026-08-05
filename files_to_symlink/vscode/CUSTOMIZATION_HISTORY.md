@@ -116,8 +116,11 @@ The settings intentionally create a compact, low-noise editor:
 - preview tabs remain enabled, while the local preview extension pins a tab
   when it is deliberately clicked;
 - the status bar starts hidden and can be toggled from an editor-title action;
-- injected workbench CSS tightens the UI, corrects light/dark tab text, and
-  outlines the quick input widget with a light or dark border per theme;
+- injected workbench CSS tightens the UI, corrects light/dark tab text, rounds
+  the tabs and rings the active one, and outlines the quick input widget with a
+  light or dark border per theme;
+- every theme in use carries a full tab palette, because the two dark themes
+  ship active, inactive, hover, and bar backgrounds that are all one colour;
 - an injected script preserves horizontal editor scroll around pointer and
   selection changes;
 - a second injected script anchors the quick input widget under the command
@@ -453,6 +456,25 @@ stopped applying anything when VS Code moved to ESM, while its settings stayed
 in place and looked correct. Confirm the injector still patches the running
 version before concluding that a rule or script is wrong.
 
+### 11. A resolved theme colour is not a painted one
+
+`workbench.colorCustomizations` is an input to VS Code's colour registry, not a
+promise that any rule consumes the result. VS Code's **modern workbench style** —
+the `.style-override` class on `.monaco-workbench` — repaints parts of the UI
+from its own `--modern-ui-*` variables with `!important`, and those are derived
+from `foreground` rather than from the semantic colour for the element. While it
+is on, `tab.activeBackground` and `tab.selectedBackground` reach nothing.
+
+This failure is silent in the worst way: the setting is valid, the key is
+correct, and **Developer: Generate Color Theme From Current Settings** reports it
+live, because that command shows what the registry resolved and not what any
+rule used. Treat it as necessary evidence, never sufficient.
+
+The rule to work by: **when a colour setting changes and the pixels do not, the
+setting is not the one being drawn.** Stop tuning it and go find the declaration
+that wins — see the playbook below. Three rounds were spent tuning a value that
+nothing read, when one `grep` over VS Code's own stylesheet named the winner.
+
 ## Verification playbook
 
 Run the checks that match the change. Record the exact checks run in the
@@ -520,6 +542,44 @@ for manifest in files_to_symlink/vscode/extensions/local.*/package.json; do
   jq empty "$manifest"
 done
 ```
+
+### Proving a colour actually reaches the pixels
+
+For any change to `workbench.colorCustomizations` or to injected CSS, three
+checks in this order. The first two are cheap and the third is decisive.
+
+Is the merged value live? This reads the registry, so it proves the setting was
+parsed and matched the active theme — nothing more:
+
+```text
+Cmd+Shift+P → Developer: Generate Color Theme From Current Settings
+```
+
+Which declaration actually wins? Search VS Code's own bundled stylesheet for
+rules that both match the element and set the property. This is the step that
+finds `!important` overrides and `--modern-ui-*` variables, and it is where to
+start whenever a setting appears to do nothing:
+
+```bash
+APP="/Applications/Visual Studio Code.app/Contents/Resources/app/out"
+grep -oE '[^{}]*\.tab\.active[^{}]*\{[^}]*background[^}]*\}' \
+  "$APP/vs/workbench/workbench.desktop.main.css"
+grep -ohE '\-\-modern-ui-[a-z-]*: *[^;}]*' "$APP/vs/workbench/workbench.desktop.main.css" | sort -u
+```
+
+What is on screen? A screenshot is measurable evidence, not an impression.
+Decode it and read the pixels; the scratch PNG decoder used for this is ~40
+lines of `zlib` plus the PNG filter loop, and comparing a before and after
+capture settles "nothing changed" in one step. A histogram of the region, plus a
+vertical slice through it, gives the fill, any border, and the surface behind it:
+
+```text
+bar #313445 · ring #747681 · fill #5d5f6c   → fill is 1.98:1 against the bar
+```
+
+Then check that number against the design target rather than against taste. Two
+captures that differ in a setting but agree to the byte are proof the setting is
+not the one being drawn.
 
 ### Installed-link checks
 
@@ -2161,3 +2221,246 @@ Verification:
 - not verified: the live editor. This needs **Developer: Reload Window** and one
   real `Cmd+B` in each direction; no repository check exercises the VS Code
   runtime.
+
+### 2026-08-05 — Picker focus made visible again, reversing the outline-only rule
+
+This entry reverses the "dropped the focus background in every picker" decision
+of **2026-08-05 — Cmd+B follows Log::channel, and picker descriptions
+brightened**. That decision was sound in its reasoning and wrong in its premise;
+the earlier entry stands as written.
+
+Intent:
+
+- restore a visible active row in `Cmd+O` and every other plain picker. Arrowing
+  through the project chooser changed almost nothing on screen: the row that
+  Enter would open was identifiable only by hovering it.
+
+Implementation:
+
+- deleted the picker-wide rule that forced `.monaco-list-row.focused` and
+  `.selected` to a transparent background in both quick-input widgets, which
+  returns plain rows to VS Code's native painting of
+  `quickInputList.focusBackground`;
+- set that colour explicitly for the two dark themes, which had never defined it:
+  `#6f6c71` for Monokai Pro and Catppuccin's own Surface2 `#626880`, each with
+  `#f7f7f7` focus foreground;
+- gave the References cards' focus outline a written-out dark-theme colour
+  (`#cfccc7`), since the outline they rely on was not being drawn either.
+
+Decisions and lessons:
+
+- **the premise was the bug, not the reasoning.** "Let VS Code's own focus
+  outline say where focus is" is a fine trade, but neither dark theme in use
+  draws that outline: Monokai Pro never defines `list.focusOutline`, so
+  `outline: 1px solid var(--vscode-list-focusOutline)` was invalid at
+  computed-value time and produced no outline at all, and Catppuccin Noctis
+  Frappé defines it as `#00000000`. Removing the fill removed the only remaining
+  indicator. A rule that hands its job to a theme colour has to be checked
+  against the themes actually in use;
+- the fill was restored by *deleting* custom CSS rather than by writing more of
+  it. The colour belongs in `workbench.colorCustomizations`, where the light
+  themes had been declaring it correctly all along;
+- Monokai Pro's own `list.activeSelectionBackground` and `list.hoverBackground`
+  are the same value, `#fcfcfa0c` — white at 5% alpha. That is why a themed focus
+  fill originally looked like hover: in this theme it *was* hover. The
+  replacement is separated from hover by 2.11:1, so the auto-focused first row
+  now reads as focused rather than as pointed at, which was the whole worry
+  behind the original change;
+- values were chosen against measured contrast, not by eye. Each fill is a little
+  over 2:1 against the picker background it sits on while keeping `#f7f7f7` text
+  above 4.5:1 — a brighter fill reads better as a bar and worse as a label, and
+  that ceiling is what fixes the value;
+- the outline colour is written per theme class in the stylesheet rather than set
+  as `list.focusOutline`, which would add an outline to every focused row in the
+  workbench, far past the picker.
+
+Verification:
+
+- `settings.json` parses after comment and trailing-comma stripping, 125 keys,
+  with the two dark blocks now carrying `quickInputList.focusBackground` and
+  `quickInputList.focusForeground`;
+- the stylesheet's braces balance, the picker-wide transparent rule is gone, and
+  the two remaining focus rules are the References cards and the group headers,
+  both of which override the native fill through a more specific `:has()`
+  selector and keep the treatments they already had;
+- contrast computed from the sRGB values: Monokai Pro fill 2.05:1 against the
+  picker with text at 4.83:1 and 2.11:1 against hover; Catppuccin fill 2.23:1
+  with text at 5.14:1; the card outline 7.57:1 against the card;
+- `git diff --check` clean;
+- not verified: the rendered result. This needs **Reload Custom CSS and JS**, and
+  the CSS change re-patches the workbench, so `fix_vscode_checksums.sh` and a
+  restart are needed after it.
+
+### 2026-08-05 — Dark tabs given a real active state
+
+Intent:
+
+- make the active editor tab readable at a glance. Neither dark theme drew one:
+  the active tab, the inactive tabs, the tab bar, and the editor were all the
+  same colour, so the only fill that ever appeared on the strip was hover — the
+  tab under the pointer looked selected and the selected tab looked like nothing.
+
+Implementation:
+
+- gave both dark themes a full tab palette, the treatment the light themes
+  already had: active, inactive, hover, and their unfocused counterparts;
+- used each theme's own raised surface for the active fill — `#403e41` in
+  Monokai Pro, Catppuccin's Surface0 `#414559` — each a little over 1.3:1 above
+  the bar, with hover placed below active so it never competes with it;
+- set `tab.border` transparent in both, since rounded tabs with a gap between
+  them do not also need a vertical rule;
+- added a 1px inset ring on the active tab in dark themes.
+
+Decisions and lessons:
+
+- **the themes were not underspecified, they were uniformly specified.** Monokai
+  Pro sets every tab background to `#2d2a2e` and Catppuccin every one to
+  `#303446`, in both cases the editor colour, and distinguish the active tab
+  only through an edge strip and the label. Rounding the tabs made that worse:
+  a 1px strip clipped to a 5px radius is most of a corner short of a shape;
+- the ring is an inset `box-shadow`, not a border. `tab.activeBorder` and
+  `tab.activeBorderTop` are strips along one edge rather than a border around
+  the shape, and a real border would take 2px out of a row whose height is
+  pinned at 26px. An inset shadow costs no layout and clips to the same radius
+  as the fill;
+- the ring is white at 14% rather than a literal per-theme colour, because the
+  workbench exposes only `.vs-dark` and `.vs`: both dark themes share one class,
+  so a fixed value could only ever suit one of them. Composited, it lands on each
+  theme's own border colour anyway — exactly `#5b595c` over Monokai Pro's active
+  tab, which is that theme's border, and `#5c5f70` over Catppuccin's, a shade off
+  its Surface2. A translucent ring is self-adjusting where a literal is a guess;
+- the tab bar itself was deliberately left at the editor colour. Recessing it
+  would read as a well rather than a strip of floating tabs, which is a larger
+  change than the one asked for and easy to add later;
+- fills are gentle on purpose. Active sits 1.30–1.34:1 above the bar and the ring
+  carries the definition, which is what keeps a full strip of tabs from turning
+  into a row of competing blocks;
+- **`tab.hoverBackground` is one colour for every hovered tab, the active one
+  included.** The first cut set it below the active fill, which is unavoidable if
+  it is also to lift an inactive tab off the bar — so pointing at the selected
+  tab darkened it. VS Code has no colour for the hovered-active tab, so the lift
+  moved into the stylesheet as a flat 5% white overlay, which raises whatever the
+  fill happens to be and cannot invert. Ordering is now monotonic in both themes:
+  bar < hover < active < active+hover;
+- a screenshot is measurable evidence and was treated as such. Decoding the PNG
+  and sampling the tab strip is what showed the ring had landed (`#747681` where
+  `rgba(255,255,255,.14)` over the fill predicts `#737581`) while the fill still
+  looked unchanged, and later that the fill *was* `#414559` under a white wash.
+  Two rounds of guessing at causes were worth less than one histogram.
+
+Verification:
+
+- `settings.json` parses after comment and trailing-comma stripping, 125 keys,
+  with ten tab colours now present in each dark block;
+- the stylesheet's braces balance and the active-tab ring rule is in place;
+- contrast computed from the sRGB values — Monokai Pro: active 1.34:1 against the
+  bar, hover 1.14:1, ring 2.04:1 against the bar and 1.53:1 against the fill,
+  `#ffffff` label 10.59:1; Catppuccin: active 1.30:1, hover 1.13:1, ring 1.95:1
+  and 1.50:1, label 9.46:1;
+- **Developer: Generate Color Theme From Current Settings** confirmed the merged
+  result live in the running editor: `tab.activeBackground #414559`,
+  `tab.hoverBackground #383c50`, `tab.border #00000000`. That command is the way
+  to settle whether a colour customization is reaching the workbench — the
+  `colorThemeData` cached in `state.vscdb` is the theme's raw map and does not
+  include customizations, so it cannot answer the question;
+- luminance ordering after the hover fix is monotonic in both themes;
+- `git diff --check` clean;
+- not verified: the rendered result. The gold `tab.activeBorderTop` was left as
+  it was.
+
+**Correction, same day.** The "roughly 14% white wash" this entry originally
+reported over the active tab was a misreading. `tab.activeBackground` was never
+painting that tab at all, and the arithmetic that seemed to fit it was
+coincidence — the disproof was already in hand and went unnoticed: the tab
+measured `#5d5f6c` both before the change, when the value was the theme's
+`#303446`, and after, at `#414559`. Two different settings, identical pixels.
+
+The active tab is also the *selected* tab, and **`tab.selectedBackground` wins**.
+It does not inherit from `tab.activeBackground`; this build defaults it to
+`list.inactiveSelectionBackground`, which this file sets to `#46494d`, so a list
+colour was painting the tab. It is absent from both dark themes and from
+**Developer: Generate Color Theme From Current Settings**, which lists only
+resolved colours — a key can be missing there and still be the one in effect.
+`tab.selectedBackground` and `tab.selectedForeground` are now set alongside the
+active pair in both dark blocks.
+
+The lesson is about method rather than colour: a model that fits one measurement
+is not evidence. The second data point that would have falsified it existed from
+the start, in the earlier screenshot, and checking a hypothesis against the
+observation that preceded it is cheaper than any amount of further arithmetic.
+
+### 2026-08-05 — Dark tab ladder toned down and measured against the bar
+
+Intent:
+
+- the active tab read as too bright once it was finally painting the intended
+  colour, so the whole ladder was re-derived instead of nudged.
+
+Implementation:
+
+- set every step from the bar by target contrast rather than by picking palette
+  colours: hover 1.10:1, unfocused active 1.14–1.15:1, active 1.20:1, down from
+  the 1.30–1.34:1 the first cut used;
+- applied `tab.selectedBackground` with the same value as `tab.activeBackground`
+  in both dark themes, which is what actually reaches the tab.
+
+Decisions and lessons:
+
+- deriving each step from a contrast target against the bar keeps the two themes
+  consistent without hand-matching palettes, and makes "a bit more toned down" a
+  number rather than a taste argument;
+- the 5% hover overlay on the active tab lifts it to 1.40:1, so the ordering
+  bar < hover < unfocused active < active < active+hover still holds after the
+  reduction.
+
+Verification:
+
+- `settings.json` parses, 126 keys; the ladder is monotonic in both themes and
+  `tab.selectedBackground` equals `tab.activeBackground` in each;
+- measured from the screenshot before this change: bar `#313445`, ring
+  `#747681`, fill `#5d5f6c` — the fill 1.98:1 against the bar, against a 1.30:1
+  design target, which is what "too bright" was;
+- `git diff --check` clean;
+- not verified: the rendered result, which needs a window reload.
+
+**Correction, same day — the tab strip was never being themed from `tab.*`.**
+Neither `tab.activeBackground` nor `tab.selectedBackground` reached the active
+tab. VS Code's "modern" workbench style, the `.style-override` class on
+`.monaco-workbench`, replaces the tab colours with its own variables and applies
+them with `!important`:
+
+```css
+--modern-ui-tab-active-background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent)
+--modern-ui-tab-hover-background:  color-mix(in srgb, var(--vscode-foreground)  6%, transparent)
+```
+
+Mixing from the **foreground** is what made the tab so bright. This file sets
+`foreground` to `#f7f7f7` in both dark themes, so the active tab was near-white
+at 22% over the bar: `rgb(92, 95, 109)` predicted against `rgb(93, 95, 108)`
+measured, 1.94:1 where the design called for 1.20:1. It was also why the colour
+never moved — three settings changes, three identical screenshots.
+
+`custom-workbench.css` now points both variables back at
+`var(--vscode-tab-activeBackground)` and `var(--vscode-tab-hoverBackground)`, so
+the ladder in `settings.json` governs the tab strip again, per theme.
+`!important` is legal on a custom property and is what beats VS Code's own
+declaration.
+
+Lessons this cost more than it should have:
+
+- **a theme colour that is registered, resolved, and merged can still paint
+  nothing.** `Developer: Generate Color Theme From Current Settings` confirmed
+  `tab.activeBackground: #414559` was live at a point when nothing on screen used
+  it. It reports what the colour registry resolved, not what any rule consumed;
+- the disproof was available from the first screenshot and went unread for three
+  rounds: the tab measured `#5d5f6c` both before and after a change to
+  `tab.activeBackground`. **When a setting changes and the pixels do not, stop
+  tuning the setting** — the value is not the one being drawn;
+- the answer came from VS Code's own stylesheet, not from more inference over the
+  screenshots. `grep` for rules matching `.tab.active` that set a background,
+  in `out/vs/workbench/workbench.desktop.main.css`, names the winning declaration
+  in one step; it is the first thing to try, not the last;
+- the modern style also excludes the active tab from its hover rule
+  (`.tab:not(.active)`), which makes the `.tab.active:hover` lift added earlier
+  inert while that style is on. It is kept because it is correct whenever the
+  style is off.

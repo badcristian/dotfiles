@@ -227,9 +227,34 @@
 			"list.focusForeground": "#f7f7f7",
 			"list.hoverBackground": "#3a3d40",
 			"list.hoverForeground": "#b8b7b7",
+			// The picker sits on #403e41, against which the theme's own focus colour is white at 5%
+			// alpha and its focus outline is undefined, so an arrowed-to row showed nothing at all.
+			// #6f6c71 is ~2.1:1 against the picker and still carries #f7f7f7 text at ~4.9:1.
+			"quickInputList.focusBackground": "#6f6c71",
+			"quickInputList.focusForeground": "#f7f7f7",
 			"tab.activeForeground": "#ffffff",
 			"tab.inactiveForeground": "#b8b8b8",
 			"tab.unfocusedInactiveForeground": "#9a9a9a",
+			// Monokai Pro paints every tab background #2d2a2e — bar, active, inactive and hover all
+			// identical to the editor — so the active tab had no fill and hover was the only thing
+			// that ever painted. The ladder below is measured against the bar: hover 1.10:1,
+			// unfocused active 1.14:1, active 1.20:1. Inactive stays at the bar colour so only the
+			// active tab carries a shape.
+			//
+			// `tab.selectedBackground` has to be set alongside `tab.activeBackground`: the active tab
+			// is also the selected one, and that key wins. It does NOT inherit from
+			// `tab.activeBackground` — VS Code defaults it to `list.inactiveSelectionBackground`,
+			// which is set below, so leaving it out let a list colour paint the tab.
+			"tab.activeBackground": "#39373a",
+			"tab.selectedBackground": "#39373a",
+			"tab.selectedForeground": "#ffffff",
+			"tab.inactiveBackground": "#2d2a2e",
+			"tab.unfocusedActiveBackground": "#363337",
+			"tab.unfocusedInactiveBackground": "#2d2a2e",
+			"tab.hoverBackground": "#333134",
+			"tab.unfocusedHoverBackground": "#302e31",
+			// Rounded tabs with a gap between them need no vertical rule as well.
+			"tab.border": "#00000000",
 			"editor.lineHighlightBackground": "#ffffff12",
 			"editor.lineHighlightBorder": "#00000000",
 		},
@@ -248,9 +273,26 @@
 			"list.focusForeground": "#f7f7f7",
 			"list.hoverBackground": "#3a3d40",
 			"list.hoverForeground": "#b8b7b7",
+			// Same fix as Monokai Pro, in this theme's palette: the picker sits on #303446, the
+			// theme's focus fill is 12% alpha and its focus outline is literally #00000000. Surface2
+			// (#626880) is ~2.2:1 against the picker and carries #f7f7f7 text at ~5.1:1.
+			"quickInputList.focusBackground": "#626880",
+			"quickInputList.focusForeground": "#f7f7f7",
 			"tab.activeForeground": "#ffffff",
 			"tab.inactiveForeground": "#b8b8b8",
 			"tab.unfocusedInactiveForeground": "#9a9a9a",
+			// Same defect as Monokai Pro, same fix and the same measured ladder in this palette:
+			// every tab was #303446, the editor colour. See the Monokai block above for why
+			// `tab.selectedBackground` is set too.
+			"tab.activeBackground": "#3c4053",
+			"tab.selectedBackground": "#3c4053",
+			"tab.selectedForeground": "#ffffff",
+			"tab.inactiveBackground": "#303446",
+			"tab.unfocusedActiveBackground": "#393d50",
+			"tab.unfocusedInactiveBackground": "#303446",
+			"tab.hoverBackground": "#363a4d",
+			"tab.unfocusedHoverBackground": "#333749",
+			"tab.border": "#00000000",
 			"editor.lineHighlightBackground": "#ffffff12",
 			"editor.lineHighlightBorder": "#00000000",
 		},
@@ -455,4 +497,7 @@
 	},
 	"js/ts.updateImportsOnFileMove.enabled": "always",
 	"workbench.statusBar.visible": false,
+	"extensions.supportAgentsWindow": {
+		"monokai.theme-monokai-pro-vscode": true
+	},
 }
