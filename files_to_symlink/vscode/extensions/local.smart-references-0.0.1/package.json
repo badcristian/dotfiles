@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.18",
+	"version": "0.0.19",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"

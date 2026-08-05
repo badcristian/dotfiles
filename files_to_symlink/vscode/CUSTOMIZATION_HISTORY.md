@@ -2464,3 +2464,59 @@ Lessons this cost more than it should have:
   (`.tab:not(.active)`), which makes the `.tab.active:hover` lift added earlier
   inert while that style is on. It is kept because it is correct whenever the
   style is off.
+
+### 2026-08-05 — Gate and policy references resolved from the call's real target
+
+Intent:
+
+- make Laravel gate navigation work in both directions for the calls that were
+  being dropped. `Gate::allows('uploadClassified', $document->company)` did not
+  count as a reference to `CompanyPolicy::uploadClassified`, and
+  `canGrantRibeitClassifiedAccess` found no callers from its declaration even
+  though `Gate::check` navigated to it from the call side.
+
+Implementation:
+
+- anchored the target resolver to the argument that follows the ability instead
+  of scanning a 360-character window for anything target-shaped;
+- taught it property access, so `$document->company` resolves to Company;
+- routed the reference direction through the same resolver, so a type-hinted
+  `Company $model` counts where only a literal `$company` did before, while an
+  unresolvable call keeps the old name-based check that can only confirm;
+- returned `undefined` rather than an empty name for an unresolved variable;
+- bumped `local.smart-references` to `0.0.19` and added ten tests.
+
+Decisions and lessons:
+
+- **the window scan was reading the wrong expression entirely.** Against this
+  repository it resolved `Gate::check('show', $company)` to `Nomenclator` and
+  `Gate::check('process', $document)` to `Use`, both picked up from unrelated
+  lines below the call. It survived because the old caller only asked "does this
+  window mention my model", a question a wrong answer can still pass;
+- the polarity of the two directions is deliberately different and must stay so.
+  Definition narrows a glob, so an unresolved target falls back to every policy;
+  reference filters call sites, so an unresolved target is kept only when it
+  names the model. Ability names collide hard — `show` is declared in all 39
+  policies here, `update` in 21 — and making the reference direction inclusive
+  would bury the common ones;
+- a policy delegating to another policy is normal, and the call inside
+  `DocumentPolicy` targeting a Company is exactly the case a variable-name
+  heuristic cannot see;
+- an array target takes its first element: `Gate::check('update', [new Access,
+  $clientUser])` is an Access question, and previously matched both
+  `CompanyPolicy::update` and `ClientUserPolicy::update`, neither of them right.
+
+Verification:
+
+- the extension suite passes, 80 tests, 0 failures, including ten new ones;
+- an old-versus-new comparison over the real Ribeit tree — 39 policies, 1119 PHP
+  files, every declared ability — gained 22 references and dropped 4. All four
+  dropped were read individually and are false positives the window scan had
+  produced: two `Gate::check('store', Service::class)` calls attributed to
+  `GroupPolicy::store`, and one array-target call attributed to two unrelated
+  policies at once;
+- the four references originally reported as missing now resolve, and the
+  definition direction sends `$document->company` to `CompanyPolicy` rather than
+  to the `DocumentPolicy` the call sits in;
+- `node --check` and `git diff --check` clean;
+- not verified: the live editor, which needs **Developer: Reload Window**.

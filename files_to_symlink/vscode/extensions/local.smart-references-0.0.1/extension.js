@@ -1934,16 +1934,34 @@ function getPolicyModelClassName(policySource, policyClassName) {
 		: undefined;
 }
 
-function gateCallMayTargetPolicyModel(source, abilityStart, modelClassName) {
+// Whether a gate call could be asking about this policy's model. Ability names collide heavily —
+// `show` is declared in every policy in a Laravel app of any size, `update` and `delete` in most —
+// so a call is kept only when its target resolves to this model, or cannot be resolved at all but
+// still names it.
+//
+// The resolver is shared with the definition direction and understands `Model::class`, `new Model`,
+// a type-hinted variable, and property access. That last pair is what a policy delegating to another
+// policy looks like — `Gate::allows('uploadClassified', $document->company)` targets Company, not
+// the Document whose policy the call sits in — and a typed `Company $model` is extremely common in
+// Restify actions and repositories, where the variable is named for its role rather than its class.
+function gateCallMayTargetPolicyModel(source, abilityStartOffset, abilityEndOffset, modelClassName) {
 	if (!modelClassName) {
 		return true;
 	}
 
-	const callTail = source.slice(abilityStart, Math.min(source.length, abilityStart + 360));
-	const variableName = lowerFirst(modelClassName);
-	const modelPattern = new RegExp(`(?:${escapeRegExp(modelClassName)}::class|new\\s+${escapeRegExp(modelClassName)}\\b|\\$${escapeRegExp(variableName)}\\b)`);
+	const targetModelName = getLaravelGateTargetModelName(source, {
+		startOffset: abilityStartOffset,
+		endOffset: abilityEndOffset,
+	});
 
-	return modelPattern.test(callTail);
+	if (targetModelName) {
+		return targetModelName === modelClassName;
+	}
+
+	// Nothing resolvable: keep the older textual signal, which can only ever confirm a match.
+	const callTail = source.slice(abilityEndOffset, Math.min(source.length, abilityEndOffset + 360));
+
+	return new RegExp(`\\$${escapeRegExp(lowerFirst(modelClassName))}\\b`).test(callTail);
 }
 
 function getLaravelGateAbilityRanges(source, abilities, modelClassName) {
@@ -1958,13 +1976,16 @@ function getLaravelGateAbilityRanges(source, abilities, modelClassName) {
 			continue;
 		}
 
-		if (!gateCallMayTargetPolicyModel(source, match.index, modelClassName)) {
+		const abilityStartOffset = match.index + 1;
+		const abilityEndOffset = abilityStartOffset + match[2].length;
+
+		if (!gateCallMayTargetPolicyModel(source, abilityStartOffset, abilityEndOffset, modelClassName)) {
 			continue;
 		}
 
 		ranges.push({
-			start: match.index + 1,
-			end: match.index + 1 + match[2].length,
+			start: abilityStartOffset,
+			end: abilityEndOffset,
 		});
 	}
 
@@ -2020,25 +2041,60 @@ function getPhpParameterTypeBeforeOffset(source, variableName, offset) {
 	return typeName;
 }
 
+const PHP_NAME = '[A-Za-z_\\x80-\\xff][A-Za-z0-9_\\x80-\\xff]*';
+
+// The model a gate call is asking about, or undefined when the call site does not say.
+//
+// Only the argument immediately after the ability is considered. Searching the window for a shape
+// that looks like a target reads whatever expression happens to come next in the file — against this
+// repository that resolved `Gate::check('show', $company)` to `Nomenclator` and
+// `Gate::check('process', $document)` to `Use`, both from unrelated lines further down.
 function getLaravelGateTargetModelName(source, abilityInfo) {
 	const callTail = source.slice(abilityInfo.endOffset, Math.min(source.length, abilityInfo.endOffset + 360));
-	const classTarget = callTail.match(/(?:,\s*|\[\s*)(?:\\?([A-Z][A-Za-z0-9_\\]*))::class\b/);
+	// Closing quote, comma, then the argument — optionally the first element of an array target.
+	const argument = callTail.match(/^['"]\s*,\s*(?:\[\s*)?([^,;)\]]+)/);
+
+	if (!argument) {
+		return undefined;
+	}
+
+	const expression = argument[1].trim();
+	const classTarget = expression.match(new RegExp(`^\\\\?([A-Z][A-Za-z0-9_\\\\]*)::class$`));
 
 	if (classTarget) {
 		return getShortClassName(classTarget[1]);
 	}
 
-	const newTarget = callTail.match(/(?:,\s*|\[\s*)new\s+\\?([A-Z][A-Za-z0-9_\\]*)\b/);
+	const newTarget = expression.match(/^new\s+\\?([A-Z][A-Za-z0-9_\\]*)/);
 
 	if (newTarget) {
 		return getShortClassName(newTarget[1]);
 	}
 
-	const variableTarget = callTail.match(/(?:,\s*|\[\s*)\$([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/);
+	// `$document->company` and `$this->company` name the model through the relation rather than
+	// through the variable, and are checked before the bare variable below — otherwise `$document`
+	// resolves first and sends an ability belonging to Company off to DocumentPolicy. The chain
+	// resolves to the segment it ends at. A trailing call is left alone: `->company()` on an Eloquent
+	// model is the relation object, not the model.
+	const propertyTarget = expression.match(new RegExp(`^\\$${PHP_NAME}((?:\\s*->\\s*${PHP_NAME})+)$`));
 
-	return variableTarget
-		? getShortClassName(getPhpParameterTypeBeforeOffset(source, variableTarget[1], abilityInfo.startOffset) || '')
-		: undefined;
+	if (propertyTarget) {
+		const segments = propertyTarget[1].split('->').map((segment) => segment.trim()).filter(Boolean);
+
+		return snakeToStudly(segments[segments.length - 1]);
+	}
+
+	const variableTarget = expression.match(new RegExp(`^\\$(${PHP_NAME})$`));
+
+	if (!variableTarget) {
+		return undefined;
+	}
+
+	// An untyped variable says nothing about the model; report that as unresolved rather than as an
+	// empty name, so callers can tell "no answer" from "answered".
+	const parameterType = getPhpParameterTypeBeforeOffset(source, variableTarget[1], abilityInfo.startOffset);
+
+	return parameterType ? getShortClassName(parameterType) : undefined;
 }
 
 function getPhpMethodDeclarationRanges(source, methodName) {
