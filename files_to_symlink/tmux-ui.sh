@@ -218,6 +218,23 @@ open_background_picker() {
         -T " Moving Background " "bash ~/tmux-background.sh picker"
 }
 
+open_vim_cheatsheet() {
+    local client_tty="$1"
+
+    tmux display-popup -c "$client_tty" -E -w 92 -h 28 \
+        -T " Vim Keys " "bash ~/tmux-vim-cheatsheet.sh picker"
+}
+
+open_session_repo() {
+    local client_tty="$1"
+    local session_path
+
+    session_path="$(tmux display-message -c "$client_tty" -p '#{session_path}' 2>/dev/null)" || return 1
+    if ! bash "$HOME/tmux-repo.sh" open "$session_path"; then
+        tmux display-message -c "$client_tty" "No browser repository for this session"
+    fi
+}
+
 status_mouse_down() {
     local mouse_range="$1"
     local client_pid="$2"
@@ -225,10 +242,10 @@ status_mouse_down() {
 
     case "$mouse_range" in
         agents)
-            tmux display-popup -c "$client_tty" -E -w 78 -h 15 \
+            tmux display-popup -c "$client_tty" -E -w 78 -h 13 \
                 -T " AI Usage " "bash ~/tmux-agent-usage.sh"
             ;;
-        accent | background)
+        accent | background | repo | vimhelp | health)
             # Open on mouse-up so the release that launched the popup cannot
             # be interpreted as a popup click.
             :
@@ -250,6 +267,16 @@ status_mouse_up() {
             ;;
         background)
             open_background_picker "$client_tty"
+            ;;
+        vimhelp)
+            open_vim_cheatsheet "$client_tty"
+            ;;
+        health)
+            tmux display-popup -c "$client_tty" -E -w 88 -h 20 \
+                -T " System Health " "bash ~/tmux-health.sh popup"
+            ;;
+        repo)
+            open_session_repo "$client_tty"
             ;;
         *)
             bash "$HOME/tmux-session-ui.sh" mouse-up \
