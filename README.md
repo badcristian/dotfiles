@@ -372,8 +372,11 @@ mode, use `Ctrl-L` to show completion,
 `Ctrl-N` / `Ctrl-P` to choose a suggestion, and `Ctrl-Y` to accept it. The spell
 source begins suggesting after three characters and uses both `en_us` and `ro`.
 
-Use `P` / `G` for a new project/global note, `Ctrl-Y` in Normal mode to copy the
-whole note, and `Ctrl-D` in the sidebar to delete. Notes autosave while editing.
+Use `Space p` / `Space g` for a new project/global note, `Ctrl-Y` in Normal mode
+to copy the whole note, and `Ctrl-D` in the sidebar to delete. Those two are
+leader-prefixed because the editor pane is a real Vim buffer, where `P` pastes
+before the cursor and `G` jumps to the last line; the scope letters still match
+the `[P]` and `[G]` badges in the sidebar. Notes autosave while editing.
 `Escape` changes Insert mode back to Normal mode; from Normal mode or the
 sidebar it saves and closes the workspace. `Option-N` also saves and closes it
 immediately. Selecting editor text with the mouse copies it to the macOS

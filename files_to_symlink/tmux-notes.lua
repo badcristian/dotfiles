@@ -402,14 +402,17 @@ local function configure_note_buffer(buf)
       desc = "Copy note",
       silent = true,
     })
-    vim.keymap.set("n", "P", function()
+    -- Leader-prefixed, because this is a real editing buffer and `P` and `G` are not ours to take:
+    -- `G` is the jump to the last line and `P` the paste before the cursor. The scope letters are
+    -- kept so the keys still read off the [P] and [G] badges in the list.
+    vim.keymap.set("n", "<leader>p", function()
       create_note("project")
     end, {
       buffer = buf,
       desc = "New project note",
       silent = true,
     })
-    vim.keymap.set("n", "G", function()
+    vim.keymap.set("n", "<leader>g", function()
       create_note("global")
     end, {
       buffer = buf,
@@ -1025,7 +1028,7 @@ local function show_help()
     "Enter or Tab        focus editor in Normal mode",
     "i / Esc             Insert / Normal mode",
     "Tab / Ctrl-h/l      switch columns",
-    "P / G               new project/global note",
+    "Space p / Space g   new project/global note",
     "/ / Space Space     filter/find by filename",
     "s / Space /         search inside all notes",
     "t                   choose a tag filter",
@@ -1096,18 +1099,29 @@ vim.keymap.set("n", "<C-y>", function()
     copy_path(row.path)
   end
 end, { buffer = list_buf, desc = "Copy note", silent = true })
-vim.keymap.set("n", "p", function()
+-- Same keys as the editor pane, so creating a note does not depend on which column has focus.
+-- The bare letters are deliberately not kept as extra aliases here: `g` alone swallows the `gg`
+-- that jumps to the top of a long note list, and `G` the jump to its end.
+vim.keymap.set("n", "<leader>p", function()
   create_note("project")
 end, { buffer = list_buf, desc = "New project note", silent = true })
-vim.keymap.set("n", "P", function()
-  create_note("project")
-end, { buffer = list_buf, desc = "New project note", silent = true })
-vim.keymap.set("n", "g", function()
+vim.keymap.set("n", "<leader>g", function()
   create_note("global")
 end, { buffer = list_buf, desc = "New global note", silent = true })
-vim.keymap.set("n", "G", function()
-  create_note("global")
-end, { buffer = list_buf, desc = "New global note", silent = true })
+-- `p` and `P` created a project note until the keys moved, and habit still reaches for them. The
+-- sidebar is `nomodifiable`, so Vim's paste can only ever answer with `E21: Cannot make changes` —
+-- a cryptic error from a key that has nothing else to do in this buffer. Name the new binding
+-- instead. `g` and `G` deliberately get no such handler: there they are the jumps to the top and
+-- bottom of the list, which is the whole reason they were given up.
+for _, key in ipairs({ "p", "P" }) do
+  vim.keymap.set("n", key, function()
+    vim.notify(
+      "New note moved: Space p for project, Space g for global.",
+      vim.log.levels.INFO,
+      { title = "Notes keys" }
+    )
+  end, { buffer = list_buf, desc = "Hint: new note is Space p", silent = true })
+end
 vim.keymap.set("n", "r", function()
   refresh(state.current_path)
 end, { buffer = list_buf, desc = "Refresh notes", silent = true })
