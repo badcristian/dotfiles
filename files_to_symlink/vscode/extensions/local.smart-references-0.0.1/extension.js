@@ -2970,24 +2970,6 @@ function getPhpContinuationTokenPosition(document, position) {
 	return token ? token.position : position;
 }
 
-function isPhpChainContinuation(document, position) {
-	const token = getPhpContinuationTokenInfo(document, position);
-
-	return Boolean(token && /^->\s*[$A-Za-z_]/.test(token.text));
-}
-
-function isPhpIndentedContinuation(document, position) {
-	if (position.line === 0) {
-		return false;
-	}
-
-	const token = getPhpContinuationTokenInfo(document, position);
-	const previousLine = document.lineAt(position.line - 1).text.trimEnd();
-
-	return Boolean(token)
-		&& /(?:[\[(]\s*|,\s*)$/.test(previousLine);
-}
-
 function isPhpBooleanContinuation(document, position) {
 	if (position.line === 0) {
 		return false;
@@ -3025,19 +3007,6 @@ function isPhpArrowFunctionContinuation(document, position) {
 
 	return Boolean(token)
 		&& /=>\s*$/.test(previousLine);
-}
-
-function isPhpClosingContinuation(document, position) {
-	if (position.line === 0) {
-		return false;
-	}
-
-	const token = getPhpContinuationTokenInfo(document, position);
-	const previousLine = document.lineAt(position.line - 1).text.trimEnd();
-
-	return Boolean(token)
-		&& /^[)\]}]+[),;\]}]*\s*$/.test(token.text)
-		&& /\S/.test(previousLine);
 }
 
 function getPhpEmptyLineBackspaceInfo(document, position) {
@@ -3082,27 +3051,11 @@ async function smartBackspace() {
 		return;
 	}
 
-	if (position.line > 0 && isPhpChainContinuation(editor.document, position)) {
-		const previousLine = editor.document.lineAt(position.line - 1);
-		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
-
-		await editor.edit((editBuilder) => {
-			editBuilder.delete(joinRange);
-		});
-		return;
-	}
-
-	if (isPhpIndentedContinuation(editor.document, position)) {
-		const previousLine = editor.document.lineAt(position.line - 1);
-		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
-
-		await editor.edit((editBuilder) => {
-			editBuilder.delete(joinRange);
-		});
-		return;
-	}
-
-	if (isPhpArrowFunctionContinuation(editor.document, position)) {
+	// Operators that have to breathe once the wrap is undone: `=>`, `&&`/`||`, and the `?`/`:` arms
+	// of a ternary all read as one token glued to the line above without the space.
+	if (isPhpArrowFunctionContinuation(editor.document, position)
+		|| isPhpBooleanContinuation(editor.document, position)
+		|| isPhpTernaryContinuation(editor.document, position)) {
 		const previousLine = editor.document.lineAt(position.line - 1);
 		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
 
@@ -3112,32 +3065,22 @@ async function smartBackspace() {
 		return;
 	}
 
-	if (isPhpClosingContinuation(editor.document, position)) {
+	// Anything else, with the caret on the first non-whitespace character of an indented line: one
+	// press does what repeated presses already ended in. `deleteLeft` walks left one tab stop at a
+	// time and joins the lines only once it reaches column 0, so the indentation had to be chewed
+	// through before the text moved anywhere — and moving the text up is almost always the intent.
+	// Nothing is inserted, which is exactly what `deleteLeft` does when it finally joins.
+	//
+	// This replaces three earlier branches, for `->` chains, lines opened by `(`/`[`/`,`, and
+	// closing delimiters. Each computed this identical edit, and each only recognised one shape of
+	// wrap; string concatenation onto a `.` at line start, the case this was reported for, matched
+	// none of them and fell through to the outdent.
+	if (position.line > 0 && getPhpContinuationTokenInfo(editor.document, position)) {
 		const previousLine = editor.document.lineAt(position.line - 1);
 		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
 
 		await editor.edit((editBuilder) => {
 			editBuilder.delete(joinRange);
-		});
-		return;
-	}
-
-	if (isPhpBooleanContinuation(editor.document, position)) {
-		const previousLine = editor.document.lineAt(position.line - 1);
-		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
-
-		await editor.edit((editBuilder) => {
-			editBuilder.replace(joinRange, ' ');
-		});
-		return;
-	}
-
-	if (isPhpTernaryContinuation(editor.document, position)) {
-		const previousLine = editor.document.lineAt(position.line - 1);
-		const joinRange = new vscode.Range(previousLine.range.end, getPhpContinuationTokenPosition(editor.document, position));
-
-		await editor.edit((editBuilder) => {
-			editBuilder.replace(joinRange, ' ');
 		});
 		return;
 	}

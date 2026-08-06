@@ -2934,3 +2934,74 @@ Not verified, and required to take effect:
   and JS**, a restart, and then `fix_vscode_checksums.sh` before the light
   explorer is expected to change at all. The `settings.json` half needs only a
   reload. No rendered pixels were confirmed for either.
+
+### 2026-08-06 — Backspace at the first character joins the line upward
+
+Intent:
+
+- with the caret on the first non-whitespace character of an indented line,
+  make one Backspace move the text up to the previous line. Reported against a
+  string concatenation wrapped onto a leading `.`, where Backspace outdented
+  instead.
+
+Root cause:
+
+- `smartBackspace` recognised six specific wrap shapes and fell through to
+  `deleteLeft` for everything else. `deleteLeft` walks the caret left one tab
+  stop at a time and joins the lines only once it reaches column 0, so the
+  indentation had to be chewed through before the text moved anywhere;
+- the shapes it knew were `->` chains, lines opened by `(`/`[`/`,`, `=>`,
+  closing delimiters, `&&`/`||`, and ternary arms. A `.` at line start matched
+  none of them. Each new shape needed its own predicate, and the list was never
+  going to be complete.
+
+Implementation:
+
+- the fallback now joins: with the caret on the first non-whitespace character
+  of an indented line, the indentation and the line break are removed together
+  and nothing is inserted, which is exactly what `deleteLeft` does when it
+  finally joins from column 0;
+- the three branches for `->` chains, bracket-opened lines and closing
+  delimiters were deleted. Every one computed the identical edit to this
+  fallback and each recognised only one shape, so they are strictly subsumed.
+  `isPhpChainContinuation`, `isPhpIndentedContinuation` and
+  `isPhpClosingContinuation` went with them;
+- the three that insert a space — `=>`, `&&`/`||`, ternary arms — are kept and
+  collapsed into one branch, since those operators read as glued to the line
+  above without it;
+- bumped to `0.0.25`.
+
+Decisions and lessons:
+
+- enumerating wrap shapes was the wrong model. The shapes that matter are the
+  few that need a **space**; everything else is the same join, so the default
+  should be the join and the list should be the exception;
+- the caret at column 0 is unchanged in effect. `deleteLeft` already joined
+  there, so only an indented caret sees a difference. A simulation that reports
+  column-0 sites as changed is measuring its own labels, not behaviour — the
+  first run of this comparison did exactly that and claimed 29,399 changes.
+
+Verification:
+
+- both branch orders were transcribed from the shipped source into a scratch
+  simulation and run over 400 real files from `spro-marketing/app`: 44,006
+  caret-at-first-character sites, and the **only** transition is
+  `outdent -> join`, 24,068 of them. No site that the old code already handled
+  changed — no `join -> …` and no `join-space -> …` — which is the property that
+  matters, since it means the reordering after deleting three branches altered
+  nothing;
+- the simulation refuses to run if the three deleted predicates are still
+  present or if the kept predicates no longer match the shipped source, so it
+  cannot silently drift from the code it claims to model;
+- 85 tests, 0 failures; `node --check` clean; installer completed; live registry
+  records `0.0.25`;
+- **not verified: the keystroke in a live editor.** `smartBackspace` lives in
+  `extension.js`, which exports only `activate`/`deactivate`, so this is covered
+  by simulation rather than by a test that drives the editor.
+
+Known consequence, not yet judged:
+
+- docblock continuation lines are indented, so Backspace on the `*` of a wrapped
+  `/** … */` line now joins it upward and leaves the `*` inline. That follows
+  from the rule as asked for. Stripping a leading `* ` on join would be a
+  separate decision.
