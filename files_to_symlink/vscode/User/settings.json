@@ -457,7 +457,105 @@
 					"fontStyle": "",
 				},
 			},
+			{
+				// The theme's italic on PHPDoc keywords survives the rule above, because
+				// it is written as the descendant selector
+				// `comment.block.documentation.phpdoc.php keyword` and TextMate resolves
+				// by selector specificity, not by who was applied last. A single-segment
+				// `keyword` override can never win against it. Repeating the theme's
+				// selector verbatim ties on specificity, and the customization is applied
+				// second, so it takes the tie.
+				"scope": [
+					"comment.block.documentation.phpdoc.php keyword",
+				],
+				"settings": {
+					"fontStyle": "",
+				},
+			},
 		],
+		// Docblocks were a flat wall of #737994 on #303446 — 2.9:1, below every
+		// legibility floor, with every reference, tag and code span the same grey.
+		// Prose is lifted to Subtext0 (5.6:1) and the three things that name code get
+		// their own colour, so a docblock can be skimmed for structure:
+		//   prose      #a5adce   5.6:1
+		//   @tag       #ca9ee6   theme mauve, unchanged
+		//   reference  #8caaee   5.4:1   {@see Foo}, {@see Foo::bar()}
+		//   code span  #a6d189   7.1:1   `$e->response`
+		// The reference and code-span scopes come from the local PHPDoc injection in
+		// `local.smart-references`; see the change-history entry for why they exist.
+		"[Catppuccin Noctis Frappé]": {
+			"comments": "#a5adce",
+			"textMateRules": [
+				{
+					"scope": [
+						"markup.inline.raw.phpdoc.php",
+					],
+					"settings": {
+						"foreground": "#a6d189",
+					},
+				},
+				{
+					"scope": [
+						"meta.tag.inline.phpdoc.php entity.name.type.class.php",
+						"meta.tag.inline.phpdoc.php entity.name.function.php",
+						"meta.tag.inline.phpdoc.php variable.other.property.php",
+					],
+					"settings": {
+						"foreground": "#8caaee",
+					},
+				},
+				{
+					// Braces, backticks and `::` are scaffolding: readable, but kept
+					// below the words they wrap so they do not compete with them.
+					"scope": [
+						"punctuation.definition.raw.phpdoc.php",
+						"punctuation.definition.tag.begin.phpdoc.php",
+						"punctuation.definition.tag.end.phpdoc.php",
+						"punctuation.definition.arguments.phpdoc.php",
+						"meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
+					],
+					"settings": {
+						"foreground": "#838ba7",
+					},
+				},
+			],
+		},
+		// Same three roles in the light theme, which is already legible at 4.9:1 and
+		// therefore only needs the structure, not the contrast lift.
+		"[GitHub Light]": {
+			"textMateRules": [
+				{
+					"scope": [
+						"markup.inline.raw.phpdoc.php",
+					],
+					"settings": {
+						"foreground": "#0a7b45",
+					},
+				},
+				{
+					"scope": [
+						"meta.tag.inline.phpdoc.php entity.name.type.class.php",
+						"meta.tag.inline.phpdoc.php entity.name.function.php",
+						"meta.tag.inline.phpdoc.php variable.other.property.php",
+					],
+					"settings": {
+						"foreground": "#0550ae",
+					},
+				},
+				{
+					"scope": [
+						"punctuation.definition.raw.phpdoc.php",
+						"punctuation.definition.tag.begin.phpdoc.php",
+						"punctuation.definition.tag.end.phpdoc.php",
+						"punctuation.definition.arguments.phpdoc.php",
+						"meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
+					],
+					"settings": {
+						"foreground": "#8c959f",
+					},
+				},
+			],
+		},
 	},
 	"bookmarks.wrapNavigation": false,
 	"bookmarks.sideBar.expanded": true,

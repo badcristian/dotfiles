@@ -3,6 +3,12 @@
 	"injectionSelector": "L:comment.block.documentation.phpdoc.php",
 	"patterns": [
 		{
+			"include": "#code-span"
+		},
+		{
+			"include": "#inline-tag"
+		},
+		{
 			"include": "#generic-type"
 		},
 		{
@@ -13,6 +19,94 @@
 		}
 	],
 	"repository": {
+		"code-span": {
+			"patterns": [
+				{
+					"name": "markup.inline.raw.phpdoc.php",
+					"comment": "Must stay a single `match`. As a begin/end pair this rule ate the rest of the line: the grammar is injected with L: priority, so at the closing backtick the injection is retried before the region's own end, and the delimiter opened a second nested span instead of closing the first. A match consumes the whole span atomically and cannot re-enter itself.",
+					"match": "(`)([^`]*)(`)",
+					"captures": {
+						"1": {
+							"name": "punctuation.definition.raw.phpdoc.php"
+						},
+						"3": {
+							"name": "punctuation.definition.raw.phpdoc.php"
+						}
+					}
+				}
+			]
+		},
+		"inline-tag": {
+			"patterns": [
+				{
+					"name": "meta.tag.inline.phpdoc.php",
+					"begin": "(\\{)(@(?:see|link|uses|inherit[Dd]oc|internal|example|tutorial|source))\\b",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.tag.begin.phpdoc.php"
+						},
+						"2": {
+							"name": "keyword.other.phpdoc.php"
+						}
+					},
+					"end": "(\\})|(?=\\*/)|$",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.tag.end.phpdoc.php"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#reference-body"
+						}
+					]
+				}
+			]
+		},
+		"reference-body": {
+			"patterns": [
+				{
+					"match": "(\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(::|->)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.class.php"
+						},
+						"2": {
+							"name": "punctuation.separator.inheritance.php"
+						},
+						"3": {
+							"name": "entity.name.function.php"
+						}
+					}
+				},
+				{
+					"match": "(\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(::|->)(\\$?[A-Za-z_][A-Za-z0-9_]*)",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.class.php"
+						},
+						"2": {
+							"name": "punctuation.separator.inheritance.php"
+						},
+						"3": {
+							"name": "variable.other.property.php"
+						}
+					}
+				},
+				{
+					"match": "[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()",
+					"name": "entity.name.function.php"
+				},
+				{
+					"match": "\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*",
+					"name": "entity.name.type.class.php"
+				},
+				{
+					"match": "[()]",
+					"name": "punctuation.definition.arguments.phpdoc.php"
+				}
+			]
+		},
 		"generic-type": {
 			"patterns": [
 				{

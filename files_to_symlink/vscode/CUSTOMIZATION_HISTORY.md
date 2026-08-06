@@ -2520,3 +2520,151 @@ Verification:
   to the `DocumentPolicy` the call sits in;
 - `node --check` and `git diff --check` clean;
 - not verified: the live editor, which needs **Developer: Reload Window**.
+
+### 2026-08-06 — Docblocks given readable prose and three structural colors
+
+Intent:
+
+- stop PHPDoc blocks reading as one flat grey wall, which was the reported
+  problem: uniform colour and low contrast made a ten-line class docblock hard
+  to scan and hard to read at all.
+
+Root cause:
+
+- two separate causes, only one of them ours.
+- contrast: Catppuccin Noctis Frappé paints `comment` Overlay0 `#737994` on the
+  editor background `#303446`. Measured against the screenshot that is
+  **2.87:1** — under the 3:1 floor for any text, and far under 4.5:1;
+- structure: VS Code's built-in PHP grammar knows only two inline doc tags. Its
+  rule is `{(@(link|inherit[Dd]oc)).+?}`, so `{@see Foo}` never becomes an
+  inline tag at all. Meanwhile its *block* tag rule listing `see` is
+  **unanchored**, so `@see` matched anywhere and coloured alone. The result was
+  a mauve `@see` with its braces and its referenced class left as ordinary
+  comment grey. Backtick code spans had no scope whatsoever, so
+  `` `$e->response` `` was grey prose except for the `$e`, which our own
+  injection had already claimed.
+
+Implementation:
+
+- added `code-span` and `inline-tag` to `syntaxes/phpdoc.tmLanguage.json`, both
+  ordered **before** `phpdoc-variable` so a backtick span claims its contents
+  instead of being torn apart by the bare-variable rule;
+- `code-span` deliberately carries no inner patterns, so a span stays one
+  colour; both new regions end at `$` as well as their closing delimiter, so an
+  unclosed backtick or brace cannot swallow the rest of the docblock;
+- `reference-body` distinguishes `Class`, `method()`, and `Class::method()`;
+- bumped Smart References to `0.0.20` and deployed through `install_vscode.sh`;
+- in `settings.json`, added per-theme `editor.tokenColorCustomizations` blocks
+  assigning: prose `#a5adce` (5.6:1), `@tag` unchanged theme mauve `#ca9ee6`,
+  references `#8caaee` (5.4:1), code spans `#a6d189` (7.1:1), and delimiters
+  `#838ba7` (3.7:1), with the light theme given the same three roles.
+
+Decisions and lessons:
+
+- **a single-segment scope override cannot beat a theme's descendant
+  selector.** The existing anti-italic rule lists `keyword`, but the theme sets
+  italic through `comment.block.documentation.phpdoc.php keyword`. TextMate
+  resolves by selector specificity, not by application order, so the
+  customization lost every time. The fix is to repeat the theme's selector
+  verbatim: that ties on specificity, and customizations are applied second, so
+  the tie goes to the override. Worth remembering for any future
+  "my `tokenColorCustomizations` rule does nothing" case;
+- delimiters were deliberately left below the words they wrap. The complaint
+  was unreadable *content*, not invisible punctuation, and lifting braces and
+  backticks to full contrast makes a docblock noisier rather than clearer;
+- colour was assigned by role, not by mimicking how the same identifier looks
+  in executable code. A `{@see Foo}` is a link, so it is blue; a backtick span
+  is a literal, so it is green. Three roles is the ceiling — more hues in a
+  comment stop being structure and become decoration.
+
+Verification:
+
+- the whole Smart References suite passes, 82 tests, 0 failures, including
+  three new PHPDoc-syntax tests that assert the pattern ordering, the
+  single-region code span, and the `Class` / `method()` / `Class::method()`
+  split;
+- both JSON files parse, and `settings.json` was parsed as JSONC to confirm the
+  three `editor.tokenColorCustomizations` sections resolve;
+- the installer completed and the live registry now records
+  `local.smart-references` at `0.0.20` with an empty `.obsolete`;
+- every contrast ratio above was computed from the colours measured out of the
+  reported screenshot, against the measured background `#303446`;
+- **not verified: the rendered pixels.** Grammar and theme resolution were
+  checked statically; the editor still needs **Developer: Reload Window** and a
+  visual pass before these colours can be called confirmed.
+
+### 2026-08-06 — Backtick code spans stopped swallowing the rest of the line
+
+Intent:
+
+- fix docblock prose turning green from the first backtick onward. `` `facebookLogin` ``
+  coloured itself, its delimiters, and every word after it to the end of the
+  line.
+
+Root cause:
+
+- the `code-span` rule was a `begin`/`end` pair. The grammar is contributed as a
+  **left-priority** injection, so at every position the injected patterns are
+  tried *before* the enclosing rule's own `end`. At the closing backtick the
+  injection matched `begin` again and opened a **second, nested** span rather
+  than closing the first;
+- tokenizing the real file proves it — the closing backtick carried
+  `markup.inline.raw.phpdoc.php` **twice**, and so did the prose behind it;
+- the `|$` alternative in the `end` pattern is the only reason the damage
+  stopped at the line break instead of running to `*/`. It was added for a
+  different reason and accidentally limited the blast radius;
+- the delimiters looked wrong too, and that was the tell: they rendered in the
+  span colour rather than the punctuation colour, which cannot happen if
+  `beginCaptures`/`endCaptures` are the rules producing them.
+
+Implementation:
+
+- `code-span` became a single `match` — `` (`)([^`]*)(`) `` with the delimiters as
+  captures 1 and 3. A `match` consumes the span atomically and cannot re-enter
+  itself, whatever the injection priority;
+- an unclosed backtick now colours nothing at all, which is a better failure
+  than colouring to end of line;
+- `inline-tag` was checked for the same defect and does not have it: nothing in
+  the injection matches `}`, so its region closes correctly. It was left as
+  begin/end;
+- bumped to `0.0.24`.
+
+Decisions and lessons:
+
+- **an L: injection must not use begin/end for a region whose delimiters its own
+  patterns can match.** The injection stays active inside the region it opened,
+  so its `begin` competes with the region's `end` and wins. Prefer `match` for
+  anything delimiter-balanced and single-line;
+- a scope appearing **twice** in a token's scope list is the signature of this
+  bug, and is visible only by tokenizing;
+- the existing grammar tests could not have caught this. They assert on the JSON
+  and compile the regexes, which is a structural check — the grammar was
+  well-formed and every regex was valid while the rendering was wrong. Only
+  running the real tokenizer exposes rule *interaction*.
+
+Verification:
+
+- the file was tokenized with `vscode-textmate` + `vscode-oniguruma` against the
+  real `text.html.php` root, its embedded `source.php`, and this injection —
+  the same root the token inspector reports. Before: the closing backtick and
+  the following prose both carried two nested `markup.inline.raw.phpdoc.php`
+  scopes. After: the span is exactly `` ` `` + content + `` ` ``, and
+  ` credential parents entities…` is plain `comment.block.documentation.phpdoc.php`
+  again;
+- `{@see RequestException}`, `{@see MetaErrorKindEnum}` and `{@see MetaLimitService}`
+  were tokenized in the same run and scope correctly, with the prose after each
+  `}` returning to plain comment;
+- 85 tests, 0 failures. The `code-span` test was rewritten to pin the actual
+  invariant — no `begin`, no `end`, stops at the first closing backtick, two
+  spans on a line stay two, an unclosed backtick matches nothing;
+- installer completed, live registry records `0.0.24`;
+- **not verified: the rendered pixels**, which need a reload. Token scopes now
+  prove the grammar; they do not prove the theme mapping on top of them.
+
+Repeating the tokenizer check:
+
+- `npm install vscode-textmate vscode-oniguruma` in a scratch directory, load
+  `php/syntaxes/html.tmLanguage.json` from the VS Code app bundle as the root
+  scope `text.html.php`, register this injection through `getInjections`, and
+  tokenize line by line carrying the `ruleStack` forward. The extension itself
+  is kept dependency-free, so this stays a scratch harness rather than a test.
