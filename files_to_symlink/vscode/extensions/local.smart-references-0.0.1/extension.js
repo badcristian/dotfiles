@@ -2649,13 +2649,123 @@ function getPhpReferenceCodeLensSymbols(symbols) {
 	return result;
 }
 
-async function getPhpLanguageProviderReferenceCount(uri, position) {
+// Intelephense reports `@method` and `@property` docblock tags as ordinary document symbols,
+// then resolves them to whatever really declares them — for a Laravel model, the Eloquent base
+// class. Asking about those positions workspace-wide answers about the PARENT, not the annotated
+// class: `@method static MetaTokenQueryBuilder query()` on MetaToken reported 943, which is every
+// Model::query() call in the project and says nothing about MetaToken.
+const PHPDOC_TAG_LINE_PATTERN = /^\s*(?:\/\*\*)?\s*\*?\s*@(?:method|property(?:-read|-write)?)\b/;
+
+// `@method static <type> name(...)`. The lazy `.*?` skips an optional return type, so both
+// `@method static query()` and `@method static MetaTokenQueryBuilder query()` capture `query`.
+const PHPDOC_STATIC_METHOD_TAG_PATTERN = /^\s*(?:\/\*\*)?\s*\*?\s*@method\s+static\s+.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/;
+
+// Cleared on save, because that is when call sites in this workspace actually change. A scan is
+// otherwise repeated for every CodeLens refresh, which means every keystroke in the model file.
+const staticCallReferenceCache = new Map();
+
+function getPhpClassNameAfterOffset(source, offset) {
+	const classPattern = /\b(?:abstract\s+|final\s+|readonly\s+)*class\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/;
+
+	return classPattern.exec(source.slice(offset))?.[1];
+}
+
+// A `@method static` tag documents calls written literally as `Class::name(`, so the owning class
+// is the one declared after the docblock, not whatever the tag resolves to.
+function getPhpDocStaticCallScope(document, line) {
+	if (line >= document.lineCount) {
+		return undefined;
+	}
+
+	const match = PHPDOC_STATIC_METHOD_TAG_PATTERN.exec(document.lineAt(line).text);
+
+	if (!match) {
+		return undefined;
+	}
+
+	const className = getPhpClassNameAfterOffset(document.getText(), document.offsetAt(new vscode.Position(line, 0)));
+
+	return className ? { className, methodName: match[1] } : undefined;
+}
+
+// Intelephense resolves a `@method static` tag to the base class, so its reference list is every
+// model's call at once — 943 for `query()`. The ones that belong to this class are the locations
+// whose line reads `Class::` immediately before the match, which costs one read per distinct file.
+// Read through workspace.fs rather than openTextDocument: opening documents is what floods
+// Intelephense with diagnostics work and made the picker crawl.
+async function filterStaticCallReferences(references, className) {
+	const linesByUri = new Map();
+	// A backslash counts as a boundary, so `\App\Models\MetaToken::` and `\MetaToken::` match while
+	// `LegacyMetaToken::` does not.
+	const prefixPattern = new RegExp(`(?:^|[^A-Za-z0-9_])${className}\\s*::\\s*$`);
+	const matches = [];
+
+	for (const reference of references) {
+		const key = reference.uri.toString();
+
+		if (!linesByUri.has(key)) {
+			linesByUri.set(key, (await readWorkspaceText(reference.uri)).split('\n'));
+		}
+
+		const line = linesByUri.get(key)[reference.range.start.line];
+
+		if (line && prefixPattern.test(line.slice(0, reference.range.start.character))) {
+			matches.push(reference);
+		}
+	}
+
+	return matches;
+}
+
+async function getPhpDocStaticCallReferences(document, line, languageProviderReferences) {
+	const scope = getPhpDocStaticCallScope(document, line);
+
+	if (!scope) {
+		return undefined;
+	}
+
+	const cacheKey = `${scope.className}::${scope.methodName}`;
+	let references = staticCallReferenceCache.get(cacheKey);
+
+	if (references === undefined) {
+		references = await filterStaticCallReferences(languageProviderReferences, scope.className);
+		staticCallReferenceCache.set(cacheKey, references);
+	}
+
+	return references;
+}
+
+async function getPhpReferenceCodeLensCount(document, position, isDocTagLine) {
 	const [definitions, references] = await Promise.all([
-		getDefinitionTargets(uri, position),
-		getLanguageProviderReferences(uri, position),
+		getDefinitionTargets(document.uri, position),
+		getLanguageProviderReferences(document.uri, position),
 	]);
 
-	return references.filter((reference) => !isDefinitionLocation(reference, definitions)).length;
+	if (isDocTagLine) {
+		const staticCalls = await getPhpDocStaticCallReferences(document, position.line, references);
+
+		if (staticCalls) {
+			return staticCalls.length;
+		}
+	}
+
+	const documentKey = document.uri.toString();
+
+	return references.filter((reference) => {
+		if (isDefinitionLocation(reference, definitions)) {
+			return false;
+		}
+
+		if (!isDocTagLine) {
+			return true;
+		}
+
+		// A tag we cannot answer exactly — non-static `@method`, `@property` — falls back to the
+		// open file, where at least the number is about this class. The tag line is the
+		// declaration, not a usage of what it declares.
+		return reference.uri.toString() === documentKey
+			&& reference.range.start.line !== position.line;
+	}).length;
 }
 
 function createPhpReferenceCodeLensProvider() {
@@ -2668,6 +2778,10 @@ function createPhpReferenceCodeLensProvider() {
 
 			for (const symbol of symbols) {
 				const range = symbol.selectionRange || symbol.range;
+				// Symbols were fetched asynchronously, so the document may already be shorter;
+				// an out-of-range lineAt would reject the whole batch and blank every lens.
+				const isDocTagLine = range.start.line < document.lineCount
+					&& PHPDOC_TAG_LINE_PATTERN.test(document.lineAt(range.start.line).text);
 				const cacheKey = [
 					document.uri.toString(),
 					document.version,
@@ -2678,7 +2792,7 @@ function createPhpReferenceCodeLensProvider() {
 				let count = countCache.get(cacheKey);
 
 				if (count === undefined) {
-					count = await getPhpLanguageProviderReferenceCount(document.uri, range.start);
+					count = await getPhpReferenceCodeLensCount(document, range.start, isDocTagLine);
 					countCache.set(cacheKey, count);
 				}
 
@@ -2689,7 +2803,7 @@ function createPhpReferenceCodeLensProvider() {
 				lenses.push(new vscode.CodeLens(range, {
 					title: `${count} Reference${count === 1 ? '' : 's'}`,
 					command: 'smartReferences.showReferencesAt',
-					arguments: [document.uri, range.start],
+					arguments: [document.uri, range.start, isDocTagLine],
 				}));
 			}
 
@@ -2715,8 +2829,26 @@ async function getReferenceTargets(uri, position, options = {}) {
 		getAccessorPropertyReferences(uri, position),
 		getLaravelMacroCallReferences(uri, position),
 	]);
+	// On a docblock tag the provider's answer is about the base class, so it is either narrowed to
+	// this class's `Class::name(` call sites or, when the tag cannot be answered exactly, to the
+	// open file. Both happen before the merge so the rejected locations never reach
+	// showReferences, which opens a document per row.
+	let providerReferences = languageProviderReferences;
+	let sameFileOnly = false;
+
+	if (options.docTagScoped) {
+		const document = await vscode.workspace.openTextDocument(uri);
+		const staticCalls = await getPhpDocStaticCallReferences(document, position.line, languageProviderReferences);
+
+		if (staticCalls) {
+			providerReferences = staticCalls;
+		} else {
+			sameFileOnly = true;
+		}
+	}
+
 	const customReferences = [
-		...languageProviderReferences,
+		...providerReferences,
 		...invokeRouteReferences,
 		...gatePolicyReferences,
 		...gatePolicyMethodReferences,
@@ -2736,6 +2868,10 @@ async function getReferenceTargets(uri, position, options = {}) {
 			return false;
 		}
 
+		if (sameFileOnly && !sameUri(reference.uri, uri)) {
+			return false;
+		}
+
 		const key = getLocationLineKey(reference);
 
 		if (seen.has(key)) {
@@ -2751,6 +2887,7 @@ async function getReferenceTargets(uri, position, options = {}) {
 async function showReferencesAtLocation(uri, position, options = {}) {
 	const targets = await getReferenceTargets(uri, position, {
 		includeLanguageProviderReferences: Boolean(options.includeLanguageProviderReferences),
+		docTagScoped: Boolean(options.docTagScoped),
 	});
 
 	if (targets.length === 0) {
@@ -2798,6 +2935,7 @@ async function goToSmartReference(options = {}) {
 	await showReferencesAtLocation(uri, position, {
 		forcePicker: shouldForcePicker,
 		includeLanguageProviderReferences: true,
+		docTagScoped: PHPDOC_TAG_LINE_PATTERN.test(editor.document.lineAt(position.line).text),
 	});
 }
 
@@ -4915,11 +5053,17 @@ function activate(context) {
 	);
 
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.go', goToSmartReference));
-	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.showReferencesAt', async (uri, position) => {
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.showReferencesAt', async (uri, position, docTagScoped) => {
 		await showReferencesAtLocation(uri, position, {
 			forcePicker: true,
 			includeLanguageProviderReferences: true,
+			docTagScoped: Boolean(docTagScoped),
 		});
+	}));
+	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((saved) => {
+		if (saved.languageId === 'php') {
+			staticCallReferenceCache.clear();
+		}
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.useQuickPickReferences', async () => {
 		await setReferenceViewMode('quickPick');

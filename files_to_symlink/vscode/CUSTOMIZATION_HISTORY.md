@@ -2593,6 +2593,208 @@ Verification:
   checked statically; the editor still needs **Developer: Reload Window** and a
   visual pass before these colours can be called confirmed.
 
+### 2026-08-06 — Docblock @method reference counts scoped to the open file
+
+Intent:
+
+- stop the reference CodeLens reporting a base class's usage as if it belonged
+  to the annotated model. `@method static MetaTokenQueryBuilder query()` on
+  `MetaToken` claimed **943 References**, a number about Eloquent, not about
+  `MetaToken`.
+
+Root cause:
+
+- Intelephense reports `@method` and `@property` docblock tags as ordinary
+  document symbols of kind `Method`, so `getPhpReferenceCodeLensSymbols` picked
+  them up alongside real declarations;
+- asked for references at that position, Intelephense resolves the magic method
+  to whatever really declares it — `Illuminate\Database\Eloquent\Model::query()`
+  — and returns every reference to *that*. Counted in the real tree: 691
+  `query()` call sites under `app/`, `tests/`, `database/`, `routes/`, plus 105
+  in `vendor/laravel`, which is the reported 943. `newQuery()` showed 49 and
+  `newModelQuery()` 34 by the same route;
+- this was never an Intelephense CodeLens. `intelephense.codeLens.references.
+  enable` and `.parent.enable` are both `false`; both lenses on those lines are
+  ours, from `createPhpReferenceCodeLensProvider` and
+  `createPhpParentCodeLensProvider`.
+
+Implementation:
+
+- `getPhpLanguageProviderReferenceCount` gained a `sameFileOnly` argument that
+  keeps only references in the requested document, and drops any landing on the
+  tag's own line, since the tag is the declaration rather than a usage of it;
+- the provider sets that argument from `PHPDOC_TAG_LINE_PATTERN` against the
+  symbol's start line, guarded by a `document.lineCount` bounds check: symbols
+  arrive from an `await`, so a document that shrank in the gap would otherwise
+  throw out of `provideCodeLenses` and blank every lens in the file;
+- bumped Smart References to `0.0.21` and deployed through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- the obvious fix — report the true count for `MetaToken::query()` — was
+  rejected as unaffordable, not as wrong. Intelephense hands back one
+  undifferentiated list for an inherited method, so separating the annotated
+  class's call sites means opening and analysing all 943 on every CodeLens
+  refresh;
+- file scope was chosen over hiding the lens entirely, deliberately accepting
+  that the number is usually 0 (lens suppressed) or 1. A small true number was
+  preferred to a large false one;
+- the real-declaration lenses were left workspace-wide. The class lens on
+  `MetaToken` reads 267 and is correct; scoping every lens to the file would
+  have destroyed working behavior to fix a case that only affects annotations;
+- **a document symbol is not evidence of a declaration.** Any provider walking
+  `executeDocumentSymbolProvider` results in PHP will be handed docblock
+  annotations mixed in with real code, and any position-based language-server
+  query on those will silently answer about the parent.
+
+Verification:
+
+- the extension suite passes, 82 tests, 0 failures, and `node --check` is clean;
+- the shipped `PHPDOC_TAG_LINE_PATTERN` was extracted from `extension.js` and
+  run against the real `app/Models/MetaToken.php`: it matches every `@method`
+  and `@property` tag line, and falsely matches none of the 24 candidate
+  non-tag lines in that file — `public function …`, `@param`, `@see`, `use`,
+  and the `#[UseEloquentBuilder(...)]` attribute all correctly reject;
+- the installer completed, the live registry records `local.smart-references` at
+  `0.0.21`, and `.obsolete` is empty;
+- **not verified: the rendered CodeLens.** `createPhpReferenceCodeLensProvider`
+  lives in `extension.js`, which exports only `activate`/`deactivate` and has no
+  unit-test coverage; the counting path depends on live Intelephense responses.
+  Confirming that line 52 now reads `Parent` alone, and that the class lens
+  still reads `267 References`, needs **Developer: Reload Window** and a look at
+  the file.
+
+### 2026-08-06 — Docblock reference scoping extended to navigation
+
+Intent:
+
+- finish the previous entry's change, which scoped the *count* on a `@method`
+  tag but left every way of acting on it global. The lens could read
+  `1 Reference` and still open a 943-row picker, and `Cmd+B` on the same line
+  ran the full workspace search: slow, and visibly thrashing the Problems panel.
+
+Root cause:
+
+- `createPhpReferenceCodeLensProvider` and the navigation path do not share a
+  query. Counting goes through `getPhpLanguageProviderReferenceCount`, which was
+  scoped; opening goes through `showReferencesAtLocation` → `getReferenceTargets`,
+  which was not, and both the lens command and `smartReferences.go` land there;
+- the Problems churn is a second-order effect. `showReferences` builds one row
+  per target through `getReferenceContext`, which calls
+  `workspace.openTextDocument` per reference. 943 targets meant 943 opened
+  documents, each triggering Intelephense diagnostics.
+
+Implementation:
+
+- `getReferenceTargets` gained a `sameFileOnly` option, filtered inside its
+  existing pass so rejected locations never reach `showReferences` and the
+  document-per-row cost disappears with them;
+- `showReferencesAtLocation` threads the option through; the CodeLens passes its
+  already-computed scope as a third command argument; `goToSmartReference`
+  derives it from the line under the cursor, so `Cmd+B` and the lens agree;
+- the Laravel policy CodeLens passes no third argument and stays workspace-wide;
+- bumped Smart References to `0.0.22` and deployed.
+
+Decisions and lessons:
+
+- **scoping a count without scoping its command is worse than not scoping at
+  all.** The number and the thing it opens have to answer the same question, or
+  the lens becomes a lie the user only discovers by clicking it. Any future
+  filter added to a count must be pushed into `getReferenceTargets` too;
+- `getReferenceTargets` was the right choke point precisely because it sits
+  before the expensive fan-out, not after.
+
+Verification:
+
+- the extension suite passes, 82 tests, 0 failures; `node --check` clean;
+  installer completed and the live registry records `0.0.22`;
+- traced by reading, not by running: with `sameFileOnly` false the filter
+  reduces to its previous expression, so real declarations are unaffected.
+
+Open, and explicitly not verified:
+
+- a report came in that **no** reference counts render at all, not just the
+  suppressed docblock ones. That cannot come from this code path: for any line
+  that fails `PHPDOC_TAG_LINE_PATTERN`, `sameFileOnly` is false and the count
+  filter is byte-for-byte the previous expression. The Intelephense log for the
+  current host shows indexing finished at 12:40:03, so a cold index is not the
+  explanation either, and no exception from `local.smart-references` appears in
+  `exthost.log`. Whether the class lens still renders `267 References` is the
+  question that separates "docblock tags correctly suppressed at 0" from a real
+  regression, and it has not yet been answered.
+
+### 2026-08-06 — Docblock @method counts answered per class, correcting two earlier entries
+
+Intent:
+
+- make `@method static MetaTokenQueryBuilder query()` report the number that was
+  wanted all along: how many times `MetaToken::query(` is called. It reported
+  943 (every `Model::query()` in the workspace), then 0 (scoped to the open
+  file), and `Cmd+B` answered `No other references found` for a method with 33
+  real call sites.
+
+Correcting the two entries above:
+
+- the first claimed a per-class count was unaffordable, on the reasoning that
+  separating them meant opening all 943 call sites. That was wrong twice over.
+  The extension already sweeps `**/*.php` with `findFiles` + `readWorkspaceText`
+  inside a CodeLens path — `getLaravelGatePolicyReferenceCounts` does exactly
+  that — so a targeted scan was always within the house budget. And the cheaper
+  route was never considered: the provider's own reference list already contains
+  the wanted locations, so only the *receiver* needs disambiguating, which costs
+  one read per distinct file rather than one per reference;
+- the second then built file scoping on that false premise, which is why the
+  lens vanished and `Cmd+B` went dead. File scope survives only as the fallback
+  for tags a `Class::name(` scan cannot answer.
+
+Implementation:
+
+- `filterStaticCallReferences` keeps the provider locations whose line reads
+  `Class::` immediately before the match, reading each distinct file once
+  through `workspace.fs` — never `openTextDocument`, which is what generated the
+  diagnostics storm;
+- `getPhpDocStaticCallScope` reads the method name from the tag and takes the
+  owning class from the declaration *after* the docblock, since a class docblock
+  precedes its class;
+- both the count and `getReferenceTargets` go through the same helper, so the
+  lens and `Cmd+B` cannot disagree again;
+- results cache on `Class::name` and clear on PHP save, because the scan would
+  otherwise repeat per keystroke;
+- bumped to `0.0.23`.
+
+Decisions and lessons:
+
+- **the language server resolves, text disambiguates.** Intelephense correctly
+  finds every `query()` reference; it just cannot say which receiver each has,
+  because for an inherited method they are genuinely the same symbol. Filtering
+  its output beats both trusting it whole and replacing it with a grep;
+- only `@method static` can be answered this way. A non-static `@method` or a
+  `@property` is reached through `->name`, whose receiver type is not
+  recoverable from text, so those keep the file-scoped fallback;
+- `self::query()` and `static::query()` inside the model are deliberately not
+  counted. The test asserts this, so the choice is visible if it needs revising;
+- "affordable" was assumed rather than measured, twice. The cost that mattered
+  was `openTextDocument` per row, not the file count.
+
+Verification:
+
+- 85 tests, 0 failures, including a new `phpDocStaticCalls.test.js` that pins
+  the three patterns against the exact regression: `FacebookPage::query()`,
+  `$builder->query()` and `LegacyMetaToken::query()` must be rejected while
+  `MetaToken::query()`, `\App\Models\MetaToken::query()` and `MetaToken :: query()`
+  are kept;
+- that test **failed first** on the fully-qualified form, which the initial
+  pattern rejected; the fix took the real count from 32 to 33;
+- the shipped patterns were extracted from `extension.js` and run over the real
+  `spro-marketing` tree: of 715 candidate `query(` sites, exactly 33 survive the
+  `MetaToken::` test, matching `grep` ground truth. The tag pattern finds all
+  three `@method static` lines in `MetaToken.php` and resolves each to
+  `MetaToken`;
+- installer completed, live registry records `0.0.23`;
+- **not verified: the rendered lens.** `provideCodeLenses` still needs live
+  Intelephense output, and `extension.js` exports only `activate`/`deactivate`,
+  so the wiring between these patterns and the lens is covered by reading only.
+
 ### 2026-08-06 — Backtick code spans stopped swallowing the rest of the line
 
 Intent:
