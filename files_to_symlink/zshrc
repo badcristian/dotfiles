@@ -211,6 +211,29 @@ bindkey -M viins '^H' backward-delete-char
 bindkey -M viins '^U' kill-whole-line
 bindkey -M viins '^W' backward-kill-word
 bindkey -M viins '^[^?' backward-kill-word
+# y and Y fill only $CUTBUFFER, zsh's own register, which p and P can paste but
+# nothing outside the line editor can see — so V then y looks like a copy and
+# leaves the system clipboard untouched. Mirror each yank to pbcopy as well.
+# vicmd is the right keymap for both forms: visual-line-mode does not switch
+# keymaps, it sets REGION_ACTIVE and stays in vicmd, so this one binding covers
+# V then y as well as a bare y with a motion.
+# Deletes are deliberately not mirrored, matching Vim, where d and x fill the
+# unnamed register without touching the system clipboard.
+vi-yank-clipboard() {
+	zle vi-yank
+	printf '%s' "$CUTBUFFER" | pbcopy
+}
+zle -N vi-yank-clipboard
+
+vi-yank-whole-line-clipboard() {
+	zle vi-yank-whole-line
+	printf '%s' "$CUTBUFFER" | pbcopy
+}
+zle -N vi-yank-whole-line-clipboard
+
+bindkey -M vicmd 'y' vi-yank-clipboard
+bindkey -M vicmd 'Y' vi-yank-whole-line-clipboard
+
 # The live mode indicator comes from starship's own zle-keymap-select widget,
 # which reruns the prompt on every keymap change so character.vimcmd_symbol can
 # swap ‹ in for ›. It needs no setup here: starship installs it at line 155 and
