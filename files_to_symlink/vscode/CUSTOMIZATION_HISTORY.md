@@ -2870,3 +2870,67 @@ Repeating the tokenizer check:
   scope `text.html.php`, register this injection through `getInjections`, and
   tokenize line by line carrying the `ruleStack` forward. The extension itself
   is kept dependency-free, so this stays a scratch harness rather than a test.
+
+### 2026-08-06 — Git status colours restored to explorer filenames in light mode
+
+Intent:
+
+- colour explorer filenames by git status in the light theme, which showed
+  coloured status badges beside uniformly black filenames while the dark theme
+  coloured both.
+
+Root cause:
+
+- not the colour customizations, which were correct and live. The badges proved
+  it: measured out of the reported screenshot, the `U` badge is `#d97835` and
+  the `R` badge `#007C7C`, exactly the configured `gitDecoration` values;
+- the injected `custom-workbench.css` was overriding the label. Its light rule
+  selected `.vs .explorer-folders-view .monaco-list-row .monaco-icon-label
+  .label-name` — every row — and set `color: #1f2328 !important`, which beats
+  the decoration colour VS Code puts on the label. The dark rule immediately
+  above it is scoped to `.monaco-icon-label.folder-icon`, folders only, which is
+  the entire reason dark mode was unaffected. The asymmetry was the bug.
+
+Implementation:
+
+- the light rule was narrowed to `.folder-icon`, matching the dark rule;
+- a second rule keeps `opacity: 1` for all light file labels, so only the
+  `color` half of the old rule is gone. Undecorated filenames are carried by
+  `list.foreground` in `[GitHub Light]`, which is already `#000000`;
+- `gitDecoration.added` and `gitDecoration.untracked` were darkened from
+  `#d97835` to `#9a4f00` in both light blocks. The dark themes keep `#d97835`
+  through the top-level customizations and are untouched.
+
+Decisions and lessons:
+
+- **a coloured badge beside an uncoloured label means CSS, not settings.** Both
+  are drawn from the same `gitDecoration.*` colour, so when they disagree the
+  colour resolved correctly and something overrode the label afterwards;
+- a per-theme CSS rule written with a different selector depth than its
+  counterpart is a latent divergence. These two were introduced as a pair and
+  read as symmetric, but one matched folders and the other matched everything;
+- the contrast fix was not cosmetic. `#d97835` measures **2.95:1** on the light
+  sidebar `#F7F8FA` — below the 3:1 floor. It was invisible as a defect only
+  because it was confined to a two-character badge; the moment the CSS fix let
+  it reach the filename it would have shipped a wall of unreadable orange.
+  `#9a4f00` is the same hue at 5.66:1.
+
+Verification:
+
+- every light `gitDecoration` colour was measured against the sidebar
+  background: modified `#0042c7` 7.59:1, submodule `#7503DC` 7.05:1, deleted
+  `#616161` 5.83:1, renamed `#007C7C` 4.73:1, ignored `#727238` 4.73:1, and the
+  new orange 5.66:1. Only `conflicting` `#FF0000` remains weak at 3.76:1; it was
+  left alone as a rarely-shown deliberate alarm colour;
+- `settings.json` was parsed as JSONC and the resolved palettes printed per
+  theme, confirming both light blocks changed and the dark themes still inherit
+  the top-level values;
+- `workbench.html` was checked and still contains the **old** selector and none
+  of the new rule, which confirms the CSS change is not live yet.
+
+Not verified, and required to take effect:
+
+- the CSS is inlined into `workbench.html`, so this needs **Reload Custom CSS
+  and JS**, a restart, and then `fix_vscode_checksums.sh` before the light
+  explorer is expected to change at all. The `settings.json` half needs only a
+  reload. No rendered pixels were confirmed for either.

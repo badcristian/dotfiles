@@ -94,8 +94,19 @@
 	color: #f2f2f2 !important;
 }
 
-.monaco-workbench.vs .explorer-folders-view .monaco-list-row .monaco-icon-label .label-name {
+/* Folders only, matching the dark rule above. This rule used to select every row, and its
+ * `color` beat the git decoration colour that VS Code sets on the label, so light mode showed
+ * black filenames with coloured badges while dark mode — where the equivalent rule is scoped to
+ * `.folder-icon` — coloured both. Undecorated files do not need it: `list.foreground` in the
+ * `[GitHub Light]` colour customizations already carries them. */
+.monaco-workbench.vs .explorer-folders-view .monaco-icon-label.folder-icon .label-name {
 	color: #1f2328 !important;
+	opacity: 1 !important;
+}
+
+/* Files keep whatever colour VS Code gives them, but never a dimmed one. Only the opacity half
+ * of the old rule is preserved here; restoring `color` would reintroduce the bug above. */
+.monaco-workbench.vs .explorer-folders-view .monaco-list-row .monaco-icon-label .label-name {
 	opacity: 1 !important;
 }
 
