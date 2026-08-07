@@ -3104,3 +3104,90 @@ Verification:
   Restify partial classes is likewise a live-editor question. Both need
   **Developer: Reload Window**, then `Shift+Cmd+.` to regenerate the helper, and
   a real `Cmd+B` on `->get()` and on `facebookGraph`.
+
+### 2026-08-07 — Light mode given a full tab ring and the missing light icons
+
+Intent:
+
+- the active tab in `GitHub Light` had a blue line above and below it and nothing
+  down its sides, and some PHP files showed a black disc where the class icon
+  should be. Make the outline go all the way round and the icons match the theme.
+
+Diagnosis, from measuring the screenshot rather than reading the settings:
+
+- a vertical slice through the active tab gives `#94b6f7` on the two device rows
+  at each end of a `#deeafc` fill; the horizontal slices at those same rows show
+  the fill running edge to edge with no blue at either side. Those are
+  `tab.activeBorderTop` and `tab.activeBorder`, both `#8bb8ff` in the light
+  blocks, and VS Code renders each as `left: 0; width: 100%; height: 1px` inside
+  the tab — `.tab-border-top-container` at `top: 0`, `.tab-border-bottom-container`
+  at `bottom: 0`. The grey `d0d7de` between tabs is `tab.border`. Three different
+  outlines on one tab, none of them a ring;
+- the dark themes never showed this because the inset-ring rule added earlier was
+  scoped `.vs-dark`, on the stated assumption that light themes separate their
+  tabs by fill alone. They do not;
+- the icons are a separate fault with the same shape. `applyPhpLightOverrides`
+  mirrored only the mappings the workspace scan generated, so the 114 `fileNames`
+  the theme ships with kept pointing at the dark JetBrains icon in light mode.
+  Four of them use a dark-surface shape — `Response.php` and `Validator.php` at
+  `file_class`, whose `class.svg` fills its circle `#25324D`, plus `functions.php`
+  and `getter.php` at `file_php`.
+
+Implementation:
+
+- added a `.vs` active-tab rule mirroring the dark one, taking its colour from
+  `--tab-border-bottom-color`. VS Code sets that as an inline style on the tab
+  element itself from `tab.activeBorder`, so the ring is by construction the
+  colour already painted along the bottom edge and stays governed per theme from
+  `settings.json` — no literal, and no new colour to keep in step;
+- the strips are left in place rather than hidden. `--tab-border-top-color` also
+  carries `tab.activeModifiedBorder`, so hiding the container to avoid a doubled
+  edge would have taken the dirty-file marker with it. Same colour, same 5px
+  clip, so the overlap does not show;
+- `applyPhpLightOverrides` now also walks the theme's own `fileNames` and
+  redirects any entry whose icon has a light variant, without overwriting one the
+  scan already set.
+
+Decisions and lessons:
+
+- only icons already listed in `lightFileIcons` are redirected. Those are the
+  JetBrains shapes built on a dark surface; a brand logo like ESLint's or
+  Prettier's carries its own colours and reads the same either way, so generating
+  a light variant for it would change icons that were never wrong;
+- the screenshot was the evidence, not the starting point for a theory. Counting
+  colours in the two icon regions returned identical histograms — 440 background,
+  343 interior, 128 blue — which is what proved they were the same shape in two
+  fills rather than two different icons, and sent the search to the light
+  override rather than to the classifier.
+
+Verification:
+
+- the light-override step was replayed against the live theme with the shipped
+  generated names stripped first, exactly as `writeTheme` sequences it: files
+  lacking a light override fall from 114 to 110, with `Response.php` and
+  `Validator.php` now at `file_class_light` and `functions.php`/`getter.php` at
+  `file_php_light`. The 110 that remain were checked against `lightenSvg`'s
+  palette and carry no dark surface;
+- VS Code's own bundled stylesheet was read to confirm the strip geometry, and
+  `workbench.desktop.main.js` to confirm `--tab-border-bottom-color` is set
+  inline on the tab element and that the top variable doubles as the dirty
+  marker;
+- `node --check` on the changed extension, `jq empty` on every manifest,
+  `git diff --check`, `bash -n` on the installers, and 111 tests still passing;
+- `install_vscode.sh` run; the live registry reports
+  `local.phpstorm-project-icons@0.0.2` and the injected CSS resolves to a symlink
+  into this repository;
+- **not verified: the rendered result.** The CSS is inlined into `workbench.html`
+  by the loader, so it needs **Reload Custom CSS and JS** and a restart, and the
+  icon mapping needs the refresh command rerun before the theme on disk changes.
+  Neither is claimed by these checks.
+
+Known and not fixed:
+
+- `file_config` is also a dark-surface icon — `config.svg` fills its page shape
+  `#43454A` — and covers `component.json`, `components.json`, `CMakeCache.txt`
+  and the `.cfg/.conf/.config/.cnf` extensions. It is not in `lightFileIcons`,
+  and adding it is not a one-line change: its outline is `#CED0D6`, which
+  `lightenSvg` only darkens in its folder branch, so a generated light variant
+  would be a white page with an almost invisible edge. It needs the file branch
+  to learn that colour and a look at the result.

@@ -73,10 +73,28 @@
  * `.vs` — both dark themes share one class, so a literal value could only suit one of them. The
  * translucent ring composites to each theme's own border colour anyway: over Monokai Pro's active
  * tab it resolves to #5b595c, which is exactly that theme's border, and over Catppuccin's to
- * #5c5f70, a shade off its Surface2. Light themes already separate their tabs by fill and are left
- * alone. */
+ * #5c5f70, a shade off its Surface2. */
 .monaco-workbench.vs-dark .part.editor .editor-group-container > .title .tabs-container > .tab.active {
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
+}
+
+/* The light themes were left without a ring on the assumption that their tabs separate by fill
+ * alone. They do not: `tab.activeBorder` and `tab.activeBorderTop` are both set to #8bb8ff there,
+ * and VS Code renders each as `left: 0; width: 100%; height: 1px` inside the tab —
+ * `.tab-border-top-container` pinned to `top: 0` and `.tab-border-bottom-container` to `bottom: 0`.
+ * That is a blue line above and below the active tab and nothing down its sides, while the grey
+ * `tab.border` runs between tabs, so one tab was outlined in three different ways.
+ *
+ * The same inset ring closes it. The colour is read from `--tab-border-bottom-color`, which VS Code
+ * sets as an inline style on the tab element itself from `tab.activeBorder`, so the ring is by
+ * construction the colour already being painted along the bottom edge and stays governed by the
+ * per-theme ladder in `settings.json`. The two strips paint over the ring's top and bottom in that
+ * same colour and the corners clip to the shared 5px radius, so the seam does not show.
+ *
+ * The strips are deliberately not hidden: `--tab-border-top-color` also carries
+ * `tab.activeModifiedBorder`, so a dirty tab still marks itself along the top. */
+.monaco-workbench.vs .part.editor .editor-group-container > .title .tabs-container > .tab.active {
+	box-shadow: inset 0 0 0 1px var(--tab-border-bottom-color, transparent) !important;
 }
 
 /* `tab.hoverBackground` is a single colour that VS Code paints on any hovered tab, the active one

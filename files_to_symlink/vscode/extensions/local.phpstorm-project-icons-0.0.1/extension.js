@@ -346,6 +346,23 @@ function applyPhpLightOverrides(theme, generatedMappings) {
   for (const [fileName, iconId] of generatedMappings) {
     theme.light.fileNames[fileName] = lightFileIcons.get(iconId) || iconId;
   }
+
+  // The theme ships its own `fileNames` — `Response.php`, `Validator.php`, `functions.php` — and
+  // those are not ours to generate, so mirroring only the scanned mappings left them pointing at the
+  // dark JetBrains icon whatever the colour theme was. A dark icon on a light background is not a
+  // subtle mismatch: `class.svg` fills its circle with #25324D, so those files read as black discs
+  // beside the white ones the scan produced.
+  //
+  // Only icons in `lightFileIcons` are redirected. Those are the JetBrains shapes whose fill is a
+  // dark surface; a brand logo like ESLint's or Prettier's carries its own colours and looks the
+  // same either way, so inventing a light variant for it would change icons that were never wrong.
+  for (const [fileName, iconId] of Object.entries(theme.fileNames || {})) {
+    const lightIconId = lightFileIcons.get(iconId);
+
+    if (lightIconId && !theme.light.fileNames[fileName]) {
+      theme.light.fileNames[fileName] = lightIconId;
+    }
+  }
 }
 
 function writeTheme(generatedMappings) {
