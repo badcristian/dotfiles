@@ -4,10 +4,17 @@ const assert = require('node:assert/strict');
 const {
 	blankPhpCommentsAndStrings,
 	findMacroCallRanges,
-	findMacroRegistrationRange,
+	findMacroRegistrations,
 	getMacroCallNameAtOffset,
 	getMacroRegistrationNameAtOffset,
 } = require('../laravelMacroNavigation');
+
+// The registration scan reports every macro in a file; these cases care about one name's offsets.
+function findRegistrationRange(source, name) {
+	const registration = findMacroRegistrations(source).find((entry) => entry.name === name);
+
+	return registration && { start: registration.start, end: registration.end };
+}
 
 test('recognizes a static macro call when the cursor is on the method name', () => {
 	const source = "Rule::uniqueCaseInsensitive('companies', 'identification_number')";
@@ -70,7 +77,7 @@ test('finds the macro registration and selects the name without its quotes', () 
 		'});',
 	].join('\n');
 
-	const range = findMacroRegistrationRange(source, 'uniqueCaseInsensitive');
+	const range = findRegistrationRange(source, 'uniqueCaseInsensitive');
 
 	assert.equal(source.slice(range.start, range.end), 'uniqueCaseInsensitive');
 	assert.equal(source[range.start - 1], "'");
@@ -85,7 +92,7 @@ test('finds a registration written with double quotes, extra whitespace, or a st
 	];
 
 	for (const source of cases) {
-		const range = findMacroRegistrationRange(source, 'uniqueCaseInsensitive');
+		const range = findRegistrationRange(source, 'uniqueCaseInsensitive');
 
 		assert.equal(source.slice(range.start, range.end), 'uniqueCaseInsensitive');
 	}
@@ -102,7 +109,7 @@ test('finds a registration written with PHP 8 named arguments, on one line or se
 	].join('\n');
 
 	for (const source of [inline, wrapped]) {
-		const range = findMacroRegistrationRange(source, 'uniqueCaseInsensitive');
+		const range = findRegistrationRange(source, 'uniqueCaseInsensitive');
 
 		assert.equal(source.slice(range.start, range.end), 'uniqueCaseInsensitive');
 		assert.equal(source[range.start - 1], "'");
@@ -113,7 +120,7 @@ test('finds a registration written with PHP 8 named arguments, on one line or se
 test('does not read a name out of the closure when the macro argument comes first', () => {
 	const source = "Rule::macro(macro: function () { return 'uniqueCaseInsensitive'; }, name: 'other');";
 
-	assert.equal(findMacroRegistrationRange(source, 'uniqueCaseInsensitive'), undefined);
+	assert.equal(findRegistrationRange(source, 'uniqueCaseInsensitive'), undefined);
 	assert.equal(getMacroRegistrationNameAtOffset(source, source.indexOf('uniqueCaseInsensitive') + 5), undefined);
 });
 
@@ -121,13 +128,13 @@ test('does not mistake a call site or a similarly named macro for the registrati
 	const callSite = "Rule::uniqueCaseInsensitive('companies', 'identification_number');";
 	const otherMacro = "Rule::macro('uniqueCaseInsensitiveOnJson', $callback);";
 
-	assert.equal(findMacroRegistrationRange(callSite, 'uniqueCaseInsensitive'), undefined);
-	assert.equal(findMacroRegistrationRange(otherMacro, 'uniqueCaseInsensitive'), undefined);
+	assert.equal(findRegistrationRange(callSite, 'uniqueCaseInsensitive'), undefined);
+	assert.equal(findRegistrationRange(otherMacro, 'uniqueCaseInsensitive'), undefined);
 });
 
 test('rejects a name that is not a PHP identifier', () => {
-	assert.equal(findMacroRegistrationRange("Rule::macro('a.b', $callback);", 'a.b'), undefined);
-	assert.equal(findMacroRegistrationRange('Rule::macro($name, $callback);', ''), undefined);
+	assert.equal(findRegistrationRange("Rule::macro('a.b', $callback);", 'a.b'), undefined);
+	assert.equal(findRegistrationRange('Rule::macro($name, $callback);', ''), undefined);
 });
 
 test('recognizes a registration when the cursor is inside the macro name literal', () => {
@@ -240,4 +247,118 @@ test('blanking preserves every offset and newline, and leaves attributes as code
 	assert.ok(!blanked.includes('trailing'));
 	assert.ok(!blanked.includes('block'));
 	assert.ok(!blanked.includes('text'));
+});
+
+// ---- whole-file registration scan (the index and the IDE-helper stub both read this) ----------
+
+test('reads every registration in a file, with its receiver, parameters and return type', () => {
+	const source = [
+		'<?php',
+		'',
+		'namespace App\\Providers;',
+		'',
+		'use Illuminate\\Support\\Facades\\Http;',
+		'',
+		'class AppServiceProvider',
+		'{',
+		'    private function registerHttpMacros(): void',
+		'    {',
+		'        Http::macro(',
+		"            'facebookGraph',",
+		'            fn (): PendingRequest => Http::baseUrl(MetaService::GRAPH_BASE)->timeout(30),',
+		'        );',
+		'',
+		"        Http::macro('instagramGraph', function (string $path, int $timeout = 30): PendingRequest {",
+		'            return Http::baseUrl($path)->timeout($timeout);',
+		'        });',
+		'    }',
+		'}',
+	].join('\n');
+
+	const registrations = findMacroRegistrations(source);
+
+	assert.equal(registrations.length, 2);
+	assert.equal(source.slice(registrations[0].start, registrations[0].end), 'facebookGraph');
+	assert.deepEqual(
+		registrations.map((registration) => ({
+			name: registration.name,
+			receiver: registration.receiver,
+			isStatic: registration.isStatic,
+			parameters: registration.parameters,
+			returnType: registration.returnType,
+		})),
+		[
+			{
+				name: 'facebookGraph',
+				receiver: 'Http',
+				isStatic: true,
+				parameters: '',
+				returnType: 'PendingRequest',
+			},
+			{
+				name: 'instagramGraph',
+				receiver: 'Http',
+				isStatic: true,
+				parameters: 'string $path, int $timeout = 30',
+				returnType: 'PendingRequest',
+			},
+		],
+	);
+});
+
+test('a variable receiver is reported without a class name', () => {
+	const source = "$factory->macro('withRetries', fn (): self => $this);";
+	const [registration] = findMacroRegistrations(source);
+
+	assert.equal(registration.name, 'withRetries');
+	assert.equal(registration.isStatic, false);
+	assert.equal(registration.receiver, undefined);
+});
+
+test('a namespaced or chained receiver is distinguished from a call result', () => {
+	assert.equal(
+		findMacroRegistrations("\\Illuminate\\Support\\Str::macro('slugify', fn () => 1);")[0].receiver,
+		'\\Illuminate\\Support\\Str',
+	);
+	assert.equal(
+		findMacroRegistrations("Http::factory()->macro('slugify', fn () => 1);")[0].receiver,
+		undefined,
+	);
+});
+
+test('parameter defaults keep their own parentheses, brackets and commas', () => {
+	const source = "Rule::macro('unique', fn (array $columns = ['a', 'b'], string $glue = ', ') => 1);";
+
+	assert.equal(
+		findMacroRegistrations(source)[0].parameters,
+		"array $columns = ['a', 'b'], string $glue = ', '",
+	);
+});
+
+test('a macro bound to something other than a closure has no signature to report', () => {
+	const [registration] = findMacroRegistrations("Http::macro('probe', [self::class, 'probe']);");
+
+	assert.equal(registration.name, 'probe');
+	assert.equal(registration.parameters, undefined);
+	assert.equal(registration.returnType, undefined);
+});
+
+test('a named-argument registration is read like a positional one', () => {
+	const source = "Rule::macro(name: 'uniqueCaseInsensitive', macro: fn (): Unique => new Unique());";
+	const [registration] = findMacroRegistrations(source);
+
+	assert.equal(registration.name, 'uniqueCaseInsensitive');
+	assert.equal(registration.receiver, 'Rule');
+	assert.equal(registration.returnType, 'Unique');
+});
+
+test('a union or nullable return type survives intact', () => {
+	assert.equal(
+		findMacroRegistrations("Http::macro('maybe', fn (): ?PendingRequest => null);")[0].returnType,
+		'?PendingRequest',
+	);
+	assert.equal(
+		findMacroRegistrations("Http::macro('either', fn (): PendingRequest|Response => null);")[0].returnType,
+		'PendingRequest|Response',
+	);
 });

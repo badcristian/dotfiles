@@ -3,7 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { getStubClassDeclaration, isMatchingPhpClassSource } = require('../laravelHelperNavigation');
+const {
+	getStubClassDeclaration,
+	getStubMethodName,
+	isMatchingPhpClassSource,
+} = require('../laravelHelperNavigation');
 
 test('finds the real namespaced class represented by a manual helper stub line', () => {
 	const source = `<?php
@@ -56,4 +60,37 @@ class FacebookBusinessManager extends Model
 
 	assert.equal(isMatchingPhpClassSource(source, 'FacebookBusinessManager', 'App\\Models'), true);
 	assert.equal(isMatchingPhpClassSource(source, 'FacebookBusinessManager', 'Other\\Models'), false);
+});
+
+test('reads the macro name out of a generated @method tag', () => {
+	const source = `<?php
+
+namespace Illuminate\\Support\\Facades {
+    /**
+ * @method static \\Illuminate\\Http\\Client\\PendingRequest facebookGraph()
+ * @method \\Illuminate\\Http\\Client\\PendingRequest facebookGraph()
+ * @method static \\Illuminate\\Http\\Client\\PendingRequest probe(mixed ...$arguments)
+     */
+    class Http {}
+}
+`;
+
+	assert.equal(getStubMethodName(source, 4), 'facebookGraph');
+	assert.equal(getStubMethodName(source, 5), 'facebookGraph');
+	assert.equal(getStubMethodName(source, 6), 'probe');
+	// Intelephense sometimes points at the docblock opener instead of the tag.
+	assert.equal(getStubMethodName(source, 3), 'facebookGraph');
+});
+
+test('does not read a method name off an accessor property or a class line', () => {
+	const source = `namespace App\\Models {
+    /**
+ * @property-read int $ad_accounts_count
+     */
+    class FacebookBusinessManager {}
+}
+`;
+
+	assert.equal(getStubMethodName(source, 2), undefined);
+	assert.equal(getStubMethodName(source, 4), undefined);
 });

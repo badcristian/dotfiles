@@ -3,7 +3,11 @@ const path = require('path');
 // Laravel IDE-helper generator — a single on-demand COMMAND (no live providers). Safe: it never
 // registers a Definition/Reference provider, so it can't be auto-invoked into a re-analysis storm.
 const laravelIntelligence = require('./laravelIntelligence');
-const { getStubClassDeclaration, isMatchingPhpClassSource } = require('./laravelHelperNavigation');
+const {
+	getStubClassDeclaration,
+	getStubMethodName,
+	isMatchingPhpClassSource,
+} = require('./laravelHelperNavigation');
 const phpMove = require('./phpMove');
 const { shouldInsertJsonComma } = require('./jsonSmartEnter');
 const {
@@ -12,7 +16,7 @@ const {
 } = require('./laravelConfigNavigation');
 const {
 	findMacroCallRanges,
-	findMacroRegistrationRange,
+	findMacroRegistrations,
 	getMacroCallNameAtOffset,
 	getMacroRegistrationNameAtOffset,
 } = require('./laravelMacroNavigation');
@@ -78,6 +82,26 @@ function getLocationLineKey(location) {
 
 async function readWorkspaceText(uri) {
 	return Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+}
+
+// Every workspace scan below reads a file set that is thousands of entries long in a real Laravel
+// project. `vscode.workspace.fs.readFile` is one extension-host round trip per call, so awaiting them
+// one at a time spends seconds waiting on latency rather than on disk — a 2,000-file scan measured in
+// whole seconds. Reading a batch at a time overlaps the round trips while still handing files to the
+// caller in workspace order, which is what keeps "the first match wins" meaningful.
+const FILE_SCAN_BATCH_SIZE = 32;
+
+async function forEachFileText(files, handle) {
+	for (let start = 0; start < files.length; start += FILE_SCAN_BATCH_SIZE) {
+		const batch = files.slice(start, start + FILE_SCAN_BATCH_SIZE);
+		const texts = await Promise.all(batch.map((uri) => tryReadWorkspaceText(uri)));
+
+		for (let index = 0; index < batch.length; index++) {
+			if (texts[index] !== undefined) {
+				await handle(texts[index], batch[index]);
+			}
+		}
+	}
 }
 
 function getWorkspaceFolderUri(uri) {
@@ -522,6 +546,25 @@ async function resolveLaravelHelperTarget(target) {
 		return undefined;
 	}
 
+	// A macro call resolves to the generated `@method` tag, which is a description of the macro and
+	// not the macro itself. Landing there instead of on `Http::macro('facebookGraph', …)` would trade
+	// one dead end for another, so the tag hands off to the registration index.
+	const stubMethod = getStubMethodName(stubText, target.range.start.line);
+
+	if (stubMethod) {
+		const registration = (await getMacroIndex(target.uri)).get(stubMethod);
+
+		if (registration) {
+			logDebug(`  macro redirect: ${stubMethod} -> ${registration.uri.path}:${registration.range.start.line + 1}`);
+
+			return registration;
+		}
+
+		logDebug(`  no macro registration found for stubbed method ${stubMethod}`);
+
+		return undefined;
+	}
+
 	const lines = stubText.split('\n');
 	const startLine = target.range.start.line;
 	// Intelephense usually points at the @property line; tolerate an off-by-one onto the /** opener.
@@ -721,10 +764,9 @@ async function findPropertyUsagesByText(property) {
 	);
 	const results = [];
 
-	for (const fileUri of files) {
-		const text = await tryReadWorkspaceText(fileUri);
-		if (!text || !text.includes(property)) {
-			continue;
+	await forEachFileText(files, (text, fileUri) => {
+		if (!text.includes(property)) {
+			return;
 		}
 
 		const usagePattern = new RegExp(`->\\s*${escapeRegExp(property)}\\b`, 'g');
@@ -734,7 +776,7 @@ async function findPropertyUsagesByText(property) {
 			const position = offsetToPosition(text, nameOffset);
 			results.push(new vscode.Location(fileUri, new vscode.Range(position, position)));
 		}
-	}
+	});
 
 	return results;
 }
@@ -812,9 +854,71 @@ async function resolveLaravelConfigTarget(uri, position) {
 }
 
 // Laravel adds macros to a class at runtime, so Intelephense reports `Rule::uniqueCaseInsensitive()`
-// as undefined and has no target to offer. Only once native resolution has come back empty do we
-// scan first-party source for the matching `::macro('name', …)` registration — normal navigation
-// never pays for this, and a macro call has nothing to lose by it.
+// as undefined and has no target to offer, and only a scan of first-party source can find the
+// `::macro('name', …)` that defines it. That scan runs whenever native resolution comes back empty,
+// which in a Laravel project is not rare: any call on a value the language server cannot type — the
+// `->get()` on a macro's own return value, for one — asks for a name that no registration will ever
+// match, and the old per-call scan paid for the whole workspace before answering "no". So the
+// registrations are collected once into a name-keyed index and every later lookup is a Map hit. The
+// watcher in `activate` drops the index whenever a PHP file changes, so an added macro is found on
+// the next Cmd+B.
+const MACRO_REGISTRATION_GLOB = '{app,routes,bootstrap,database,tests}/**/*.php';
+const macroIndexes = new Map();
+
+function invalidateMacroIndex() {
+	macroIndexes.clear();
+}
+
+async function buildMacroIndex(folderUri) {
+	const files = await vscode.workspace.findFiles(
+		new vscode.RelativePattern(folderUri, MACRO_REGISTRATION_GLOB),
+		PHP_SEARCH_EXCLUDE,
+		4000,
+	);
+	const index = new Map();
+
+	await forEachFileText(files, (text, fileUri) => {
+		if (!text.includes('macro')) {
+			return;
+		}
+
+		for (const registration of findMacroRegistrations(text)) {
+			// First registration wins, matching the order the files were scanned in.
+			if (!index.has(registration.name)) {
+				index.set(registration.name, {
+					uri: fileUri,
+					range: rangeFromOffsets(text, registration.start, registration.end),
+				});
+			}
+		}
+	});
+
+	logDebug(`Laravel macro index: ${index.size} registration(s) across ${files.length} file(s)`);
+
+	return index;
+}
+
+function getMacroIndex(contextUri) {
+	const folderUri = getWorkspaceFolderUri(contextUri);
+
+	if (!folderUri) {
+		return Promise.resolve(new Map());
+	}
+
+	const key = folderUri.toString();
+
+	if (!macroIndexes.has(key)) {
+		// The promise is cached, not its result, so concurrent Cmd+B presses share one scan. A failed
+		// scan is dropped so the next lookup retries instead of caching the failure.
+		macroIndexes.set(key, buildMacroIndex(folderUri).catch((error) => {
+			macroIndexes.delete(key);
+			throw error;
+		}));
+	}
+
+	return macroIndexes.get(key);
+}
+
 async function resolveLaravelMacroTarget(uri, position) {
 	const document = await vscode.workspace.openTextDocument(uri);
 	const macroName = getMacroCallNameAtOffset(document.getText(), document.offsetAt(position));
@@ -823,31 +927,17 @@ async function resolveLaravelMacroTarget(uri, position) {
 		return undefined;
 	}
 
-	const files = await vscode.workspace.findFiles(
-		'{app,routes,bootstrap,database,tests}/**/*.php',
-		PHP_SEARCH_EXCLUDE,
-		4000,
-	);
+	const registration = (await getMacroIndex(uri)).get(macroName);
 
-	for (const fileUri of files) {
-		const text = await tryReadWorkspaceText(fileUri);
+	if (!registration) {
+		logDebug(`Laravel macro registration not found: ${macroName}`);
 
-		if (!text || !text.includes(macroName)) {
-			continue;
-		}
-
-		const range = findMacroRegistrationRange(text, macroName);
-
-		if (range) {
-			logDebug(`Laravel macro redirect: ${macroName} -> ${fileUri.path}`);
-
-			return { uri: fileUri, range: rangeFromOffsets(text, range.start, range.end) };
-		}
+		return undefined;
 	}
 
-	logDebug(`Laravel macro registration not found: ${macroName}`);
+	logDebug(`Laravel macro redirect: ${macroName} -> ${registration.uri.path}`);
 
-	return undefined;
+	return registration;
 }
 
 async function goToDefinition(uri, position) {
@@ -1855,11 +1945,9 @@ async function getInvokeRouteReferences(uri, position) {
 	const files = await vscode.workspace.findFiles('**/{routes,nova-components}/**/*.php', PHP_SEARCH_EXCLUDE, 2000);
 	const references = [];
 
-	for (const routeUri of files) {
-		const routeSource = await readWorkspaceText(routeUri);
-
+	await forEachFileText(files, (routeSource, routeUri) => {
 		if (!routeSource.includes(`${controllerClassName}::class`)) {
-			continue;
+			return;
 		}
 
 		for (const range of getRouteControllerClassRanges(routeSource, controllerFqn, controllerClassName)) {
@@ -1868,7 +1956,7 @@ async function getInvokeRouteReferences(uri, position) {
 				range: rangeFromOffsets(routeSource, range.start, range.end),
 			});
 		}
-	}
+	});
 
 	return references;
 }
@@ -2146,11 +2234,9 @@ async function getLaravelGatePolicyMethodReferences(uri, position) {
 	const files = await vscode.workspace.findFiles(globPattern, PHP_SEARCH_EXCLUDE, modelName ? 20 : 500);
 	const references = [];
 
-	for (const policyUri of files) {
-		const policySource = await readWorkspaceText(policyUri);
-
+	await forEachFileText(files, (policySource, policyUri) => {
 		if (!policySource.includes(`function ${abilityInfo.methodName}`)) {
-			continue;
+			return;
 		}
 
 		for (const range of getPhpMethodDeclarationRanges(policySource, abilityInfo.methodName)) {
@@ -2159,7 +2245,7 @@ async function getLaravelGatePolicyMethodReferences(uri, position) {
 				range: rangeFromOffsets(policySource, range.start, range.end),
 			});
 		}
-	}
+	});
 
 	return references;
 }
@@ -2180,15 +2266,9 @@ async function getLaravelGatePolicyReferenceCounts(document, declarations) {
 	const counts = new Map(declarations.map((declaration) => [declaration.name, 0]));
 	const files = await vscode.workspace.findFiles('**/*.php', PHP_SEARCH_EXCLUDE, 5000);
 
-	for (const fileUri of files) {
-		if (sameUri(fileUri, document.uri)) {
-			continue;
-		}
-
-		const source = await readWorkspaceText(fileUri);
-
-		if (!allAbilities.some((ability) => source.includes(ability))) {
-			continue;
+	await forEachFileText(files, (source, fileUri) => {
+		if (sameUri(fileUri, document.uri) || !allAbilities.some((ability) => source.includes(ability))) {
+			return;
 		}
 
 		for (const method of methodAbilities) {
@@ -2198,7 +2278,7 @@ async function getLaravelGatePolicyReferenceCounts(document, declarations) {
 				counts.set(method.name, (counts.get(method.name) || 0) + referenceCount);
 			}
 		}
-	}
+	});
 
 	return counts;
 }
@@ -2222,11 +2302,9 @@ async function getLaravelGatePolicyReferences(uri, position) {
 	const files = await vscode.workspace.findFiles('**/*.php', PHP_SEARCH_EXCLUDE, 5000);
 	const references = [];
 
-	for (const fileUri of files) {
-		const source = await readWorkspaceText(fileUri);
-
+	await forEachFileText(files, (source, fileUri) => {
 		if (!abilities.some((name) => source.includes(name))) {
-			continue;
+			return;
 		}
 
 		for (const range of getLaravelGateAbilityRanges(source, abilities, modelClassName)) {
@@ -2235,7 +2313,7 @@ async function getLaravelGatePolicyReferences(uri, position) {
 				range: rangeFromOffsets(source, range.start, range.end),
 			});
 		}
-	}
+	});
 
 	return references;
 }
@@ -2383,8 +2461,7 @@ async function getLaravelTranslationReferences(uri, position) {
 	const files = await vscode.workspace.findFiles('**/lang/**/*.{json,php}', PHP_SEARCH_EXCLUDE, 2000);
 	const references = [];
 
-	for (const fileUri of files) {
-		const source = await readWorkspaceText(fileUri);
+	await forEachFileText(files, (source, fileUri) => {
 		const filePath = getUriPath(fileUri);
 		const ranges = filePath.endsWith('.json')
 			? getJsonTranslationKeyRanges(source, key)
@@ -2396,7 +2473,7 @@ async function getLaravelTranslationReferences(uri, position) {
 				range: rangeFromOffsets(source, range.start, range.end),
 			});
 		}
-	}
+	});
 
 	return references;
 }
@@ -2421,11 +2498,9 @@ async function getLaravelMacroCallReferences(uri, position) {
 	);
 	const references = [];
 
-	for (const fileUri of files) {
-		const text = await tryReadWorkspaceText(fileUri);
-
-		if (!text || !text.includes(macroName)) {
-			continue;
+	await forEachFileText(files, (text, fileUri) => {
+		if (!text.includes(macroName)) {
+			return;
 		}
 
 		for (const range of findMacroCallRanges(text, macroName)) {
@@ -2434,7 +2509,7 @@ async function getLaravelMacroCallReferences(uri, position) {
 				range: rangeFromOffsets(text, range.start, range.end),
 			});
 		}
-	}
+	});
 
 	logDebug(`Laravel macro references: ${macroName} -> ${references.length} call site(s)`);
 
@@ -4989,6 +5064,17 @@ function activate(context) {
 	context.subscriptions.push(smartRefDebugChannel);
 
 	laravelIntelligence.register(context); // registers the "Refresh Laravel IDE Helpers" command only
+
+	// The macro index is built from PHP source, so any PHP write can add or remove a registration.
+	// Dropping it is cheap and rebuilding is lazy, so there is nothing to gain from working out which
+	// file changed — the next lookup that needs the index pays for one scan.
+	const phpWatcher = vscode.workspace.createFileSystemWatcher('**/*.php');
+	phpWatcher.onDidChange(invalidateMacroIndex);
+	phpWatcher.onDidCreate(invalidateMacroIndex);
+	phpWatcher.onDidDelete(invalidateMacroIndex);
+	context.subscriptions.push(phpWatcher);
+	context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(invalidateMacroIndex));
+
 	const fileMarkers = createFileMarkerController(context);
 	context.subscriptions.push(
 		fileMarkers,

@@ -1,6 +1,6 @@
 # VS Code customization intent, decisions, and history
 
-Last reviewed: 2026-08-04
+Last reviewed: 2026-08-07
 
 This is the durable context for the VS Code configuration and repository-owned
 local extensions in this directory. It explains what exists, why it exists,
@@ -224,8 +224,8 @@ whitespace caused autosave noise in an earlier implementation.
 
 `laravelIntelligence.js` builds a passive, on-demand
 `_ide_helper_manual.php`. It scans models for classic and modern accessors,
-emits `@property-read` types, and adds selected Restify `self` to `static`
-overrides.
+emits `@property-read` types, declares `@method` signatures for Macroable
+registrations, and adds selected Restify `self` to `static` overrides.
 
 The helper is generated only through an explicit action. It is indexed where
 Intelephense needs type information but hidden from user-facing reference
@@ -252,6 +252,17 @@ registration it finds the call sites, joining the other custom reference
 providers. Call sites are matched against source with comments, strings, and
 heredoc bodies blanked out, because the usage example in a docblock above a
 registration is documentation rather than a reference.
+
+Registrations are found through a workspace-wide index built once and kept until
+a PHP file changes, not by re-reading first-party source on every lookup. "Native
+resolution came back empty" is a common state in a Laravel project, not a rare
+one, and most of those lookups name something no registration will ever match, so
+the miss is the case that has to be cheap.
+
+Locating the registration is only half of it. A macro with no declared return
+type leaves everything chained onto the call unresolvable too, which is why the
+generator declares `@method` tags for the macros it finds — the two halves read
+the same registration scan.
 
 #### PHP class-file move
 
@@ -3005,3 +3016,91 @@ Known consequence, not yet judged:
   `/** … */` line now joins it upward and leaves the `*` inline. That follows
   from the rule as asked for. Stripping a leading `* ` on join would be a
   separate decision.
+
+### 2026-08-07 — Macro lookups indexed, and macros given a return type
+
+Intent:
+
+- `Cmd+B` on the `->get()` of `Http::facebookGraph()->get('/me', …)` answered
+  `No other references found` after a multi-second pause, and `Cmd+B` on
+  `facebookGraph` itself reached the registration but was just as slow. Make both
+  immediate, and make the first one land on `PendingRequest::get()`.
+
+Diagnosis:
+
+- both symptoms are one cause. Intelephense cannot type a macro call, so
+  `Http::facebookGraph()` resolves to nothing and `->get()` — a call on a value
+  of unknown type — resolves to nothing either. `goToDefinition` then falls to
+  `resolveLaravelMacroTarget`, which read every first-party PHP file with one
+  `vscode.workspace.fs.readFile` round trip at a time: 2,180 files in
+  `spro-marketing`. `facebookGraph` paid for 1,399 of them before matching;
+  `get` matches no registration anywhere, so it paid for all 2,180 and then
+  reported no references. The scan ran again, in full, on the next press;
+- the misses are not the unusual case. Any `Cmd+B` the language server cannot
+  answer reaches this path, and a name like `get` is never going to be a macro.
+
+Implementation:
+
+- `findMacroRegistrations` reports every registration in one file — name offsets,
+  receiver, closure parameters, declared return type — replacing the
+  single-name-at-a-time `findMacroRegistrationRange`, which had no callers left
+  and was deleted with its tests retargeted at the survivor;
+- registrations are collected once into a name-keyed index per workspace folder
+  and cached as the in-flight promise, so concurrent presses share one scan. A
+  `**/*.php` watcher clears it; rebuilding is lazy;
+- added `forEachFileText`, which reads a file set 32 at a time and still hands
+  files to its caller in workspace order, and moved the other six workspace scans
+  onto it — the Gate/policy CodeLens counter was reading up to 5,000 files the
+  same serial way;
+- the IDE-helper generator now emits `@method` tags for the macros it finds:
+  receiver and return type resolved against the registering file's imports and
+  namespace, parameter types rewritten to fully qualified names;
+- `Cmd+B` on a macro call therefore resolves to that generated tag, so
+  `resolveLaravelHelperTarget` hands an `@method` line back to the registration
+  index rather than leaving the caret in the stub.
+
+Decisions and lessons:
+
+- **the miss is the hot path.** The original scan was justified on the grounds
+  that "a macro call has nothing to lose by it" — true of the call that finds
+  something, false of every call that does not, and in a Laravel codebase those
+  are the majority. A fallback that only runs when native resolution fails is not
+  thereby rare;
+- a `@method` tag is generated for both the static and the instance call form of
+  every macro. `Macroable` really does answer both, through `__callStatic` and
+  `__call`, and which one a project uses is a property of the receiving class —
+  `Http::facebookGraph()` against `$collection->pluckDeep()` — not of the
+  registration. Emitting one form would make the IDE guess and reintroduce the
+  unresolved call this exists to fix;
+- `self`/`static` in a macro closure names the service provider that registered
+  it, never what calling the macro returns, so those degrade to `mixed`. A
+  non-literal default such as `MetaService::GRAPH_BASE` would be resolved against
+  the *stub's* namespace and name nothing there, so only the parameter's
+  optionality is kept. A parameter list the transformer cannot read in full
+  becomes `mixed ...$arguments`: a wrong arity would be reported as an error at
+  every call site, which is worse than the vagueness;
+- the type is what makes the chain navigable. Finding the registration was never
+  going to fix `->get()` — only a return type on `facebookGraph()` gives the next
+  link in the chain something to resolve against.
+
+Verification:
+
+- 94 tests, 0 failures (85 before), covering the registration scan, receiver and
+  return-type resolution, parameter rewriting, both rendered call forms, and the
+  `@method` → registration hand-off;
+- `node --check` clean on all four changed modules; `jq empty` on every manifest;
+  `bash -n` on `symlink.sh` and both installers; `git diff --check` clean;
+- the generator was run against the real `spro-marketing` tree outside VS Code:
+  it finds the three `Http::macro` registrations in `AppServiceProvider.php` and
+  renders `@method static \Illuminate\Http\Client\PendingRequest facebookGraph()`
+  under `namespace Illuminate\Support\Facades`;
+- `install_vscode.sh` run; the live registry reports `local.smart-references@0.0.26`
+  and the extension symlink resolves into this repository;
+- **not verified here: the editor behaviour.** The batched read's effect is on
+  `vscode.workspace.fs` round trips, which only exist in the extension host —
+  local `fs` measured the same 2,180 files at 246 ms serial against 37 ms
+  batched, which bounds the file I/O but not the RPC that dominates it. Whether
+  Intelephense merges a `@method` tag onto a vendor facade the way it merges the
+  Restify partial classes is likewise a live-editor question. Both need
+  **Developer: Reload Window**, then `Shift+Cmd+.` to regenerate the helper, and
+  a real `Cmd+B` on `->get()` and on `facebookGraph`.

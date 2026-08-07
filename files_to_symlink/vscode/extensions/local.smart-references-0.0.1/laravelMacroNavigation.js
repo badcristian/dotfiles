@@ -5,6 +5,11 @@
 // body. Intelephense therefore has no definition to offer and Cmd+B stalls. These pure helpers
 // recognize a macro-style call under the cursor and locate the `::macro('name', …)` registration
 // that defines it, so navigation lands on the closure instead of nowhere.
+//
+// `findMacroRegistrations` reads the other half of the problem: the registration's receiver, its
+// parameters, and its return type. Navigation uses the offsets to build the workspace index; the
+// IDE-helper generator uses the signature to declare the macro, so a call has a TYPE and not only a
+// destination — without one, everything chained onto the call is unresolvable in turn.
 
 // A window this wide is enough to see the `::`/`->` before the name and the `(` after it, and keeps
 // the lookaround off the whole file.
@@ -150,22 +155,119 @@ function macroRegistrationPattern(namePattern) {
 	return new RegExp(`(?:::|->)\\s*macro\\s*\\(\\s*(?:[^()'"]*?\\bname\\s*:\\s*)?(['"])(${namePattern})\\1`, 'g');
 }
 
-// Offsets of the macro name literal in `X::macro('name', …)` / `$x->macro('name', …)`, excluding the
-// quotes, so navigation selects the name exactly like the config navigator selects a config key.
-function findMacroRegistrationRange(source, name) {
-	if (!isPhpIdentifier(name)) {
+// The class a registration is attached to — `Http` in `Http::macro('facebookGraph', …)`. Namespace
+// qualifiers are kept so the caller can resolve the name against the file's imports like any other
+// class reference. A variable receiver (`$router->macro(…)`) names no class and yields undefined:
+// only a statically named one can be described to a language server.
+function getMacroRegistrationReceiver(source, operatorOffset) {
+	const before = String(source).slice(0, operatorOffset).replace(/\s+$/, '');
+	const match = /\\?(?:[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*\\)*[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/
+		.exec(before);
+
+	if (!match || before[match.index - 1] === '$') {
 		return undefined;
 	}
 
-	const match = macroRegistrationPattern(escapeRegExp(name)).exec(String(source));
+	return match[0];
+}
 
-	if (!match) {
+// The offset of the `)` closing the `(` at `openOffset`, or -1. String bodies are stepped over so a
+// parenthesis inside a default value cannot unbalance the count.
+function findClosingParen(text, openOffset) {
+	let depth = 0;
+
+	for (let cursor = openOffset; cursor < text.length; cursor++) {
+		const character = text[cursor];
+
+		if (character === "'" || character === '"') {
+			cursor++;
+			while (cursor < text.length && text[cursor] !== character) {
+				cursor += text[cursor] === '\\' ? 2 : 1;
+			}
+			continue;
+		}
+
+		if (character === '(') {
+			depth++;
+		} else if (character === ')') {
+			depth--;
+
+			if (depth === 0) {
+				return cursor;
+			}
+		}
+	}
+
+	return -1;
+}
+
+// The parameter list and declared return type of the closure a registration binds, read from the
+// argument that follows the name literal. A macro bound to something other than a closure — a
+// callable array, a first-class callable — has neither, and both come back undefined.
+function getMacroClosureSignature(source, afterNameOffset) {
+	const text = String(source);
+	const separator = /^['"]\s*,\s*(?:macro\s*:\s*)?/.exec(text.slice(afterNameOffset));
+
+	if (!separator) {
 		return undefined;
 	}
 
-	const start = match.index + match[0].lastIndexOf(match[2]);
+	const head = /^\s*(?:static\s+)?(?:fn|function)\s*(?:&\s*)?\(/
+		.exec(text.slice(afterNameOffset + separator[0].length));
 
-	return { start, end: start + name.length };
+	if (!head) {
+		return undefined;
+	}
+
+	const openParen = afterNameOffset + separator[0].length + head[0].length - 1;
+	const closeParen = findClosingParen(text, openParen);
+
+	if (closeParen === -1) {
+		return undefined;
+	}
+
+	// `: Type` runs to the arrow of an `fn` or the brace of a `function`; `=` is excluded from the
+	// type so `=>` cannot be swallowed by it.
+	const returnType = /^\s*:\s*([^={;]+?)\s*(?:=>|\{)/.exec(text.slice(closeParen + 1));
+
+	return {
+		parameters: text.slice(openParen + 1, closeParen).trim(),
+		returnType: returnType ? returnType[1].trim() : undefined,
+	};
+}
+
+// Every `X::macro('name', …)` / `$x->macro('name', …)` in one file, with the offsets of each name
+// literal plus what is needed to describe the macro to a language server. One pass over the file
+// answers both "where is this macro registered" and "what does calling it return", so a workspace
+// scan never has to run twice.
+function findMacroRegistrations(source) {
+	const text = String(source);
+	const registration = macroRegistrationPattern("[^'\"\\\\]*");
+	const registrations = [];
+	let match;
+
+	while ((match = registration.exec(text)) !== null) {
+		const name = match[2];
+
+		if (!isPhpIdentifier(name)) {
+			continue;
+		}
+
+		const start = match.index + match[0].lastIndexOf(name);
+		const signature = getMacroClosureSignature(text, start + name.length);
+
+		registrations.push({
+			name,
+			start,
+			end: start + name.length,
+			isStatic: text.startsWith('::', match.index),
+			receiver: getMacroRegistrationReceiver(text, match.index),
+			parameters: signature ? signature.parameters : undefined,
+			returnType: signature ? signature.returnType : undefined,
+		});
+	}
+
+	return registrations;
 }
 
 // The name being registered when the cursor sits inside the literal of `::macro('name', …)`, or
@@ -222,7 +324,7 @@ function findMacroCallRanges(source, name) {
 module.exports = {
 	blankPhpCommentsAndStrings,
 	findMacroCallRanges,
-	findMacroRegistrationRange,
+	findMacroRegistrations,
 	getMacroCallNameAtOffset,
 	getMacroRegistrationNameAtOffset,
 };
