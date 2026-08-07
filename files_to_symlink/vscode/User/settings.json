@@ -115,6 +115,14 @@
 		// Duplicate symbols are the second cost: eleven Application classes make Cmd+B
 		// ambiguous where one would be exact.
 		"**/nova-components/*/vendor/**",
+		// google/apiclient-services ships one generated class tree per Google API: 327 of them,
+		// 35,734 PHP files, against the five services this codebase actually names. Excluding the
+		// package wholesale would break `Google\Service\SearchConsole` and friends, so the used
+		// five are held back by name and the other 322 — 35,355 files — go.
+		// The extglob negation is not a guess: Intelephense bundles micromatch, and this pattern
+		// was checked against it directly. If a service is added to the code, add it here too, or
+		// its classes will read as undefined.
+		"**/vendor/google/apiclient-services/src/!(BusinessProfilePerformance|MyBusinessAccountManagement|MyBusinessBusinessInformation|SearchConsole|YouTube)/**",
 		"**/vendor/_laravel_idea/**",
 		"**/_laravel_ide/**",
 		// NOTE: barryvdh's _ide_helper.php (facade/macro stubs) is intentionally NOT excluded —

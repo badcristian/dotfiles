@@ -7,9 +7,11 @@
 # days, and a terminal shader repainting every frame. None of them announced
 # themselves. This runs the same checks on a schedule instead.
 #
-# Cost, measured: the whole sweep is about 2 seconds, of which `top -l 2` is
-# 1.7. Hourly that is 0.055% of one core, so the monitor cannot become the
-# problem it is looking for.
+# Cost, measured: the whole sweep is about 3.4 seconds — `top -l 2` for Energy is
+# 1.6, `iostat -c 2` for CPU load is 1.1, and `top -l 1` for Top memory is 0.5.
+# Hourly that is 0.09% of one core, so the monitor cannot become the problem it
+# is looking for. Two of those three are sampling intervals rather than work, and
+# the third buys a memory figure `ps` cannot give.
 #
 # The status bar reads only `state_file`, a single line of "<state> <epoch>",
 # so a redraw costs one builtin read and no forks.
@@ -69,15 +71,52 @@ check_disk() {
     emit disk "Disk" "$state" "${capacity}% full" "${free_gb} GB free of ${total_gb} GB" "$fix"
 }
 
+# Memory, reported as the gigabytes Activity Monitor shows.
+#
+# A percentage on its own does not say whether there is room: "81% free" was true
+# on a machine with 700 MB unused, because `memory_pressure` counts the file
+# cache as free — correctly, since it is reclaimable, but not usefully when the
+# question is how much is left. `vm_stat` carries the breakdown behind it, and
+# app + wired + compressed is exactly Activity Monitor's "Memory Used"; the file
+# cache is reported beside it rather than inside it.
+#
+# The state still comes from `memory_pressure`. Reclaimability is the kernel's
+# own signal and the right one to alarm on: macOS fills RAM with cache by design,
+# so a used/total threshold would sit in warning permanently.
 check_memory() {
-    local free_pct state fix=''
+    local free_pct used total app wired comp cache state fix=''
+
     free_pct="$(memory_pressure 2>/dev/null | awk '/free percentage/ {gsub("%","",$NF); print $NF}')"
     [[ $free_pct =~ ^[0-9]+$ ]] || free_pct=100
+
+    read -r used total app wired comp cache < <(
+        vm_stat 2>/dev/null | awk -v total="$(sysctl -n hw.memsize 2>/dev/null || printf 0)" '
+            /page size of/ { match($0, /page size of [0-9]+/); ps = substr($0, RSTART + 13, RLENGTH - 13) }
+            index($0, ":") {
+                key = substr($0, 1, index($0, ":") - 1)
+                val = substr($0, index($0, ":") + 1); gsub(/[^0-9]/, "", val)
+                page[key] = val + 0
+            }
+            END {
+                gb = 1073741824
+                app = (page["Anonymous pages"] - page["Pages purgeable"]) * ps / gb
+                wired = page["Pages wired down"] * ps / gb
+                comp = page["Pages occupied by compressor"] * ps / gb
+                cache = page["File-backed pages"] * ps / gb
+                printf "%.1f %.1f %.1f %.1f %.1f %.1f\n", app + wired + comp, total / gb, app, wired, comp, cache
+            }'
+    )
+
     state=ok
     (( free_pct < 25 )) && state=warn
     (( free_pct < 12 )) && state=crit
     [[ $state != ok ]] && fix='Close the heaviest apps, or check for a leaking process in the Processes row.'
-    emit memory "Memory" "$state" "${free_pct}% free" "system-wide free memory" "$fix"
+
+    [[ $used =~ ^[0-9.]+$ && $total =~ ^[0-9.]+$ ]] || { emit memory "Memory" "$state" "${free_pct}% free" "system-wide free memory" "$fix"; return; }
+    # Abbreviated deliberately: the detail column is 62 wide at the popup's size and
+    # the full words did not fit, so they were being clipped mid-phrase.
+    emit memory "Memory" "$state" "${used} GB used of ${total} GB" \
+        "app ${app} · wired ${wired} · comp ${comp} · cache ${cache} · ${free_pct}% reclaimable" "$fix"
 }
 
 # Swap, measured as a rate rather than as a ratio.
@@ -219,6 +258,8 @@ hog_name() {
         *'GitHub Desktop'*) printf 'GitHub Desktop' ;;
         *Docker*|*com.docker*) printf 'Docker' ;;
         *WindowServer*) printf 'WindowServer' ;;
+        *mysqld*|*mariadbd*) printf 'MySQL' ;;
+        *postgres*) printf 'Postgres' ;;
         *) printf '%s' "$(basename "${1%% *}")" ;;
     esac
 }
@@ -242,57 +283,94 @@ hog_fix() {
             printf '%s' 'An Electron app that grows the longer it runs. Quitting and reopening it costs nothing and returns the memory.' ;;
         *WindowServer*)
             printf '%s' 'WindowServer grows with the number of windows and displays, and with animated wallpapers. It cannot be killed safely; log out to reset it.' ;;
+        *mysqld*|*mariadbd*)
+            printf '%s' 'MySQL sizes its per-connection buffers and performance_schema from max_connections, so a server configured for a production connection count holds that much on a laptop whether or not anything is connected. Check max_connections in /opt/homebrew/etc/my.cnf, or stop the service between projects with brew services stop mysql.' ;;
+        *postgres*)
+            printf '%s' 'Postgres holds shared_buffers plus one backend per connection. If it is the largest process here, look at shared_buffers in postgresql.conf before anything else.' ;;
         *)
             printf '%s' 'No specific advice for this one — check Activity Monitor before killing it.' ;;
     esac
 }
 
-# The heaviest process on the machine, plus where the rest of the memory went.
+# Every process with the memory it is actually charged for, biggest first, as
+# "<MB>\t<pid>\t<full command line>".
 #
-# The Memory row says how little is free; this says who has it. One `ps` answers
-# both, so the whole check costs a single fork and no sampling interval.
+# `ps` reports RSS, and on macOS that is not what the machine is charged: mysqld
+# shows 36 MB there and 935 MB in Activity Monitor, so a check built on RSS ranked
+# it 40th and never mentioned it. `top`'s MEM column is the physical footprint —
+# dirty plus compressed — which is both the true cost and the number the user sees
+# in Activity Monitor. One sample is enough; unlike CPU, memory needs no interval.
+#
+# The footprint has to be joined back to `ps` by pid because `top` truncates its
+# command column to the terminal width, and every process worth naming here is one
+# that hides behind a generic executable: "Code Helper (Ren" is not enough to tell
+# Intelephense from any other extension host.
+memory_by_process() {
+    awk '
+        # top pass: MEM is 935M, 2.1G or 4672K, sometimes with a +/- change marker.
+        NR == FNR {
+            if ($1 !~ /^[0-9]+$/) next
+            value = $2
+            sub(/[+-]$/, "", value)
+            unit = substr(value, length(value), 1)
+            number = value + 0
+            footprint[$1] = (unit == "G") ? number * 1024 : (unit == "K") ? number / 1024 : number
+            next
+        }
+        # ps pass: keep the command line whole, spaces and all.
+        {
+            pid = $1
+            sub(/^[ ]*[0-9]+[ ]+/, "", $0)
+            if (pid in footprint) printf "%d\t%s\t%s\n", footprint[pid], pid, $0
+        }' \
+        <(top -l 1 -o mem -stats pid,mem -n 200 2>/dev/null) \
+        <(ps -Ao pid=,command= 2>/dev/null) |
+        sort -rn
+}
+
+# The heaviest process on the machine, plus where the rest of the memory went.
+# The Memory row says how much is left; this says who has it.
 #
 # Thresholds are a share of physical RAM rather than a fixed size, so the same
-# check means the same thing on a 16 GB laptop as on a 64 GB one. `ps` reports
-# RSS with shared pages counted in every process that maps them, which inflates
-# a sum across many small processes — so the state is set by the single largest
-# process, where that double counting cannot occur, and the per-app totals are
-# reported as orientation only.
+# check means the same thing on a 16 GB laptop as on a 64 GB one. The state is set
+# by the single largest process: a footprint is per-process and does not
+# double-count, but summing across an application still can, so the per-app totals
+# below are reported as orientation rather than used as the trigger.
 check_hogs() {
-    local total_mb top_kb top_mb top_pid top_cmd name pct state fix='' detail
+    local total_mb snapshot top_mb top_pid top_cmd name pct state fix='' detail
 
     total_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || printf '0') / 1048576 ))
     (( total_mb > 0 )) || { emit hogs "Top memory" ok "unknown" "could not read physical memory size" ""; return; }
 
-    # `read` rather than parameter expansion: ps pads RSS into a right-aligned
-    # column, and `${line%% *}` on a leading space yields the empty string.
-    read -r top_kb top_pid top_cmd < <(ps -Ao rss=,pid=,command= 2>/dev/null | sort -rn | head -1)
-    [[ $top_kb =~ ^[0-9]+$ && $top_pid =~ ^[0-9]+$ ]] || { emit hogs "Top memory" ok "unknown" "ps returned nothing" ""; return; }
-    top_mb=$(( top_kb / 1024 ))
+    snapshot="$(memory_by_process)"
+    IFS=$'\t' read -r top_mb top_pid top_cmd <<< "$(head -1 <<< "$snapshot")"
+    [[ $top_mb =~ ^[0-9]+$ && $top_pid =~ ^[0-9]+$ ]] || { emit hogs "Top memory" ok "unknown" "no per-process memory reported" ""; return; }
 
     name="$(hog_name "$top_cmd")"
     pct=$(( top_mb * 100 / total_mb ))
 
     detail="$(
-        ps -Ao rss=,command= 2>/dev/null | awk '
-            { rss = $1; sub(/^[ ]*[0-9]+[ ]+/, "", $0) }
+        awk -F'\t' '
+            { mb = $1; $0 = $3 }
             /Visual Studio Code/ { app = "VS Code" }
             !app && /Google Chrome/ { app = "Chrome" }
             !app && /(^|\/)claude( |$)/ { app = "claude" }
             !app && /Slack/ { app = "Slack" }
             !app && /GitHub Desktop/ { app = "GitHub Desktop" }
+            !app && /(^|\/)(mysqld|mariadbd)( |$)/ { app = "MySQL" }
+            !app && /(^|\/)postgres( |:|$)/ { app = "Postgres" }
             !app && /Docker/ { app = "Docker" }
-            { if (app) total[app] += rss; app = "" }
-            # Size first and tab-separated: every name here has a space in it, so
+            { if (app) total[app] += mb; app = "" }
+            # Size first and tab-separated: every name here can contain a space, so
             # sorting or printing on whitespace fields would split "VS Code" in two.
             # GB past a gigabyte, because "2.6 GB" is read at a glance where
             # "2637 MB" has to be converted, and three of these share one row.
             END {
                 for (a in total) {
-                    mb = int(total[a] / 1024)
+                    mb = int(total[a])
                     printf "%d\t%s\t%s\n", mb, a, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb))
                 }
-            }' |
+            }' <<< "$snapshot" |
             sort -rn | head -3 |
             awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? " · " : ""), $2, $3 } END { print "" }'
     )"
@@ -302,7 +380,9 @@ check_hogs() {
     (( pct >= 10 )) && state=warn
     (( pct >= 18 )) && state=crit
     [[ $state != ok ]] && fix="$(hog_fix "$top_cmd")"
-    emit hogs "Top memory" "$state" "${name} ${top_mb} MB" "$detail" "$fix"
+    emit hogs "Top memory" "$state" \
+        "$(awk -v n="$name" -v mb="$top_mb" 'BEGIN { printf "%s %s", n, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb)) }')" \
+        "$detail · ${pct}% of RAM" "$fix"
 }
 
 check_processes() {

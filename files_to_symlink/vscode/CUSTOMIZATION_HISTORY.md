@@ -3255,3 +3255,57 @@ Known and not fixed:
   unused service classes at install time from an `extra.google/apiclient-services`
   list. That is a project change, not an editor one, so it is recorded here
   rather than made.
+
+### 2026-08-08 — Google's generated API clients excluded down to the five in use
+
+Intent:
+
+- finish the index reduction started the same day. `vendor/google/apiclient-services`
+  was the second block named in that entry and left alone because a glob cannot
+  obviously say "everything except these".
+
+Diagnosis:
+
+- the package ships one generated class tree per Google API: 327 directories,
+  35,734 PHP files. First-party code names five services —
+  `BusinessProfilePerformance`, `MyBusinessAccountManagement`,
+  `MyBusinessBusinessInformation`, `SearchConsole` and `YouTube` — which come to
+  379 files between them. Excluding the package wholesale, which is what "we
+  don't need it" would suggest, would leave `Google\Service\SearchConsole`
+  undefined at every call site.
+
+Implementation:
+
+- an extglob negation holds the five back by name:
+  `**/vendor/google/apiclient-services/src/!(A|B|C|D|E)/**`, spelled out with the
+  real service names.
+
+Decisions and lessons:
+
+- the pattern is not a hopeful guess. Intelephense's bundle was searched for its
+  glob engine, which turned out to be micromatch — `_micromatchOptions`,
+  `_getNegativePatternsRe`, and a `noext` option derived from an `extglob`
+  setting — and the pattern was then run against micromatch directly over eleven
+  paths: the five kept services, five excluded ones, a lowercase near-miss
+  (`Youtube/`), and the root `vendor/` and `apiclient/` trees that must not be
+  touched. Eleven for eleven;
+- the alternative considered and rejected was a first-letter character class
+  keeping B, M, S and Y. It is shorter and needs no extglob, but it leaves 7,507
+  files rather than 379 — every `Bigquery`, `Merchant` and `Storage` service
+  rides along with the ones actually wanted;
+- this exclusion has a maintenance cost the others do not: a service added to the
+  code must be added to the pattern or its classes read as undefined. That is
+  noted in the setting itself, next to the names.
+
+Verification:
+
+- the eleven-case micromatch check above, run against the real paths;
+- counted with `find` using the exclusions as written, the indexed set falls from
+  **137,767 to 24,258 files** across both of today's entries — 82% — of which
+  35,028 come from this one;
+- `settings.json` parses, with 19 exclude patterns;
+- **not verified: Intelephense's own reading of the pattern.** micromatch is what
+  the bundle carries, but whether `files.exclude` reaches the same matcher as the
+  fast-glob call the options were found on is an inference. The check is a
+  reload, then whether `Google\Service\SearchConsole` still resolves while an
+  unused service no longer autocompletes.
