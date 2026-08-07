@@ -80,19 +80,55 @@ check_memory() {
     emit memory "Memory" "$state" "${free_pct}% free" "system-wide free memory" "$fix"
 }
 
+# Swap, measured as a rate rather than as a ratio.
+#
+# This used to report `used / total` from `vm.swapusage` and warn past 50%. That
+# fraction cannot mean what it looks like: macOS sizes the swap file on demand,
+# so `total` is whatever the kernel has allocated so far, not a capacity. When
+# more swap is needed macOS allocates another file and the percentage *falls*.
+# A machine that swapped 1.2 GB once and has been comfortable for two days since
+# read "57% of swap in use" and raised a warning with nothing wrong — the number
+# was a high-water mark wearing a percentage.
+#
+# What matters is whether pages are leaving RAM *now*. `vm_stat`'s Swapouts is a
+# monotonic page counter, so writing it down with its timestamp turns two
+# consecutive refreshes into an interval measurement: no sleep, no second sample,
+# and the refresh cadence is the window. The resident total is still reported,
+# as context rather than as the alarm.
 check_swap() {
-    local used total pct state fix=''
-    read -r total used < <(
-        sysctl -n vm.swapusage 2>/dev/null |
-            awk '{gsub("M","",$3); gsub("M","",$6); print int($3), int($6)}'
+    local stamp_file="$cache_dir/swapouts" pagesize pages used now
+    local last_pages='' last_at='' elapsed rate state fix='' detail
+
+    read -r pagesize pages < <(
+        vm_stat 2>/dev/null | awk '
+            /page size of/ { for (i = 1; i < NF; i++) if ($i == "of") { size = $(i + 1); break } }
+            /^Swapouts:/ { gsub("[^0-9]", "", $2); outs = $2 }
+            END { print (size ? size : 4096), (outs ? outs : 0) }'
     )
-    [[ $total =~ ^[0-9]+$ && $total -gt 0 ]] || { emit swap "Swap" ok "unused" "no swap file" ""; return; }
-    pct=$(( used * 100 / total ))
+    used="$(sysctl -n vm.swapusage 2>/dev/null | awk '{gsub("M", "", $6); printf "%d", $6}')"
+    [[ $pagesize =~ ^[0-9]+$ && $pages =~ ^[0-9]+$ ]] || { emit swap "Swap" ok "unknown" "vm_stat reported no swap counters" ""; return; }
+    [[ $used =~ ^[0-9]+$ ]] || used=0
+    printf -v now '%(%s)T' -1
+    detail="${used} MB resident in swap"
+
+    [[ -f $stamp_file ]] && read -r last_pages last_at < "$stamp_file" 2>/dev/null
+    printf '%s %s\n' "$pages" "$now" > "$stamp_file"
+
+    # A counter that went backwards is a reboot, and a missing one is the first
+    # run. Both mean there is no interval to measure yet, not that swapping is
+    # absent, so neither is reported as a clean bill of health.
+    if [[ ! $last_pages =~ ^[0-9]+$ || ! $last_at =~ ^[0-9]+$ ]] || (( pages < last_pages || now <= last_at )); then
+        emit swap "Swap" ok "no baseline" "$detail — rate measured from the next check" ""
+        return
+    fi
+
+    elapsed=$(( now - last_at ))
+    rate=$(( (pages - last_pages) * pagesize * 3600 / elapsed / 1048576 ))
     state=ok
-    (( pct >= 50 )) && state=warn
-    (( pct >= 80 )) && state=crit
-    [[ $state != ok ]] && fix='Sustained swap means RAM is oversubscribed; it shows up as stutter and heat.'
-    emit swap "Swap" "$state" "${used} MB of ${total} MB" "${pct}% of swap in use" "$fix"
+    (( rate >= 128 )) && state=warn
+    (( rate >= 1024 )) && state=crit
+    [[ $state != ok ]] && fix='Pages are being written out of RAM continuously, which is the stutter you feel. The Top memory row names what is holding it.'
+    emit swap "Swap" "$state" "${rate} MB/h out" "$detail" "$fix"
 }
 
 check_load() {
@@ -166,6 +202,102 @@ check_energy() {
     emit energy "Energy" "$state" "$name at $power" "highest sustained power draw" "$fix"
 }
 
+# What a process is, said in the words its owner would use. Matching is on the
+# full command line, not the executable, because every process worth naming here
+# hides behind a generic one: Intelephense's language server is a
+# `Code Helper (Plugin)`, and so is every other VS Code extension host.
+hog_name() {
+    case "$1" in
+        *intelephense*) printf 'Intelephense' ;;
+        *'Code Helper (Plugin)'*) printf 'VS Code extensions' ;;
+        *'Code Helper (Renderer)'*) printf 'VS Code window' ;;
+        *'Visual Studio Code'*) printf 'VS Code' ;;
+        *'Google Chrome Helper (Renderer)'*) printf 'Chrome tab' ;;
+        *'Google Chrome'*) printf 'Chrome' ;;
+        */claude) printf 'claude CLI' ;;
+        *Slack*) printf 'Slack' ;;
+        *'GitHub Desktop'*) printf 'GitHub Desktop' ;;
+        *Docker*|*com.docker*) printf 'Docker' ;;
+        *WindowServer*) printf 'WindowServer' ;;
+        *) printf '%s' "$(basename "${1%% *}")" ;;
+    esac
+}
+
+# The one thing to do about it. Advice is only given where it is specific enough
+# to act on without further diagnosis; anything else says so rather than filling
+# the row with a guess.
+hog_fix() {
+    case "$1" in
+        *intelephense*)
+            printf '%s' 'Intelephense holds the whole PHP symbol index in memory, so its size is set by how many files it was told to index. Check intelephense.files.exclude covers nested vendor trees (nova-components/*/vendor), then Developer: Restart Extension Host to drop the heap.' ;;
+        *'Code Helper (Plugin)'*)
+            printf '%s' 'A VS Code extension host. Each open window runs its own, so closing windows you are not using frees a whole set. Developer: Restart Extension Host reclaims a leaked one without losing the window.' ;;
+        *'Code Helper (Renderer)'*|*'Visual Studio Code'*)
+            printf '%s' 'A VS Code window. Close the ones you are not using — each carries its own renderer, extension host and language servers.' ;;
+        *'Google Chrome'*)
+            printf '%s' 'A Chrome renderer, which is one tab or a group of same-site tabs. Close it, or turn on Memory Saver to let Chrome discard idle tabs itself.' ;;
+        */claude)
+            printf '%s' 'A claude CLI session holding its conversation. Sessions do not exit on their own — /exit the ones you have finished with.' ;;
+        *Slack*|*'GitHub Desktop'*)
+            printf '%s' 'An Electron app that grows the longer it runs. Quitting and reopening it costs nothing and returns the memory.' ;;
+        *WindowServer*)
+            printf '%s' 'WindowServer grows with the number of windows and displays, and with animated wallpapers. It cannot be killed safely; log out to reset it.' ;;
+        *)
+            printf '%s' 'No specific advice for this one — check Activity Monitor before killing it.' ;;
+    esac
+}
+
+# The heaviest process on the machine, plus where the rest of the memory went.
+#
+# The Memory row says how little is free; this says who has it. One `ps` answers
+# both, so the whole check costs a single fork and no sampling interval.
+#
+# Thresholds are a share of physical RAM rather than a fixed size, so the same
+# check means the same thing on a 16 GB laptop as on a 64 GB one. `ps` reports
+# RSS with shared pages counted in every process that maps them, which inflates
+# a sum across many small processes — so the state is set by the single largest
+# process, where that double counting cannot occur, and the per-app totals are
+# reported as orientation only.
+check_hogs() {
+    local total_mb top_kb top_mb top_pid top_cmd name pct state fix='' detail
+
+    total_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || printf '0') / 1048576 ))
+    (( total_mb > 0 )) || { emit hogs "Top memory" ok "unknown" "could not read physical memory size" ""; return; }
+
+    # `read` rather than parameter expansion: ps pads RSS into a right-aligned
+    # column, and `${line%% *}` on a leading space yields the empty string.
+    read -r top_kb top_pid top_cmd < <(ps -Ao rss=,pid=,command= 2>/dev/null | sort -rn | head -1)
+    [[ $top_kb =~ ^[0-9]+$ && $top_pid =~ ^[0-9]+$ ]] || { emit hogs "Top memory" ok "unknown" "ps returned nothing" ""; return; }
+    top_mb=$(( top_kb / 1024 ))
+
+    name="$(hog_name "$top_cmd")"
+    pct=$(( top_mb * 100 / total_mb ))
+
+    detail="$(
+        ps -Ao rss=,command= 2>/dev/null | awk '
+            { rss = $1; sub(/^[ ]*[0-9]+[ ]+/, "", $0) }
+            /Visual Studio Code/ { app = "VS Code" }
+            !app && /Google Chrome/ { app = "Chrome" }
+            !app && /(^|\/)claude( |$)/ { app = "claude" }
+            !app && /Slack/ { app = "Slack" }
+            !app && /GitHub Desktop/ { app = "GitHub Desktop" }
+            !app && /Docker/ { app = "Docker" }
+            { if (app) total[app] += rss; app = "" }
+            # Size first and tab-separated: every name here has a space in it, so
+            # sorting or printing on whitespace fields would split "VS Code" in two.
+            END { for (a in total) printf "%d\t%s\n", total[a] / 1024, a }' |
+            sort -rn | head -3 |
+            awk -F'\t' '{ printf "%s%s %s MB", (NR > 1 ? " · " : ""), $2, $1 } END { print "" }'
+    )"
+    [[ -n $detail ]] || detail="no tracked application is holding memory"
+
+    state=ok
+    (( pct >= 10 )) && state=warn
+    (( pct >= 18 )) && state=crit
+    [[ $state != ok ]] && fix="$(hog_fix "$top_cmd")"
+    emit hogs "Top memory" "$state" "${name} ${top_mb} MB" "$detail" "$fix"
+}
+
 check_processes() {
     local orphans count state fix=''
     # Reparented to init, still alive after a day. This is the shape the six
@@ -184,7 +316,7 @@ check_processes() {
         "orphaned dev processes older than a day" "$fix"
 }
 
-check_ids() { printf '%s\n' disk memory swap load thermal energy processes; }
+check_ids() { printf '%s\n' disk memory hogs swap load thermal energy processes; }
 
 # ─── refresh ─────────────────────────────────────────────────────────────────
 
@@ -407,6 +539,7 @@ label_for() {
     case "$1" in
         disk) printf 'Disk' ;;
         memory) printf 'Memory' ;;
+        hogs) printf 'Top memory' ;;
         swap) printf 'Swap' ;;
         load) printf 'CPU load' ;;
         thermal) printf 'Thermal' ;;

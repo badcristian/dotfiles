@@ -103,6 +103,18 @@
 		"**/dist/**",
 		"**/vendor/**/{Tests,tests}/**",
 		"**/vendor/**/vendor/**",
+		// A Nova component is a Composer package living inside the app, and each one
+		// installs its OWN vendor tree: eleven of them in spro-marketing, 7,300–8,700 PHP
+		// files apiece, 78,522 in total against the 2–32 files of first-party code they
+		// exist for. Every one of those trees is another copy of Laravel, Nova and Symfony
+		// that the root vendor/ already provides, so indexing them buys nothing and costs
+		// most of the index: they were 57% of the 137,767 files Intelephense was loading,
+		// and the reason its language server sat at 1.8 GB.
+		// `**/vendor/**/vendor/**` above does not reach them — the outer directory is
+		// `nova-components`, not `vendor`.
+		// Duplicate symbols are the second cost: eleven Application classes make Cmd+B
+		// ambiguous where one would be exact.
+		"**/nova-components/*/vendor/**",
 		"**/vendor/_laravel_idea/**",
 		"**/_laravel_ide/**",
 		// NOTE: barryvdh's _ide_helper.php (facade/macro stubs) is intentionally NOT excluded —

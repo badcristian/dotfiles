@@ -3191,3 +3191,67 @@ Known and not fixed:
   `lightenSvg` only darkens in its folder branch, so a generated light variant
   would be a white page with an almost invisible edge. It needs the file branch
   to learn that colour and a look at the result.
+
+### 2026-08-08 — Intelephense stopped indexing eleven copies of the framework
+
+Intent:
+
+- the Intelephense language server was holding 1.8 GB on a 16 GB machine, which
+  is what put 1.2 GB into swap. Find out whether that is what a PHP index costs
+  or what this workspace was asking for.
+
+Diagnosis:
+
+- it was the ask. `spro-marketing` presents 137,767 PHP files to the index after
+  the existing exclusions. Counting them by directory: **78,522 are in
+  `nova-components/*/vendor/`**. A Nova component is a Composer package living
+  inside the app, and eleven of them install their own vendor tree — 7,300 to
+  8,700 PHP files each — against 2 to 32 files of first-party code apiece. Every
+  one is another copy of Laravel, Nova and Symfony that the root `vendor/`
+  already supplies;
+- `**/vendor/**/vendor/**` was already excluded and does not reach them: the
+  outer directory is `nova-components`, not `vendor`, so the pattern never
+  matches;
+- a second block, `vendor/google/apiclient-services`, is 35,735 files — one
+  generated class tree per Google API — where first-party code references six
+  services.
+
+Implementation:
+
+- added `**/nova-components/*/vendor/**` to `intelephense.files.exclude`.
+
+Decisions and lessons:
+
+- the duplicate trees cost more than memory. Eleven `Application` classes and
+  eleven `Collection`s make Cmd+B ambiguous where one definition would be exact,
+  so this is the same fault as the reference work earlier in the week seen from
+  the other side: too many symbols, not too few;
+- "is 1.8 GB normal for Intelephense" was the wrong question, and answering it
+  from reputation would have ended in `intelephense.files.maxSize` or a
+  smaller-is-better setting sweep. Counting the files it was given named the
+  cause in one command;
+- a per-project `.vscode/settings.json` was rejected. The pattern is not
+  specific to this repository — any Laravel app with Nova components has it —
+  and this file is where the machine's PHP intelligence is configured.
+
+Verification:
+
+- the file count under the same exclusion set falls from 137,767 to 59,301, a
+  removal of 78,466, measured with `find` using the exclusions as written;
+- all 242 first-party PHP files under `nova-components` remain indexed, and the
+  new glob matches nothing under `app/` or the root `vendor/` — both counted;
+- `settings.json` still parses after comment and trailing-comma stripping, and
+  `intelephense.files.exclude` carries 18 patterns including the new one;
+- **not verified: the resulting memory figure.** The server has to be restarted
+  and the workspace re-indexed before its heap reflects this, and the 1.8 GB
+  reading was taken from a process that has since been replaced by one at
+  842 MB. The claim here is the size of the input, not the size of the outcome.
+
+Known and not fixed:
+
+- `vendor/google/apiclient-services` is another 35,735 files, and Intelephense
+  glob excludes cannot express "everything except these six services". The fix
+  belongs in `composer.json`, where `Google\Task\Composer::cleanup` prunes the
+  unused service classes at install time from an `extra.google/apiclient-services`
+  list. That is a project change, not an editor one, so it is recorded here
+  rather than made.
