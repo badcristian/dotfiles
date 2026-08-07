@@ -118,7 +118,7 @@ check_swap() {
     # run. Both mean there is no interval to measure yet, not that swapping is
     # absent, so neither is reported as a clean bill of health.
     if [[ ! $last_pages =~ ^[0-9]+$ || ! $last_at =~ ^[0-9]+$ ]] || (( pages < last_pages || now <= last_at )); then
-        emit swap "Swap" ok "no baseline" "$detail — rate measured from the next check" ""
+        emit swap "Swap" ok "no baseline" "$detail · rate from the next check" ""
         return
     fi
 
@@ -285,9 +285,16 @@ check_hogs() {
             { if (app) total[app] += rss; app = "" }
             # Size first and tab-separated: every name here has a space in it, so
             # sorting or printing on whitespace fields would split "VS Code" in two.
-            END { for (a in total) printf "%d\t%s\n", total[a] / 1024, a }' |
+            # GB past a gigabyte, because "2.6 GB" is read at a glance where
+            # "2637 MB" has to be converted, and three of these share one row.
+            END {
+                for (a in total) {
+                    mb = int(total[a] / 1024)
+                    printf "%d\t%s\t%s\n", mb, a, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb))
+                }
+            }' |
             sort -rn | head -3 |
-            awk -F'\t' '{ printf "%s%s %s MB", (NR > 1 ? " · " : ""), $2, $1 } END { print "" }'
+            awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? " · " : ""), $2, $3 } END { print "" }'
     )"
     [[ -n $detail ]] || detail="no tracked application is holding memory"
 
@@ -413,7 +420,7 @@ rule() {
 # a refresh redraws in place instead of clearing the window.
 render_row() {
     local label="$1" state="$2" value="$3" detail="$4" width="$5"
-    local colour icon
+    local colour icon room
 
     colour="$(state_colour "$state")"
     icon="$(state_icon "$state")"
@@ -423,8 +430,16 @@ render_row() {
         pending) printf '  %s%s %-11s %s%s\n' "$dim" '·' "$label" "waiting" "$reset"; return ;;
     esac
 
+    # The value column is clipped to its 24; the detail has to be clipped too, to
+    # whatever is left. A row that overruns does not simply look untidy — it wraps,
+    # every wrapped row costs a line, and the footer slides off the bottom of a
+    # popup sized for one line per check. 41 is the fixed prefix: two spaces, the
+    # icon, a space, the label column, a space, the value column, a space.
+    room=$(( width - 42 ))
+    (( room < 12 )) && room=12
+
     printf '  %s%s%s %-11s %-24s %s%s%s\n' \
-        "$colour" "$icon" "$reset" "$label" "${value:0:24}" "$dim" "$detail" "$reset"
+        "$colour" "$icon" "$reset" "$label" "${value:0:24}" "$dim" "${detail:0:room}" "$reset"
 }
 
 render_report() {
