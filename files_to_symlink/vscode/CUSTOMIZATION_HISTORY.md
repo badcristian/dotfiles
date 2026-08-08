@@ -3363,3 +3363,37 @@ Verification:
   load. Five Jupyter extensions remain installed and are now orphaned — the
   Python extension they depend on is gone and there are zero `.ipynb` files
   anywhere under `~/dev`.
+
+### 2026-08-08 — Jupyter removed, and the extension that was holding it
+
+Intent:
+
+- finish the removal started earlier the same day. Five Jupyter extensions were
+  left installed after the Python extension they depend on was uninstalled.
+
+Implementation:
+
+- four uninstalled without incident. `ms-toolsai.jupyter` refused, reporting that
+  **Fabric Data Engineering VS Code** (`synapsevscode.synapse`) depends on it —
+  Microsoft's Fabric data-engineering client, which nothing on this machine uses:
+  no Fabric or Synapse artifacts anywhere under `~/dev`, and no notebooks for it
+  to open. It was uninstalled first, then Jupyter followed;
+- `marketplace_extensions.txt` rewritten from the live set again.
+
+Decisions and lessons:
+
+- a refused uninstall is information, not an obstacle. The dependency named a
+  second unused extension that would otherwise have gone unnoticed — nothing in
+  the original review flagged `synapsevscode.synapse`, because its name says
+  nothing about what it is;
+- `synapsevscode.synapse` was removed without being asked for by name. It was the
+  sole blocker for an explicit instruction and the evidence for disuse was the
+  same evidence that condemned Jupyter, but it is recorded here because it was
+  not on the list, and reinstalling it is one command.
+
+Verification:
+
+- 93 extensions at the start of the day, **81** after: 75 marketplace plus the
+  six `local.*`. The tracked list diffs clean against the live set;
+- zero `.ipynb` files under `~/dev`, and no Fabric or Synapse artifacts, both
+  counted before removal.
