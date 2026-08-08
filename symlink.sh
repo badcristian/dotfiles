@@ -9,6 +9,15 @@ if ! command -v brew &> /dev/null; then
 fi
 
 
+# The tmux health monitor reads die temperature and fan speed through macmon,
+# which talks to IOReport and so needs no root — powermetrics reports the same
+# figures but only to a process that can sudo, which an hourly unattended check
+# cannot. Without it the Temperature row falls back to the battery pack sensor,
+# which works but reads ~25 degrees cooler and has no fan data.
+if ! command -v macmon &> /dev/null; then
+    brew install macmon
+fi
+
 # dot files
 if [ ! -d ~/.hammerspoon ]; then
     brew install --cask hammerspoon

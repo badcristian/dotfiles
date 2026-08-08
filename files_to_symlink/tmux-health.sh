@@ -7,11 +7,12 @@
 # days, and a terminal shader repainting every frame. None of them announced
 # themselves. This runs the same checks on a schedule instead.
 #
-# Cost, measured: the whole sweep is about 3.4 seconds — `top -l 2` for Energy is
-# 1.6, `iostat -c 2` for CPU load is 1.1, and `top -l 1` for Top memory is 0.5.
-# Hourly that is 0.09% of one core, so the monitor cannot become the problem it
-# is looking for. Two of those three are sampling intervals rather than work, and
-# the third buys a memory figure `ps` cannot give.
+# Cost, measured: the whole sweep is about 3.7 seconds — `top -l 2` for Energy is
+# 1.6, `iostat -c 2` for CPU load is 1.1, `macmon` for Temperature is 0.7, and
+# `top -l 1` for Top memory is 0.5. Hourly that is 0.10% of one core, so the
+# monitor cannot become the problem it is looking for. Three of those four are
+# sampling intervals rather than work, and the fourth buys a memory figure `ps`
+# cannot give.
 #
 # The status bar reads only `state_file`, a single line of "<state> <epoch>",
 # so a redraw costs one builtin read and no forks.
@@ -230,51 +231,103 @@ check_load() {
 # The reading alone says little: 34 °C is meaningless without knowing it was 28
 # an hour ago. The previous sample is stamped beside the swap counter, for the
 # same reason and at the same cost — the refresh cadence is the interval.
-check_thermal() {
-    local stamp_file="$cache_dir/temperature" centi pressure now
-    local last_centi='' last_at='' temp delta state fix='' detail trend
+# The die sensor and the fans, read through `macmon`, which talks to IOReport and
+# so needs no root — `powermetrics` gives the same numbers but only to a process
+# that can sudo, which an unattended hourly check cannot.
+#
+# Falls back to the battery pack when macmon is absent, so a machine that has not
+# run `symlink.sh` yet still reports something. The two sensors are nowhere near
+# each other — 56 °C at the die against 30 °C at the pack, at the same moment —
+# so the source is written into the stamp file with the reading, and a baseline
+# from the other source is discarded rather than subtracted into a 26-degree jump
+# that never happened.
+read_die_temperature() {
+    command -v macmon >/dev/null 2>&1 || return 1
 
-    centi="$(ioreg -rn AppleSmartBattery 2>/dev/null | awk -F'= ' '/"Temperature"/ {print $2; exit}')"
+    macmon pipe -s 1 -i 100 2>/dev/null | jq -r '
+        # Fan speed as a share of each fan'"'"'s own maximum: 2,300 rpm means nothing
+        # without knowing the ceiling, and the two fans here have different ones.
+        [.fans[]? | select(.max_rpm > 0) | (.rpm / .max_rpm * 100)] as $load
+        | [ (.temp.cpu_temp_avg // empty | . * 100 | round),
+            ( $load | if length > 0 then (max | round) else -1 end),
+            ( [.fans[]?.rpm] | if length > 0 then (max | round) else -1 end) ]
+        | @tsv' 2>/dev/null
+}
+
+check_thermal() {
+    local stamp_file="$cache_dir/temperature" centi source pressure now
+    local fan_pct=-1 fan_rpm=-1 last_centi='' last_source='' last_at=''
+    local temp delta state fix='' detail trend fans
+
     pressure="$(notifyutil -g kOSThermalNotificationPressureLevelName 2>/dev/null | awk '{print $2}')"
     [[ $pressure =~ ^[0-9]+$ ]] || pressure=0
     printf -v now '%(%s)T' -1
 
-    # A Mac without a battery reports no pack sensor. Pressure still does.
+    if IFS=$'\t' read -r centi fan_pct fan_rpm < <(read_die_temperature) && [[ $centi =~ ^[0-9]+$ ]]; then
+        source=die
+    else
+        centi="$(ioreg -rn AppleSmartBattery 2>/dev/null | awk -F'= ' '/"Temperature"/ {print $2; exit}')"
+        source=battery
+    fi
+    # A failed `read` leaves these empty rather than untouched, and an empty string
+    # is zero to `(( ))` — which printed "fans %" on the fallback path and would
+    # have compared as a real reading.
+    [[ $fan_pct =~ ^-?[0-9]+$ ]] || fan_pct=-1
+    [[ $fan_rpm =~ ^-?[0-9]+$ ]] || fan_rpm=-1
+
+    # Neither sensor answered — a Mac with no battery and no macmon. Pressure still does.
     if [[ ! $centi =~ ^[0-9]+$ ]]; then
         state=ok
         (( pressure > 0 )) && state=warn
         (( pressure >= 2 )) && state=crit
         [[ $state != ok ]] && fix='macOS is reporting thermal pressure. The Energy row names the process holding the CPU.'
-        emit thermal "Temperature" "$state" "pressure ${pressure}" "no battery sensor on this machine" "$fix"
+        emit thermal "Temperature" "$state" "pressure ${pressure}" "no temperature sensor readable here" "$fix"
         return
     fi
 
     temp="$(awk -v c="$centi" 'BEGIN { printf "%.1f", c / 100 }')"
 
-    [[ -f $stamp_file ]] && read -r last_centi last_at < "$stamp_file" 2>/dev/null
-    printf '%s %s\n' "$centi" "$now" > "$stamp_file"
+    [[ -f $stamp_file ]] && read -r last_centi last_at last_source < "$stamp_file" 2>/dev/null
+    printf '%s %s %s\n' "$centi" "$now" "$source" > "$stamp_file"
 
-    if [[ $last_centi =~ ^[0-9]+$ && $last_at =~ ^[0-9]+$ ]] && (( now > last_at )); then
+    if [[ $last_centi =~ ^[0-9]+$ && $last_at =~ ^[0-9]+$ && $last_source == "$source" ]] && (( now > last_at )); then
         delta="$(awk -v a="$centi" -v b="$last_centi" 'BEGIN { printf "%+.1f", (a - b) / 100 }')"
-        # ±0.5 °C is the pack drifting, not a trend worth a sentence.
-        if awk -v d="$delta" 'BEGIN { exit !(d < 0.5 && d > -0.5) }'; then
+        # The die swings a degree between idle samples; that is noise, not a trend.
+        if awk -v d="$delta" 'BEGIN { exit !(d < 1 && d > -1) }'; then
             trend="steady since $(date -r "$last_at" '+%H:%M' 2>/dev/null || printf 'the last check')"
         else
-            trend="${delta} °C since $(date -r "$last_at" '+%H:%M' 2>/dev/null || printf 'the last check')"
+            trend="${delta}° since $(date -r "$last_at" '+%H:%M' 2>/dev/null || printf 'the last check')"
         fi
     else
         trend="no earlier sample to compare"
     fi
 
+    # Every warn rule is evaluated before every crit rule, so a signal can only
+    # ever raise the state. Written the other way round — thresholds grouped by
+    # source, escalation grouped by signal — the fan rule and the pressure rule
+    # each ran *after* the crit test and silently demoted a 97° die back to warn.
     state=ok
-    awk -v t="$temp" 'BEGIN { exit !(t >= 40) }' && state=warn
-    awk -v t="$temp" 'BEGIN { exit !(t >= 45) }' && state=crit
-    (( pressure > 0 )) && state=warn
+    if [[ $source == die ]]; then
+        # An M-series die idles in the forties and works through the sixties and
+        # seventies without complaint. Eighty is a machine under sustained load;
+        # the nineties are where it starts trading clock for heat.
+        awk -v t="$temp" 'BEGIN { exit !(t >= 80) }' && state=warn
+        # Fans near their ceiling say what the die is about to.
+        (( fan_pct >= 75 )) && state=warn
+        (( pressure > 0 )) && state=warn
+        awk -v t="$temp" 'BEGIN { exit !(t >= 95) }' && state=crit
+    else
+        awk -v t="$temp" 'BEGIN { exit !(t >= 40) }' && state=warn
+        (( pressure > 0 )) && state=warn
+        awk -v t="$temp" 'BEGIN { exit !(t >= 45) }' && state=crit
+    fi
     (( pressure >= 2 )) && state=crit
 
-    detail="${trend} · pressure $( ((pressure == 0)) && printf 'nominal' || printf 'level %s' "$pressure" )"
-    [[ $state != ok ]] && fix='Heat follows sustained CPU, so the Energy and Top memory rows name the cause before the fans do. A battery pack this warm has usually been fed by one process for a while.'
-    emit thermal "Temperature" "$state" "${temp} °C battery" "$detail" "$fix"
+    fans=''
+    (( fan_pct >= 0 )) && fans=" · fans ${fan_pct}%"
+    detail="${trend}${fans} · pressure $( ((pressure == 0)) && printf 'nominal' || printf 'level %s' "$pressure" )"
+    [[ $state != ok ]] && fix='Heat follows sustained CPU. The Energy row names the process drawing the most power, and it is almost always one process rather than the machine being busy in general.'
+    emit thermal "Temperature" "$state" "${temp} °C $( [[ $source == die ]] && printf 'die' || printf 'battery' )" "$detail" "$fix"
 }
 
 check_energy() {
