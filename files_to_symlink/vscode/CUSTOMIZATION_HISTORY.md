@@ -3309,3 +3309,57 @@ Verification:
   fast-glob call the options were found on is an inference. The check is a
   reload, then whether `Google\Service\SearchConsole` still resolves while an
   unused service no longer autocompletes.
+
+### 2026-08-08 — Six extensions removed, and the tracked list resynced
+
+Intent:
+
+- 93 extensions were installed. Remove the ones nothing on this machine uses,
+  and make `marketplace_extensions.txt` describe reality again.
+
+Implementation and evidence — each removal was checked against the filesystem
+before it was made, not against a guess about what a PHP developer needs:
+
+- `drcika.apc-extension` — recorded as inert in the 2026-07-30 entry: it injects
+  through the removed AMD bootstrap and has applied nothing since VS Code moved
+  to ESM. Removed;
+- `ms-vscode.powershell` — 15 `.ps1` files across `~/dev`, all deploy or utility
+  scripts in projects that are not PowerShell projects. VS Code's core grammar
+  keeps highlighting them; only IntelliSense and debugging are lost;
+- `ms-python.python`, and with it `vscode-pylance`, `debugpy` and
+  `vscode-python-envs`, which uninstalled as its dependencies. Removed on an
+  explicit request. Worth recording that this is not a costless removal:
+  `~/dev/dfs-api` is a live Python project with a `requirements.txt` and a commit
+  from 2026-07-30.
+
+Kept, against the same evidence:
+
+- `swiftlang.swift-vscode` and `llvm-vs-code-extensions.lldb-dap` were on the
+  removal list but `~/dev/muxy` is a real Swift project — 1,359 `.swift` files,
+  its own remote at `github.com/muxy-app/muxy`, and a `.vscode/launch.json` whose
+  configurations are `"type": "swift"`. Removing either would break debugging
+  there, so neither was touched.
+
+Decisions and lessons:
+
+- "if those are not used" is a question with a checkable answer. Counting files
+  by extension under `~/dev` and reading the debug configurations settled all
+  five cases in one pass, and reversed two of them;
+- themes are not the place to look for weight. Roughly twenty of the installed
+  extensions are colour or icon themes, and VS Code loads only the active one —
+  the cost is in extensions that activate on a language or on startup;
+- the tracked list had drifted both ways. `vscjava.migrate-java-to-azure` was
+  listed but not installed, and `anthropic.claude-code`,
+  `astro-build.astro-vscode` and `mechatroner.rainbow-csv` were installed but not
+  listed, so a new machine would have lost them.
+
+Verification:
+
+- 93 installed before, 87 after; `marketplace_extensions.txt` rewritten from the
+  live set and diffed back to it — 81 marketplace entries, in sync, plus the six
+  `local.*` extensions;
+- **not verified: the memory saved.** Extension-host memory is not attributable
+  per extension from outside, so the claim here is only that six fewer extensions
+  load. Five Jupyter extensions remain installed and are now orphaned — the
+  Python extension they depend on is gone and there are zero `.ipynb` files
+  anywhere under `~/dev`.

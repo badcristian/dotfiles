@@ -2,6 +2,8 @@ akamud.vscode-theme-onedark
 alefragnani.bookmarks
 alefragnani.project-manager
 alexdauenhauer.catppuccin-noctis
+anthropic.claude-code
+astro-build.astro-vscode
 atommaterial.a-file-icon-vscode
 be5invis.theme-verdandi
 be5invis.vscode-custom-css
@@ -33,15 +35,12 @@ k--kato.intellij-idea-keybindings
 koihik.vscode-lua-format
 laravel.vscode-laravel
 llvm-vs-code-extensions.lldb-dap
+mechatroner.rainbow-csv
 miguelsolorio.fluent-icons
 miguelsolorio.symbols
 monokai.theme-monokai-pro-vscode
 ms-azuretools.vscode-containers
 ms-azuretools.vscode-docker
-ms-python.debugpy
-ms-python.python
-ms-python.vscode-pylance
-ms-python.vscode-python-envs
 ms-toolsai.jupyter
 ms-toolsai.jupyter-keymap
 ms-toolsai.jupyter-renderers
@@ -51,7 +50,6 @@ ms-vscode-remote.remote-containers
 ms-vscode-remote.remote-ssh
 ms-vscode-remote.remote-ssh-edit
 ms-vscode.azure-repos
-ms-vscode.powershell
 ms-vscode.remote-explorer
 ms-vscode.remote-repositories
 ms-vscode.remote-server
@@ -79,6 +77,5 @@ typescriptteam.native-preview
 ujjwalbarman.kamekazi-dark
 usernamehw.errorlens
 vitest.explorer
-vscjava.migrate-java-to-azure
 vue.volar
 waderyan.gitblame
