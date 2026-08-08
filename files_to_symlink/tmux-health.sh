@@ -208,15 +208,73 @@ check_load() {
     emit load "CPU load" "$state" "$load1 on ${cores} cores" "$detail" "$fix"
 }
 
+# Temperature, with the trend that makes a temperature mean something.
+#
+# This check used to read `CPU_Speed_Limit` from `pmset -g therm`. On Apple
+# Silicon that field does not exist: all three lines come back as "No thermal
+# warning level has been recorded", the parse fell through to its `limit=100`
+# default, and the row has reported "100% clock available — no throttling
+# recorded" ever since. A clean bill of health that nothing measured is worse
+# than no row at all, because it answers the question without looking.
+#
+# Two sources do report, both without root and without installing anything:
+#
+#   - `AppleSmartBattery`'s `Temperature`, in hundredths of a degree. It is the
+#     pack sensor rather than the die, so it lags a CPU spike by minutes — which
+#     is the right instrument here. A laptop that grows warm over an afternoon is
+#     describing accumulated chassis heat, not a millisecond transient, and the
+#     pack is what that heat ends up in.
+#   - `kOSThermalNotificationPressureLevelName`, macOS's own thermal pressure
+#     level and the thing it decides to throttle from. 0 is nominal.
+#
+# The reading alone says little: 34 °C is meaningless without knowing it was 28
+# an hour ago. The previous sample is stamped beside the swap counter, for the
+# same reason and at the same cost — the refresh cadence is the interval.
 check_thermal() {
-    local limit state fix=''
-    limit="$(pmset -g therm 2>/dev/null | awk -F= '/CPU_Speed_Limit/ {gsub(" ","",$2); print $2}')"
-    [[ $limit =~ ^[0-9]+$ ]] || limit=100
+    local stamp_file="$cache_dir/temperature" centi pressure now
+    local last_centi='' last_at='' temp delta state fix='' detail trend
+
+    centi="$(ioreg -rn AppleSmartBattery 2>/dev/null | awk -F'= ' '/"Temperature"/ {print $2; exit}')"
+    pressure="$(notifyutil -g kOSThermalNotificationPressureLevelName 2>/dev/null | awk '{print $2}')"
+    [[ $pressure =~ ^[0-9]+$ ]] || pressure=0
+    printf -v now '%(%s)T' -1
+
+    # A Mac without a battery reports no pack sensor. Pressure still does.
+    if [[ ! $centi =~ ^[0-9]+$ ]]; then
+        state=ok
+        (( pressure > 0 )) && state=warn
+        (( pressure >= 2 )) && state=crit
+        [[ $state != ok ]] && fix='macOS is reporting thermal pressure. The Energy row names the process holding the CPU.'
+        emit thermal "Temperature" "$state" "pressure ${pressure}" "no battery sensor on this machine" "$fix"
+        return
+    fi
+
+    temp="$(awk -v c="$centi" 'BEGIN { printf "%.1f", c / 100 }')"
+
+    [[ -f $stamp_file ]] && read -r last_centi last_at < "$stamp_file" 2>/dev/null
+    printf '%s %s\n' "$centi" "$now" > "$stamp_file"
+
+    if [[ $last_centi =~ ^[0-9]+$ && $last_at =~ ^[0-9]+$ ]] && (( now > last_at )); then
+        delta="$(awk -v a="$centi" -v b="$last_centi" 'BEGIN { printf "%+.1f", (a - b) / 100 }')"
+        # ±0.5 °C is the pack drifting, not a trend worth a sentence.
+        if awk -v d="$delta" 'BEGIN { exit !(d < 0.5 && d > -0.5) }'; then
+            trend="steady since $(date -r "$last_at" '+%H:%M' 2>/dev/null || printf 'the last check')"
+        else
+            trend="${delta} °C since $(date -r "$last_at" '+%H:%M' 2>/dev/null || printf 'the last check')"
+        fi
+    else
+        trend="no earlier sample to compare"
+    fi
+
     state=ok
-    (( limit < 100 )) && state=warn
-    (( limit < 70 )) && state=crit
-    [[ $state != ok ]] && fix='The CPU is being throttled to shed heat. Find the sustained load below.'
-    emit thermal "Thermal" "$state" "${limit}% clock available" "no throttling recorded" "$fix"
+    awk -v t="$temp" 'BEGIN { exit !(t >= 40) }' && state=warn
+    awk -v t="$temp" 'BEGIN { exit !(t >= 45) }' && state=crit
+    (( pressure > 0 )) && state=warn
+    (( pressure >= 2 )) && state=crit
+
+    detail="${trend} · pressure $( ((pressure == 0)) && printf 'nominal' || printf 'level %s' "$pressure" )"
+    [[ $state != ok ]] && fix='Heat follows sustained CPU, so the Energy and Top memory rows name the cause before the fans do. A battery pack this warm has usually been fed by one process for a while.'
+    emit thermal "Temperature" "$state" "${temp} °C battery" "$detail" "$fix"
 }
 
 check_energy() {
@@ -382,7 +440,7 @@ check_hogs() {
     [[ $state != ok ]] && fix="$(hog_fix "$top_cmd")"
     emit hogs "Top memory" "$state" \
         "$(awk -v n="$name" -v mb="$top_mb" 'BEGIN { printf "%s %s", n, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb)) }')" \
-        "$detail · ${pct}% of RAM" "$fix"
+        "$detail" "$fix"
 }
 
 check_processes() {
@@ -500,7 +558,7 @@ rule() {
 # a refresh redraws in place instead of clearing the window.
 render_row() {
     local label="$1" state="$2" value="$3" detail="$4" width="$5"
-    local colour icon room
+    local colour icon room shown pad
 
     colour="$(state_colour "$state")"
     icon="$(state_icon "$state")"
@@ -518,8 +576,17 @@ render_row() {
     room=$(( width - 42 ))
     (( room < 12 )) && room=12
 
-    printf '  %s%s%s %-11s %-24s %s%s%s\n' \
-        "$colour" "$icon" "$reset" "$label" "${value:0:24}" "$dim" "${detail:0:room}" "$reset"
+    # `printf %-24s` pads to a width counted in BYTES. "30.8 °C battery" is fifteen
+    # columns on screen and sixteen bytes in memory, so the temperature row was
+    # padded one short and its detail stopped lining up with every other row.
+    # `${#var}` counts characters in a UTF-8 locale, so the padding is measured
+    # rather than declared — and the same substring form already clips both fields.
+    shown="${value:0:24}"
+    pad=$(( 24 - ${#shown} ))
+    (( pad < 0 )) && pad=0
+
+    printf '  %s%s%s %-11s %s%*s %s%s%s\n' \
+        "$colour" "$icon" "$reset" "$label" "$shown" "$pad" '' "$dim" "${detail:0:room}" "$reset"
 }
 
 render_report() {
@@ -637,7 +704,7 @@ label_for() {
         hogs) printf 'Top memory' ;;
         swap) printf 'Swap' ;;
         load) printf 'CPU load' ;;
-        thermal) printf 'Thermal' ;;
+        thermal) printf 'Temperature' ;;
         energy) printf 'Energy' ;;
         processes) printf 'Processes' ;;
     esac
