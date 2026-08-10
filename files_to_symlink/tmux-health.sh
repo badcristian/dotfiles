@@ -231,6 +231,147 @@ check_load() {
 # The reading alone says little: 34 °C is meaningless without knowing it was 28
 # an hour ago. The previous sample is stamped beside the swap counter, for the
 # same reason and at the same cost — the refresh cadence is the interval.
+# ─── thermal snapshots ───────────────────────────────────────────────────────
+#
+# The Temperature row can say the machine is hot. It cannot say what made it hot,
+# because by the time anyone reads the row the load has moved on — and "the
+# laptop gets warmer through the day" is a claim about a pattern, which no single
+# reading can settle.
+#
+# So a check that finds the machine hot writes down what was running at that
+# moment. One snapshot proves nothing; a stack of them is evidence, because a
+# process that appears in eight of ten is a cause and one that appears in two is
+# a coincidence. That is the whole reason for the count: ten is roughly where a
+# repeat offender separates from noise, and the samples are an hour apart, so
+# ten of them span a working day rather than a spike.
+#
+# When the stack is deep enough the run leaves a note for whoever looks next —
+# see the "Thermal snapshots" section of AGENTS.md, which is what points an agent
+# at it on boot.
+thermal_dir="$cache_dir/thermal"
+thermal_target="${TMUX_HEALTH_THERMAL_TARGET:-10}"
+thermal_keep="${TMUX_HEALTH_THERMAL_KEEP:-40}"
+
+thermal_snapshot_count() {
+    local n
+    n="$(find "$thermal_dir" -maxdepth 1 -name 'snapshot-*.md' 2>/dev/null | wc -l)"
+    printf '%s' "${n// /}"
+}
+
+capture_thermal_snapshot() {
+    local state="$1" temp="$2" hotspot="$3" fan_pct="$4" pressure="$5"
+    local now file
+
+    printf -v now '%(%s)T' -1
+    mkdir -p "$thermal_dir" 2>/dev/null || return 0
+    file="$thermal_dir/snapshot-${now}.md"
+
+    {
+        printf '# Thermal snapshot — %s\n\n' "$(date -r "$now" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '%s' "$now")"
+        printf -- '- state: **%s**\n' "$state"
+        printf -- '- temperature: %s °C, from the %s sensor (the hotter of the two)\n' "$temp" "$hotspot"
+        (( fan_pct >= 0 )) && printf -- '- fans: %s%% of maximum\n' "$fan_pct"
+        printf -- '- thermal pressure: %s\n' "$pressure"
+        printf -- '- load average: %s\n' "$(sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' | awk '{print $1, $2, $3}')"
+        printf -- '- uptime: %s\n\n' "$(uptime 2>/dev/null | sed 's/.*up //; s/,[^,]*users.*//')"
+
+        printf '## Processes, by CPU over a 2-second interval\n\n'
+        printf '```\n   %%CPU  power  pid      command\n'
+        # Two samples, always: `top`'s first reports averages since boot, which
+        # describe the whole uptime rather than the minute that mattered. The
+        # Energy check learned that the same way.
+        #
+        # The command comes from `ps`, joined by pid, because `top` truncates its
+        # own COMMAND column to the terminal width and setting COLUMNS does not
+        # widen it. "Google Chrome He" and "Slack Helper (Re" name nothing, and a
+        # file written to be read later by something that is not a terminal has to
+        # carry the whole argument list — this is the same join the Top memory
+        # check uses, for the same reason.
+        awk '
+            NR == FNR { if ($1 ~ /^[0-9]+$/) { cpu[$1] = $2; power[$1] = $3 } ; next }
+            {
+                pid = $1
+                sub(/^[ ]*[0-9]+[ ]+/, "", $0)
+                if (!(pid in cpu)) next
+                # Chrome hands every helper a page of opaque handles — field-trial,
+                # shmem, seatbelt, gpu-preferences — which bury the one flag that
+                # says what the helper is. Only the VALUE after `=` is collapsed, so
+                # `--metrics-shmem-handle=…` keeps the name that explains it and
+                # loses the digits that do not. Collapsing long tokens wholesale was
+                # tried first and swallowed `WindowServer`, whose path is one
+                # unbroken 74-character run — the width cap is the backstop instead.
+                gsub(/=[^ ]{40,}/, "=…")
+                printf "%7.1f %6.1f  %-8s %.220s\n", cpu[pid], power[pid], pid, $0
+            }' \
+            <(top -l 2 -n 20 -s 2 -o cpu -stats pid,cpu,power 2>/dev/null | awk '/^PID/ { seen++ } seen == 2') \
+            <(ps -Ao pid=,command= 2>/dev/null) |
+            sort -rn | head -15
+        printf '```\n'
+    } > "$file" 2>/dev/null || return 0
+
+    # Keep only the most recent, so a fortnight of warm afternoons cannot quietly
+    # fill the disk this monitor also reports on.
+    find "$thermal_dir" -maxdepth 1 -name 'snapshot-*.md' 2>/dev/null |
+        sort -r | tail -n "+$(( thermal_keep + 1 ))" |
+        while IFS= read -r stale; do rm -f "$stale"; done
+}
+
+write_thermal_review() {
+    local count first last
+    count="$(thermal_snapshot_count)"
+    [[ $count =~ ^[0-9]+$ ]] && (( count >= thermal_target )) || return 0
+
+    first="$(find "$thermal_dir" -maxdepth 1 -name 'snapshot-*.md' 2>/dev/null | sort | head -1)"
+    last="$(find "$thermal_dir" -maxdepth 1 -name 'snapshot-*.md' 2>/dev/null | sort | tail -1)"
+    first="${first##*snapshot-}"; first="${first%.md}"
+    last="${last##*snapshot-}"; last="${last%.md}"
+
+    cat > "$thermal_dir/REVIEW.md" <<REVIEW 2>/dev/null || return 0
+# Thermal snapshots are ready to be reviewed
+
+${count} snapshots have been collected, between $(date -r "$first" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '%s' "$first") and $(date -r "$last" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '%s' "$last"). Each one was
+written by \`tmux-health.sh\` at a moment when this machine was running hot, and
+records what was on the CPU at that moment.
+
+This file exists **only** while there is something to look at. Its presence is
+the whole signal.
+
+## The question they exist to answer
+
+The machine gets warmer through the day and the cause is not known. A single
+snapshot cannot show that — one busy moment proves nothing. Across the stack, a
+process that appears in most of them is a cause, and one that appears in two is
+a coincidence.
+
+## Where they are
+
+\`${thermal_dir}/snapshot-*.md\`, one file per hot moment, named by unix
+timestamp. Each carries the temperature, which sensor was hotter, fan speed,
+thermal pressure, load average, uptime, and an interval-sampled \`top\`.
+
+## What is worth working out
+
+Not prescribed, because the answer is not known in advance and the snapshots may
+support more than what was imagined when this was written. The obvious starting
+points: which processes recur across snapshots rather than appearing once;
+whether temperature tracks uptime, which would point at a leak or an accumulating
+background task rather than the work in hand; whether the hot moments cluster at
+a time of day; and whether anything in them contradicts what
+\`files_to_symlink/tmux-health.sh\` already assumes about this machine.
+
+## When the review is done
+
+Report what was found, then delete this file and the snapshots it refers to:
+
+\`\`\`bash
+rm -rf "${thermal_dir}"
+\`\`\`
+
+Collection restarts on its own at the next hot check. Leaving the file in place
+means every future agent will raise it again.
+REVIEW
+}
+
 # The die sensor and the fans, read through `macmon`, which talks to IOReport and
 # so needs no root — `powermetrics` gives the same numbers but only to a process
 # that can sudo, which an unattended hourly check cannot.
@@ -352,6 +493,13 @@ check_thermal() {
         awk -v t="$temp" 'BEGIN { exit !(t >= 45) }' && state=crit
     fi
     (( pressure >= 2 )) && state=crit
+
+    # Hot enough to be worth a record of what was running. Only the sampled `top`
+    # inside makes this cost anything, and only a hot check pays it.
+    if [[ $state != ok ]]; then
+        capture_thermal_snapshot "$state" "$temp" "$( [[ $source == die ]] && printf '%s' "$hotspot" || printf 'battery' )" "$fan_pct" "$pressure"
+        write_thermal_review
+    fi
 
     fans=''
     (( fan_pct >= 0 )) && fans=" · fans ${fan_pct}%"

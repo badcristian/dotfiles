@@ -4,6 +4,33 @@ This repository is the source of truth for the user's machine configuration.
 Files installed into the home directory are often symlinks back into
 `files_to_symlink`, so edit the repository copy rather than the live destination.
 
+## On startup: thermal snapshots waiting to be reviewed
+
+Check whether this file exists, before doing anything else:
+
+```bash
+~/.cache/tmux-health/thermal/REVIEW.md
+```
+
+**If it is absent, there is nothing to do.** That is the normal case and the
+check costs a single `test -f`. Do not go looking further.
+
+**If it is present**, `files_to_symlink/tmux-health.sh` has caught this machine
+running hot on enough separate occasions to be worth analysing, and nobody has
+looked yet. Read it — it states how many snapshots there are, the period they
+cover, where they live, and how to clear them afterwards.
+
+Then *tell the user it is waiting* and offer to do the analysis. Do not silently
+start it: the user opened this session for something, and a queued investigation
+is not automatically that something. If they say yes, the file explains the
+question the snapshots exist to answer without prescribing how to answer it —
+the useful finding may not be one anybody predicted, so treat its suggestions as
+a starting point rather than a checklist.
+
+Nothing here is tracked in git. The snapshots and the review file live in the
+cache directory because they describe this machine at a moment, not the
+configuration; a fresh clone correctly finds nothing.
+
 ## VS Code changes
 
 Before changing anything under `files_to_symlink/vscode`, read
