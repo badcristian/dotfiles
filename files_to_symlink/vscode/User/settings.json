@@ -620,6 +620,12 @@
 		"editor.defaultFormatter": "esbenp.prettier-vscode",
 	},
 	"js/ts.updateImportsOnFileMove.enabled": "always",
+	// Ceiling for the TS server heap, not a reservation. The default is 3072, and V8
+	// only collects seriously as it nears the ceiling -- so the default lets a Nuxt
+	// project idle around a gigabyte. 2048 makes it collect sooner while leaving
+	// roughly 2x headroom over what those projects actually use. If the server starts
+	// dying with "terminated unexpectedly", it needs more than this, not less.
+	"typescript.tsserver.maxTsServerMemory": 2048,
 	"workbench.statusBar.visible": false,
 	"extensions.supportAgentsWindow": {
 		"monokai.theme-monokai-pro-vscode": true
