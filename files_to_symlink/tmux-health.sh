@@ -248,22 +248,29 @@ read_die_temperature() {
         # Fan speed as a share of each fan'"'"'s own maximum: 2,300 rpm means nothing
         # without knowing the ceiling, and the two fans here have different ones.
         [.fans[]? | select(.max_rpm > 0) | (.rpm / .max_rpm * 100)] as $load
-        | [ (.temp.cpu_temp_avg // empty | . * 100 | round),
+        # The hotter of the two SoC sensors, not the CPU one. Under a GPU-only load
+        # the GPU ran 6 °C above the CPU die — 73 against 67 — so reading the CPU
+        # alone understates exactly the workload that is heating the machine.
+        # Both sit on one package, so the maximum is the hottest point on it.
+        | (.temp.cpu_temp_avg // 0) as $cpu
+        | (.temp.gpu_temp_avg // 0) as $gpu
+        | [ ([$cpu, $gpu] | max | . * 100 | round),
             ( $load | if length > 0 then (max | round) else -1 end),
-            ( [.fans[]?.rpm] | if length > 0 then (max | round) else -1 end) ]
+            ( [.fans[]?.rpm] | if length > 0 then (max | round) else -1 end),
+            ( if $gpu > $cpu then "gpu" else "cpu" end) ]
         | @tsv' 2>/dev/null
 }
 
 check_thermal() {
     local stamp_file="$cache_dir/temperature" centi source pressure now
-    local fan_pct=-1 fan_rpm=-1 last_centi='' last_source='' last_at=''
+    local fan_pct=-1 fan_rpm=-1 hotspot='' last_centi='' last_source='' last_at=''
     local temp delta state fix='' detail trend fans
 
     pressure="$(notifyutil -g kOSThermalNotificationPressureLevelName 2>/dev/null | awk '{print $2}')"
     [[ $pressure =~ ^[0-9]+$ ]] || pressure=0
     printf -v now '%(%s)T' -1
 
-    if IFS=$'\t' read -r centi fan_pct fan_rpm < <(read_die_temperature) && [[ $centi =~ ^[0-9]+$ ]]; then
+    if IFS=$'\t' read -r centi fan_pct fan_rpm hotspot < <(read_die_temperature) && [[ $centi =~ ^[0-9]+$ ]]; then
         source=die
     else
         centi="$(ioreg -rn AppleSmartBattery 2>/dev/null | awk -F'= ' '/"Temperature"/ {print $2; exit}')"
@@ -274,6 +281,7 @@ check_thermal() {
     # have compared as a real reading.
     [[ $fan_pct =~ ^-?[0-9]+$ ]] || fan_pct=-1
     [[ $fan_rpm =~ ^-?[0-9]+$ ]] || fan_rpm=-1
+    [[ $hotspot == cpu || $hotspot == gpu ]] || hotspot=cpu
 
     # Neither sensor answered — a Mac with no battery and no macmon. Pressure still does.
     if [[ ! $centi =~ ^[0-9]+$ ]]; then
@@ -308,11 +316,21 @@ check_thermal() {
     # each ran *after* the crit test and silently demoted a 97° die back to warn.
     state=ok
     if [[ $source == die ]]; then
-        # Calibrated against `macmon stress all -w 8` on this M1 Pro — 200 seconds
-        # of full CPU and GPU load, sampled every 15. The curve: idle 42 °C, past
-        # 80 at 62 seconds, plateau at 88–89 from 125 seconds on. Fans stayed at 0
-        # until the die hit 81, then ramped to a ceiling of 61% (3,800 rpm).
-        # Thermal pressure never left 0 at any point.
+        # Calibrated against `macmon stress` on this M1 Pro, 200 seconds a run,
+        # sampled every 15.
+        #
+        #   all -w 8   idle 42 °C, past 80 at 62s, plateau 88–89 from 125s on.
+        #              Fans held at 0 until the die hit 81, then ramped to a
+        #              ceiling of 61% (3,800 rpm).
+        #   gpu        GPU 51 → 73 °C and still climbing at 200s; CPU die only
+        #              reached 67. Fans never moved off their 40% resting point.
+        #
+        # Thermal pressure stayed at 0 through both, which is why any level above
+        # nominal is treated as significant rather than as a degree of warmth.
+        #
+        # The GPU run is the reason this reads the hotter of the two sensors: a
+        # GPU-only load put the GPU 6 °C above the CPU die, so a CPU-only reading
+        # would have been quietest about the workload doing the heating.
         #
         # The first draft guessed 95 °C and 75% fans. Neither is reachable: the
         # machine tops out at 89 °C and 61% under a load harder than any real work,
@@ -339,7 +357,7 @@ check_thermal() {
     (( fan_pct >= 0 )) && fans=" · fans ${fan_pct}%"
     detail="${trend}${fans} · pressure $( ((pressure == 0)) && printf 'nominal' || printf 'level %s' "$pressure" )"
     [[ $state != ok ]] && fix='Heat follows sustained CPU. The Energy row names the process drawing the most power, and it is almost always one process rather than the machine being busy in general.'
-    emit thermal "Temperature" "$state" "${temp} °C $( [[ $source == die ]] && printf 'die' || printf 'battery' )" "$detail" "$fix"
+    emit thermal "Temperature" "$state" "${temp} °C $( [[ $source == die ]] && printf '%s' "$hotspot" || printf 'battery' )" "$detail" "$fix"
 }
 
 check_energy() {
