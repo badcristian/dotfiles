@@ -308,14 +308,26 @@ check_thermal() {
     # each ran *after* the crit test and silently demoted a 97° die back to warn.
     state=ok
     if [[ $source == die ]]; then
-        # An M-series die idles in the forties and works through the sixties and
-        # seventies without complaint. Eighty is a machine under sustained load;
-        # the nineties are where it starts trading clock for heat.
+        # Calibrated against `macmon stress all -w 8` on this M1 Pro — 200 seconds
+        # of full CPU and GPU load, sampled every 15. The curve: idle 42 °C, past
+        # 80 at 62 seconds, plateau at 88–89 from 125 seconds on. Fans stayed at 0
+        # until the die hit 81, then ramped to a ceiling of 61% (3,800 rpm).
+        # Thermal pressure never left 0 at any point.
+        #
+        # The first draft guessed 95 °C and 75% fans. Neither is reachable: the
+        # machine tops out at 89 °C and 61% under a load harder than any real work,
+        # so both would have been states that can never fire — the same fault as the
+        # `pmset` check they replaced, which reported a clean bill of health it
+        # never measured.
+        #
+        # So the crit line sits just above the measured ceiling. Reaching 92 °C or
+        # 70% fans means more heat than a full synthetic load produces, which is not
+        # a busy machine — it is cooling that has stopped working as well as it did
+        # here: blocked vents, a hot room, a failing fan.
         awk -v t="$temp" 'BEGIN { exit !(t >= 80) }' && state=warn
-        # Fans near their ceiling say what the die is about to.
-        (( fan_pct >= 75 )) && state=warn
+        (( fan_pct >= 70 )) && state=warn
         (( pressure > 0 )) && state=warn
-        awk -v t="$temp" 'BEGIN { exit !(t >= 95) }' && state=crit
+        awk -v t="$temp" 'BEGIN { exit !(t >= 92) }' && state=crit
     else
         awk -v t="$temp" 'BEGIN { exit !(t >= 40) }' && state=warn
         (( pressure > 0 )) && state=warn
