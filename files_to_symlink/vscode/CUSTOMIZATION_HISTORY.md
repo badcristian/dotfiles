@@ -134,6 +134,9 @@ The settings intentionally create a compact, low-noise editor:
 - PHP uses Intelephense for core language intelligence, with selected
   Intelephense CodeLens features disabled where the local extension supplies
   the intended navigation;
+- `intelephense.stubs` pins Intelephense's own default list plus `apcu`. The
+  setting replaces the default rather than extending it, so the defaults are
+  reproduced there and have to be resynced after an Intelephense upgrade;
 - generated, compiled, vendor, helper, and framework-cache paths are separated
   carefully between indexing, diagnostics, references, and Sonar analysis.
 - Prettier owns JavaScript, TypeScript, and JSON formatting, Laravel Pint owns
@@ -3533,3 +3536,54 @@ Verification:
 - **not yet verified: the expansion itself.** Tab-expanding `pubf` in a real PHP
   buffer needs **Developer: Reload Window** first, and no window was reloaded from
   this session.
+
+### 2026-08-10 — APCu added to the Intelephense stubs, pinning the default list
+
+Intent:
+
+- clear `P1010 Undefined function 'App\Shared\Cache\apcu_entry'` in
+  `ribeit-api/app/Shared/Cache/Apcu.php`.
+
+Implementation:
+
+- the diagnostic was correct about what it saw and wrong about the code. `apcu`
+  is not among Intelephense 1.18.5's 69 default stubs, so nothing declared any
+  `apcu_*` function. `ext-apcu` is a hard requirement in that project's
+  `composer.json` and the machine's PHP 8.4.17 has it loaded, so the call is
+  fine;
+- `intelephense.stubs` added to the global settings with `apcu` appended.
+
+Decisions and lessons:
+
+- **the setting replaces the default list, it does not extend it.** Writing
+  `["apcu"]` would have resolved `apcu_entry` and undefined the entire standard
+  library. All 69 defaults are reproduced alongside it;
+- they were read out of the installed extension's `package.json` and spliced in
+  programmatically rather than typed, then diffed back against it — a
+  hand-copied 69-item list is a silent-typo machine, and a dropped entry only
+  shows up later as a P1010 on something unrelated;
+- the cost is a pinned list. Intelephense has been adding defaults — `random` and
+  `uri` are recent — and they will not arrive until this is resynced. The
+  settings comment carries the command to diff it after an upgrade;
+- global rather than per-project, because a workspace `intelephense.stubs` would
+  also replace rather than merge, so every project would have to carry the whole
+  list. The tradeoff is that `apcu_*` now resolves in projects that do not
+  declare `ext-apcu`; the extension is installed machine-wide, so that costs a
+  warning nobody was going to act on;
+- `imagick` is the one other stub these projects declare and do not get. It was
+  left out: `ext-imagick` is required by `ribeit-api`, but the only reference is
+  `BaconQrCode`'s `ImagickImageBackEnd` inside vendor, so no first-party
+  diagnostic depends on it. The settings comment says where to add it.
+
+Verification:
+
+- the bundled stub at `intelephense/lib/stub/apcu/apcu.php` was read directly and
+  declares all five functions the file calls: `apcu_entry`, `apcu_key_info`,
+  `apcu_add`, `apcu_store`, `apcu_delete`;
+- `settings.json` parses; the list is 70 entries, its first 69 compare equal to
+  Intelephense's `default` array, every name is in the extension's permitted
+  `enum`, and there are no duplicates;
+- every `ext-*` requirement across the six PHP projects under `~/dev` was checked
+  against the default list. `apcu` and `imagick` are the only two not covered;
+- **not yet verified: the diagnostic clearing.** That needs a window reload in
+  the ribeit-api window, which was not done from this session.

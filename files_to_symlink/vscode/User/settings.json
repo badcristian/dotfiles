@@ -56,6 +56,33 @@
 	// Activate Premium via Command Palette → "Intelephense: Enter licence key",
 	// which persists it to the extension's global storage, outside the repo.
 	"php.suggest.basic": false,
+	// APCu is not one of Intelephense's default stubs, so every apcu_* call read as an undefined
+	// function — P1010 on `apcu_entry` in ribeit-api, which requires ext-apcu and runs on a PHP
+	// that has it loaded. The stub ships with Intelephense; it just is not switched on.
+	//
+	// This setting REPLACES the default list rather than extending it, so the 69 defaults have to
+	// be reproduced here or they are lost. They were copied out of Intelephense 1.18.5 itself, not
+	// typed. The cost of that is a pinned list: stubs added to a later Intelephense default — as
+	// `random` and `uri` were — will not appear until this is resynced. After an upgrade, diff it:
+	//
+	//   node -e 'const p=require(process.argv[1]+"/package.json");
+	//     const d=p.contributes.configuration.properties["intelephense.stubs"].default;
+	//     console.log(d.join(" "))' ~/.vscode/extensions/bmewburn.vscode-intelephense-client-<ver>
+	//
+	// `imagick` is the other stub these projects declare and do not get; add it here if Imagick is
+	// ever referenced from first-party code rather than only from inside a vendor package.
+	"intelephense.stubs": [
+		"apache", "bcmath", "bz2", "calendar", "com_dotnet", "Core", "ctype", "curl", "date",
+		"dba", "dom", "enchant", "exif", "FFI", "fileinfo", "filter", "fpm", "ftp", "gd", "gettext",
+		"gmp", "hash", "iconv", "imap", "intl", "json", "ldap", "libxml", "mbstring", "meta",
+		"mysqli", "oci8", "odbc", "openssl", "pcntl", "pcre", "PDO", "pgsql", "Phar", "posix",
+		"pspell", "random", "readline", "Reflection", "session", "shmop", "SimpleXML", "snmp",
+		"soap", "sockets", "sodium", "SPL", "sqlite3", "standard", "superglobals", "sysvmsg",
+		"sysvsem", "sysvshm", "tidy", "tokenizer", "uri", "xml", "xmlreader", "xmlrpc", "xmlwriter",
+		"xsl", "Zend OPcache", "zip", "zlib",
+		// Added beyond the defaults.
+		"apcu",
+	],
 	// "intelephense.diagnostics.undefinedMethods": false,
 	"files.exclude": {
 		// "**/vendor": true
