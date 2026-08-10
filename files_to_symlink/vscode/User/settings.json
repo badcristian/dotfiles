@@ -168,6 +168,17 @@
 	"editor.quickSuggestions": {
 		"strings": true,
 	},
+	// PhpStorm live templates: `pubf` then Tab. Both keys are needed, because Tab means two
+	// different things depending on whether the suggest widget happens to be open.
+	//
+	// tabCompletion "onlySnippets" binds Tab to insertSnippet when the word before the cursor is a
+	// snippet prefix, which is the widget-closed case. When the widget IS open — the common case,
+	// since Intelephense proposes on every keystroke — VS Code's acceptSelectedSuggestion outranks
+	// it and Tab takes whatever is highlighted instead, so snippetSuggestions "top" is what makes
+	// that the snippet. "onlySnippets" rather than "on" so Tab never completes a word from the
+	// buffer; that is not a PhpStorm behaviour and it makes indenting unpredictable.
+	"editor.tabCompletion": "onlySnippets",
+	"editor.snippetSuggestions": "top",
 	"explorer.autoReveal": true,
 	"workbench.panel.opensMaximized": "never",
 	"security.workspace.trust.untrustedFiles": "open",

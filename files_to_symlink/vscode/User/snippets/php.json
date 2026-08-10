@@ -1,0 +1,362 @@
+{
+	// PHP live templates ported from PhpStorm.
+	//
+	// The user-authored ones were read out of
+	// ~/Library/Application Support/JetBrains/PhpStorm2025.3/templates/ — PHP.xml,
+	// "PHP Interfaces.xml", PestPHP.xml and user.xml. PhpStorm only writes a group
+	// file there once a template in it is added or edited, so those four files are
+	// exactly the templates that were not stock.
+	//
+	// The loop, throw and include templates below are PhpStorm's *bundled* PHP group,
+	// which lives in the application jar rather than the config directory. PhpStorm is
+	// no longer installed on this machine, so they are reconstructed from their known
+	// behaviour, not extracted. Treat their bodies as approximate and the abbreviations
+	// as exact.
+	//
+	// Every `$` that belongs to PHP is written `\\$` so VS Code emits it literally
+	// instead of reading it as a snippet variable. An unescaped `$fail` silently
+	// becomes a placeholder holding the word "fail".
+	//
+	// Tab expansion is what makes these behave like PhpStorm; it comes from
+	// editor.tabCompletion and editor.snippetSuggestions in settings.json, not from
+	// this file.
+
+	// --- Class members: PhpStorm's PHP group -------------------------------------
+
+	"public function": {
+		"prefix": "pubf",
+		"body": [
+			"public function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "public function"
+	},
+	"private function": {
+		"prefix": "prif",
+		"body": [
+			"private function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "private function"
+	},
+	"protected function": {
+		"prefix": "prof",
+		"body": [
+			"protected function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "protected function"
+	},
+	"public static function": {
+		"prefix": "pubsf",
+		"body": [
+			"public static function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "public static function"
+	},
+	"private static function": {
+		"prefix": "prisf",
+		"body": [
+			"private static function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "private static function"
+	},
+	"protected static function": {
+		"prefix": "prosf",
+		"body": [
+			"protected static function ${1:name}($2)",
+			"{",
+			"\t$0",
+			"}"
+		],
+		"description": "protected static function"
+	},
+
+	// --- Bodyless declarations: PhpStorm's "PHP Interfaces" group ----------------
+	//
+	// That group rebinds `pubf` and `pubsf` to the semicolon form, because PhpStorm
+	// scopes a group to the surrounding syntax and an interface body can only hold a
+	// declaration. VS Code resolves snippets by language, not by cursor context, so
+	// one abbreviation cannot mean two things. The class forms above keep `pubf` and
+	// `pubsf`; the declaration forms keep the group's own distinct abbreviations.
+
+	"public function declaration": {
+		"prefix": "pf",
+		"body": [
+			"public function ${1:name}($2);$0"
+		],
+		"description": "public function declaration, no body"
+	},
+	"function declaration": {
+		"prefix": "fun",
+		"body": [
+			"function ${1:name}($2);$0"
+		],
+		"description": "interface function declaration, no body"
+	},
+	"public static": {
+		"prefix": "ps",
+		"body": [
+			"public static $0"
+		],
+		"description": "public static"
+	},
+
+	// --- Loops and conditionals --------------------------------------------------
+
+	"foreach": {
+		"prefix": [
+			"fore",
+			"iter"
+		],
+		"body": [
+			"foreach (\\$${1:items} as \\$${2:item}) {",
+			"\t$0",
+			"}"
+		],
+		"description": "foreach over an iterable"
+	},
+	"for": {
+		"prefix": "fori",
+		"body": [
+			"for (\\$${1:i} = 0; \\$${1:i} < ${2:count}; \\$${1:i}++) {",
+			"\t$0",
+			"}"
+		],
+		"description": "for loop"
+	},
+	"iterate array": {
+		"prefix": "itar",
+		"body": [
+			"for (\\$${1:i} = 0, \\$iMax = count(\\$${2:array}); \\$${1:i} < \\$iMax; \\$${1:i}++) {",
+			"\t$0",
+			"}"
+		],
+		"description": "indexed for over an array, count cached"
+	},
+	"if": {
+		"prefix": "ifff",
+		"body": [
+			"if ($1) {",
+			"\t$0",
+			"}"
+		],
+		"description": "if block"
+	},
+	"if else": {
+		"prefix": "ifelse",
+		"body": [
+			"if ($1) {",
+			"\t$2",
+			"} else {",
+			"\t$0",
+			"}"
+		],
+		"description": "if/else block"
+	},
+
+	// --- Statements ---------------------------------------------------------------
+
+	"throw": {
+		"prefix": "thr",
+		"body": [
+			"throw new ${1:Exception}($2);$0"
+		],
+		"description": "throw new"
+	},
+	"require": {
+		"prefix": "rq",
+		"body": [
+			"require '$1';$0"
+		],
+		"description": "require"
+	},
+	"require_once": {
+		"prefix": "rqo",
+		"body": [
+			"require_once '$1';$0"
+		],
+		"description": "require_once"
+	},
+	"include": {
+		"prefix": "inc",
+		"body": [
+			"include '$1';$0"
+		],
+		"description": "include"
+	},
+	"include_once": {
+		"prefix": "inco",
+		"body": [
+			"include_once '$1';$0"
+		],
+		"description": "include_once"
+	},
+
+	// --- Debugging ------------------------------------------------------------------
+
+	"dd": {
+		"prefix": "dd",
+		"body": [
+			"dd('$1');$0"
+		],
+		"description": "dd()"
+	},
+	// PhpStorm called this "query logs". An abbreviation with a space in it can never be
+	// Tab-expanded — the word before the cursor is only ever the last word — so the
+	// three templates named that way are run together here. Same for `facade template`
+	// and `validation callback` below.
+	"query logs": {
+		"prefix": "querylogs",
+		"body": [
+			"DB::enableQueryLog();",
+			"$0",
+			"dd(DB::getQueryLog());"
+		],
+		"description": "wrap a query in the Laravel query log and dump it"
+	},
+
+	// --- Laravel --------------------------------------------------------------------
+
+	"model booted": {
+		"prefix": "booted",
+		"body": [
+			"protected static function booted(): void",
+			"{",
+			"\tstatic::creating(function (\\$model): void {",
+			"",
+			"\t});",
+			"",
+			"\tstatic::created(function (\\$model): void {",
+			"",
+			"\t});",
+			"",
+			"\tstatic::updating(function (\\$model): void {",
+			"",
+			"\t});",
+			"",
+			"\tstatic::updated(function (\\$model): void {",
+			"",
+			"\t});",
+			"",
+			"\tstatic::addGlobalScope('${1:ancient}', function (Builder \\$query): void {",
+			"\t\t$0",
+			"\t});",
+			"}"
+		],
+		"description": "Eloquent booted() with the four model events and a global scope"
+	},
+	// Merges PhpStorm's `facade template` with the `facade` snippet that was already in
+	// the live php.json. That one was missing the class's closing brace and hardcoded an
+	// App\Domains\DFS\Facades namespace, so neither survived here.
+	"facade": {
+		"prefix": "facade",
+		"body": [
+			"use Illuminate\\Support\\Facades\\Facade;",
+			"",
+			"/**",
+			" * Class ${1:FacadeName}",
+			" *",
+			" * @mixin ${2:Concrete}",
+			" */",
+			"class ${1:FacadeName} extends Facade",
+			"{",
+			"\tprotected static function getFacadeAccessor(): string",
+			"\t{",
+			"\t\treturn ${2:Concrete}::class;",
+			"\t}",
+			"}$0"
+		],
+		"description": "Facade resolving a concrete class"
+	},
+	"facade by container key": {
+		"prefix": "facadekey",
+		"body": [
+			"use Illuminate\\Support\\Facades\\Facade;",
+			"",
+			"/**",
+			" * Class ${1:FacadeName}",
+			" *",
+			" * @mixin ${2:\\App\\Domains\\Concrete}",
+			" */",
+			"class ${1:FacadeName} extends Facade",
+			"{",
+			"\tprotected static function getFacadeAccessor(): string",
+			"\t{",
+			"\t\treturn '${3:key}';",
+			"\t}",
+			"}$0"
+		],
+		"description": "Facade resolving a container binding by string key"
+	},
+	"validation closure": {
+		"prefix": "validation",
+		"body": [
+			"function (string \\$attribute, mixed \\$value, Closure \\$fail) {",
+			"\t\\$fail('$1');",
+			"},$0"
+		],
+		"description": "Laravel closure validation rule"
+	},
+	"validation closure with check": {
+		"prefix": "validationcallback",
+		"body": [
+			"function (string \\$attribute, mixed \\$value, Closure \\$fail) {",
+			"\tif (\\$value === '${1:foo}') {",
+			"\t\t\\$fail(\"The {\\$attribute} is invalid.\");",
+			"\t}",
+			"},$0"
+		],
+		"description": "Laravel closure validation rule with a condition"
+	},
+
+	// --- Pest ---------------------------------------------------------------------
+	//
+	// PhpStorm scoped these to Pest files. VS Code scopes snippets by language only, so
+	// they also offer themselves in application code. They are only ever a Tab away from
+	// being undone.
+
+	"pest it": {
+		"prefix": "it",
+		"body": [
+			"it('$1', function () {",
+			"\t$0",
+			"});"
+		],
+		"description": "Pest it() test"
+	},
+	"pest test": {
+		"prefix": "test",
+		"body": [
+			"test('$1', function () {",
+			"\t$0",
+			"});"
+		],
+		"description": "Pest test() test"
+	},
+
+	// --- Pre-existing, kept from the live php.json ---------------------------------
+	//
+	// Companion to local.php-smart-docblock, which inserts the same docblock through
+	// Option+Enter. This is the typed-abbreviation route to it.
+
+	"Var DocBlock": {
+		"prefix": "vdoc",
+		"body": [
+			"/** @var ${1:TYPE_NAME} ${TM_SELECTED_TEXT:${TM_CURRENT_WORD}} */"
+		],
+		"description": "PHP @var docblock for selected variable"
+	}
+}

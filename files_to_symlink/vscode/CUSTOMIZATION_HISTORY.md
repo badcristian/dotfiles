@@ -1,6 +1,6 @@
 # VS Code customization intent, decisions, and history
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-10
 
 This is the durable context for the VS Code configuration and repository-owned
 local extensions in this directory. It explains what exists, why it exists,
@@ -17,6 +17,7 @@ Read this file before changing:
 
 - `User/settings.json`
 - `User/keybindings.json`
+- anything under `User/snippets/`
 - either installer or `marketplace_extensions.txt`
 - anything under `extensions/`
 - the injected workbench CSS and scripts under `User/`
@@ -67,6 +68,7 @@ when it removes repeated friction without making ordinary editing surprising.
 | --- | --- | --- |
 | User settings | `User/settings.json` | `~/Library/Application Support/Code/User/settings.json` |
 | Keybindings | `User/keybindings.json` | `~/Library/Application Support/Code/User/keybindings.json` |
+| Snippets | `User/snippets/` | `~/Library/Application Support/Code/User/snippets` (directory symlink) |
 | Workbench CSS and JS | `User/custom-*.css`, `User/custom-*.js` | `~/Library/Application Support/Code/User/`, injected by the loader |
 | Local extensions | `extensions/local.*` | `~/.vscode/extensions/local.*` |
 | Marketplace list | `marketplace_extensions.txt` | Installed by the `code` CLI |
@@ -74,7 +76,10 @@ when it removes repeated friction without making ordinary editing surprising.
 | Checksum repair | `fix_vscode_checksums.sh` | Rewrites `product.json` in the VS Code application directory |
 
 `install_vscode.sh` backs up existing live files, creates the symlinks, and
-registers the local extensions in VS Code's extension registry. Folder suffixes
+registers the local extensions in VS Code's extension registry. Entries in
+`User/` are linked whether they are files or directories, and a directory is
+linked whole rather than walked, so a snippet file added to the repository copy
+appears in VS Code without rerunning the installer. Folder suffixes
 such as `local.smart-references-0.0.1` are stable installation paths; they do
 not need to change when the version inside `package.json` changes. Renaming
 them also requires coordinated installer and registry changes, so a manifest
@@ -161,6 +166,38 @@ meanings without leaking into unrelated editors:
 Global keybindings remain active inside a Remote SSH window. The extension that
 owns a globally bound command must therefore be available in the correct
 extension host; otherwise VS Code reports `command '<id>' not found`.
+
+### Snippets and PhpStorm live templates
+
+`User/snippets/php.json` carries the PhpStorm PHP live templates: `pubf`, the
+rest of the visibility/static family, the loop and include abbreviations, and
+the personal Laravel and Pest ones. Typing an abbreviation and pressing Tab
+expands it, which is the whole point of the port.
+
+That Tab behavior is two settings, not one, because Tab means different things
+depending on whether the suggest widget is open:
+
+- `editor.tabCompletion: "onlySnippets"` binds Tab to snippet insertion when the
+  word before the cursor is a prefix and no widget is showing;
+- `editor.snippetSuggestions: "top"` sorts snippets above language-server
+  proposals, which is what decides the case where the widget *is* open —
+  `acceptSelectedSuggestion` outranks snippet insertion on that key, so the
+  snippet has to be the highlighted row rather than merely available.
+
+Three constraints are structural rather than stylistic:
+
+- **VS Code scopes snippets by language; PhpStorm scopes them by syntax.** A
+  PhpStorm group can rebind `pubf` to the bodyless form inside an interface. One
+  language file cannot, so declaration forms keep the distinct abbreviations
+  (`pf`, `fun`, `ps`) that the PhpStorm group already gave them.
+- **An abbreviation containing a space can never be Tab-expanded**, in either
+  editor, because the expansion reads the word before the cursor. PhpStorm's
+  `query logs`, `facade template`, and `validation callback` were reachable only
+  from its template list; they are run together here.
+- **Every PHP `$` must be written `\$` in a snippet body.** An unescaped `$fail`
+  is valid snippet syntax for an unknown variable, and VS Code turns it into a
+  placeholder holding the word `fail` — the sigil disappears and nothing reports
+  an error.
 
 ### Marketplace extensions
 
@@ -553,6 +590,25 @@ for manifest in files_to_symlink/vscode/extensions/local.*/package.json; do
   jq empty "$manifest"
 done
 ```
+
+### Proving a snippet expands to the PHP it claims
+
+Snippet bodies fail silently, and JSON validity proves nothing about them. An
+unescaped `$fail` is valid snippet syntax for an unknown variable, so VS Code
+drops the sigil and leaves a placeholder holding the word `fail`; a stray `}`
+closes a placeholder early and swallows the rest of the line. Both look correct
+in the source. Render the bodies and read the PHP instead:
+
+```bash
+node files_to_symlink/vscode/render_snippets.js \
+  files_to_symlink/vscode/User/snippets/php.json
+```
+
+Every `$` that belongs to PHP has to survive into the output, and every body has
+to end where it should. The renderer implements the part of VS Code's snippet
+grammar that can change emitted text — escapes, tabstops, and placeholder
+defaults including nested ones — so its output is the expansion rather than a
+guess at it.
 
 ### Proving a colour actually reaches the pixels
 
@@ -3397,3 +3453,83 @@ Verification:
   six `local.*`. The tracked list diffs clean against the live set;
 - zero `.ipynb` files under `~/dev`, and no Fabric or Synapse artifacts, both
   counted before removal.
+
+### 2026-08-10 — PhpStorm live templates ported, and Tab taught to expand them
+
+Intent:
+
+- make `pubf` + Tab produce a method in VS Code the way it did in PhpStorm, and
+  bring the rest of the live templates across with it.
+
+Implementation:
+
+- the user-authored templates were read out of
+  `~/Library/Application Support/JetBrains/PhpStorm2025.3/templates/` rather than
+  reconstructed. PhpStorm writes a group file there only once a template in the
+  group is added or edited, so `PHP.xml`, `PHP Interfaces.xml`, `PestPHP.xml` and
+  `user.xml` are exactly the set that was not stock — `pubf`, the interface
+  declaration forms, Pest's `it`/`test`, and the personal Laravel ones (`ifff`,
+  `ifelse`, `dd`, `booted`, `facade`, the validation closures, `query logs`);
+- PhpStorm's *bundled* PHP group lives in the application jar, and PhpStorm is no
+  longer installed on this machine. The loop, throw and include abbreviations
+  (`fore`/`iter`, `fori`, `itar`, `thr`, `rq`, `rqo`, `inc`, `inco`) are therefore
+  reconstructed from known behaviour. The abbreviations are exact; the bodies are
+  approximate, and `php.json` says so at the point of use;
+- 29 snippets landed in the new `User/snippets/php.json`, with
+  `editor.tabCompletion: "onlySnippets"` and `editor.snippetSuggestions: "top"`
+  added to `settings.json`;
+- the installer's `User/` loop tested `[ -f ]`, so a directory was skipped in
+  silence. It now tests `[ -e ]` and links a directory whole, which also means a
+  snippet file added later needs no reinstall;
+- `render_snippets.js` was added to print what a snippet file actually expands to.
+
+Decisions and lessons:
+
+- **Tab expansion is two settings, and the second one is the one that matters.**
+  `tabCompletion` only governs the case where no suggest widget is open. With
+  Intelephense proposing on every keystroke the widget is almost always open, and
+  `acceptSelectedSuggestion` outranks snippet insertion on Tab — so what actually
+  decides the common case is `snippetSuggestions: "top"` putting the snippet in
+  the highlighted row. Setting only `tabCompletion` would have looked correct and
+  worked intermittently, which is the worst available outcome;
+- **an unescaped `$` in a snippet body destroys PHP silently.** `$fail` is valid
+  snippet syntax for an unknown variable, so VS Code drops the sigil and inserts a
+  placeholder holding the word `fail`. The file is valid JSON, the snippet
+  expands, and the code is wrong. Every PHP sigil is written `\$`, and the
+  rendering check exists because reading the source cannot catch this;
+- **VS Code scopes snippets by language where PhpStorm scopes them by syntax.**
+  The "PHP Interfaces" group rebinds `pubf` to the bodyless form inside an
+  interface; one `php.json` cannot. The class forms keep `pubf`/`pubsf` and the
+  declaration forms keep that group's own `pf`, `fun` and `ps`;
+- **an abbreviation with a space in it was never Tab-expandable**, in either
+  editor, because expansion reads the word before the cursor. PhpStorm's
+  `query logs`, `facade template` and `validation callback` were list-only; they
+  are `querylogs`, `facade` and `validationcallback` here;
+- the live `php.json` already held three snippets and was not in the repository.
+  `vdoc` was kept as-is; `facade` was incomplete — missing the class's closing
+  brace and hardcoding an `App\Domains\DFS\Facades` namespace — and was merged
+  with PhpStorm's `facade template` into one complete snippet, with the string-key
+  accessor variant kept separately as `facadekey`. A `log` snippet expanding to
+  `console.log` in PHP was dropped from `php.json`; the identical one in
+  `snippet.code-snippets` is untouched, so nothing changed except the duplicate.
+  Dropping it mattered more than usual: `snippetSuggestions: "top"` would have
+  promoted it above every Intelephense proposal for `log`.
+
+Verification:
+
+- `bash -n` on `install_vscode.sh` and `symlink.sh`; `node --check` on
+  `render_snippets.js`; `git diff --check` clean;
+- all four snippet files parse as JSONC;
+- `render_snippets.js` run over `php.json`: all 29 bodies inspected, every PHP
+  `$` present in the output, namespaces intact, and `{$attribute}` correct inside
+  the double-quoted string in `validationcallback`;
+- `install_vscode.sh` run. `~/Library/Application Support/Code/User/snippets`
+  resolves to the repository copy and lists all three files through the link;
+  `settings.json`, `keybindings.json` and the `local.*` extension links unchanged.
+  The installer backed the previous live directory up to
+  `backups/extensions/snippets.before-dotfiles-link.20260810151516`, and `diff -r`
+  against the repository copy shows `graphql.json` and `snippet.code-snippets`
+  identical, with `php.json` the only intended difference;
+- **not yet verified: the expansion itself.** Tab-expanding `pubf` in a real PHP
+  buffer needs **Developer: Reload Window** first, and no window was reloaded from
+  this session.

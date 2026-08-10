@@ -145,11 +145,13 @@ clean_local_obsolete_entries() {
   ' "$obsolete_file"
 }
 
-# Settings, keybindings, and every injected workbench asset are linked, so the live User folder is
-# a complete mirror of the repository copy.
-for user_file in "$DOTFILES_DIR/User/"*; do
-  [ -f "$user_file" ] || continue
-  link_file "$user_file" "$CODE_USER_DIR/$(basename "$user_file")"
+# Settings, keybindings, snippets, and every injected workbench asset are linked, so the live User
+# folder is a complete mirror of the repository copy. Directories are linked whole rather than
+# walked: VS Code reads snippets/ by listing it, so a new file in the repository copy has to appear
+# there without rerunning this installer.
+for user_entry in "$DOTFILES_DIR/User/"*; do
+  [ -e "$user_entry" ] || continue
+  link_file "$user_entry" "$CODE_USER_DIR/$(basename "$user_entry")"
 done
 
 relocate_extension_backups
