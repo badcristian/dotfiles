@@ -10,6 +10,32 @@
  * borders and contrast rules.
  */
 
+/* Replace the oversized product logo in an empty editor group with one quiet, native glyph while
+ * preserving VS Code's shortcut hints underneath it. The background itself is handled by the
+ * supported `editorGroup.emptyBackground` theme colour in settings.json; this private selector is
+ * needed only because VS Code exposes no setting for the letterpress artwork. */
+.monaco-workbench:not(:is(.hc-black, .hc-light)) .part.editor > .content .editor-group-container > .editor-group-watermark-wrapper .editor-group-watermark .letterpress {
+	width: 72px !important;
+	height: 72px !important;
+	max-width: none !important;
+	max-height: none !important;
+	aspect-ratio: auto !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	background-image: none !important;
+}
+
+.monaco-workbench:not(:is(.hc-black, .hc-light)) .part.editor > .content .editor-group-container > .editor-group-watermark-wrapper .editor-group-watermark .letterpress::before {
+	content: "⌘";
+	color: var(--vscode-descriptionForeground);
+	font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+	font-size: 44px;
+	font-weight: 300;
+	line-height: 1;
+	opacity: 0.16;
+}
+
 /* Compact editor tabs. */
 .monaco-workbench .part.editor .title.tabs {
 	--editor-group-tab-height: 26px !important;
@@ -40,9 +66,32 @@
 	overflow: hidden !important;
 }
 
+/* Modern non-wrapping tabs add a transparent block border above and below every tab, then include
+ * that border in the tab's minimum height. This compact layout already provides its vertical gap
+ * on the 30px parent row. Keeping both spacing systems while forcing the outer tab to 26px leaves
+ * less than the label's 26px line-height inside `overflow: hidden`, clipping the glyph bottoms. */
+.monaco-workbench.modern-ui-tabs .part.editor .editor-group-container > .title .tabs-and-actions-container:not(.wrapping) .tabs-container > .tab {
+	border-block: 0 !important;
+}
+
 .monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label,
 .monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab .tab-label a {
 	line-height: 26px !important;
+}
+
+/* File icons are geometrically centred in the tab line box, but the visible ink of the 13px tab
+ * title sits lower. In the Retina capture the square icon's centre was about 4.5 device pixels
+ * above the title ink's centre, so move only the tab icon artwork down by 2 CSS pixels. Keeping the
+ * pseudo-element box and label baseline untouched preserves tab geometry and Explorer alignment. */
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab.has-icon > .tab-label::before {
+	background-position-y: calc(50% + 2px) !important;
+}
+
+/* VS Code's modern actionless tabs use 4px on the left but 8px on the right even though there is
+ * no close-action hit area to reserve. Match the left side to the native 8px right side. Tabs that
+ * expose a close or unpin action keep their own spacing contract. */
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) .part.editor .editor-group-container > .title .tabs-container > .tab.close-action-off:not(.sticky-compact) {
+	padding-left: var(--vscode-spacing-size80) !important;
 }
 
 /* VS Code's "modern" workbench style — the `.style-override` class on `.monaco-workbench` — stops

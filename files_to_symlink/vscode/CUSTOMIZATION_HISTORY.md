@@ -1,6 +1,6 @@
 # VS Code customization intent, decisions, and history
 
-Last reviewed: 2026-08-10
+Last reviewed: 2026-08-15
 
 This is the durable context for the VS Code configuration and repository-owned
 local extensions in this directory. It explains what exists, why it exists,
@@ -73,6 +73,7 @@ when it removes repeated friction without making ordinary editing surprising.
 | Local extensions | `extensions/local.*` | `~/.vscode/extensions/local.*` |
 | Marketplace list | `marketplace_extensions.txt` | Installed by the `code` CLI |
 | Install orchestration | `install_vscode.sh` | Called directly or by root `symlink.sh` |
+| Workbench compatibility check | `check_workbench_customizations.sh` | Validates source CSS, the installed DOM contract, and injection after upgrades |
 | Checksum repair | `fix_vscode_checksums.sh` | Rewrites `product.json` in the VS Code application directory |
 
 `install_vscode.sh` backs up existing live files, creates the symlinks, and
@@ -120,10 +121,17 @@ The settings intentionally create a compact, low-noise editor:
   editor keeps the ordinary JetBrains Mono family;
 - preview tabs remain enabled, while the local preview extension pins a tab
   when it is deliberately clicked;
+- JavaScript and TypeScript share native complete-function-call suggestions;
+  `Cmd+R` delegates to a file-aware local runner (currently project-local `tsx`
+  for ordinary `.ts` files), while `Shift+Cmd+R` opens editor Replace;
 - the status bar starts hidden and can be toggled from an editor-title action;
+- empty editor groups use the current theme's Explorer background and replace
+  the oversized VS Code letterpress with a small, quiet `⌘`, while keeping the
+  native shortcut hints;
 - injected workbench CSS tightens the UI, corrects light/dark tab text, rounds
-  the tabs and rings the active one, and outlines the quick input widget with a
-  light or dark border per theme;
+  the tabs and rings the active one, optically aligns tab file icons with their
+  labels, balances actionless tabs' horizontal padding, and outlines the quick
+  input widget with a light or dark border per theme;
 - every theme in use carries a full tab palette, because the two dark themes
   ship active, inactive, hover, and bar backgrounds that are all one colour;
 - an injected script preserves horizontal editor scroll around pointer and
@@ -157,6 +165,8 @@ meanings without leaking into unrelated editors:
 | `Cmd+B` | PHP smart definition/reference navigation |
 | `Option+Enter` | Quick fixes, including local PHP refactors and DocBlocks |
 | `Cmd+Enter` | PHP smart navigation or Markdown source/preview toggle |
+| `Cmd+R` | Run the active file through the local file-aware runner |
+| `Shift+Cmd+R` | Editor Find/Replace |
 | `Cmd+C` / `Cmd+V` | PHP-aware copy/paste, native behavior elsewhere |
 | `Backspace`, `Enter`, `=` | PHP-aware editing helpers |
 | `Shift+Cmd+.` | Regenerate the passive Laravel IDE helper |
@@ -386,6 +396,14 @@ This is a small wrapper around VS Code's built-in status-bar visibility command.
 It contributes the editor-title button used to reveal or hide a status bar that
 starts hidden.
 
+#### `local.current-file-runner`
+
+This extension owns the **Run Current File** command behind `Cmd+R`. Its rule
+layer is intentionally small and inspectable: ordinary `.ts` files run through
+the workspace's local `tsx`, while unsupported file types receive an explicit
+message. Add future filename, language, and location rules here instead of
+stacking overlapping terminal keybindings.
+
 #### `local.project-chooser`
 
 This extension replaces the macOS folder dialog on `Cmd+O` with a PhpStorm-style
@@ -558,6 +576,7 @@ node --test files_to_symlink/vscode/extensions/local.preview-pin-on-click-0.0.1/
 
 node --check files_to_symlink/vscode/extensions/local.phpstorm-project-icons-0.0.1/extension.js
 node --check files_to_symlink/vscode/extensions/local.statusbar-toggle-0.0.1/extension.js
+node --test files_to_symlink/vscode/extensions/local.current-file-runner-0.0.1/test/*.test.js
 
 node --check files_to_symlink/vscode/extensions/local.project-chooser-0.0.1/extension.js
 node --check files_to_symlink/vscode/extensions/local.project-chooser-0.0.1/projects.js
@@ -3587,3 +3606,219 @@ Verification:
   against the default list. `apcu` and `imagick` are the only two not covered;
 - **not yet verified: the diagnostic clearing.** That needs a window reload in
   the ribeit-api window, which was not done from this session.
+
+### 2026-08-13 — Empty editor groups now continue the Explorer surface
+
+Intent: replace the large VS Code logo and the editor-coloured empty canvas with
+a calmer empty state: the same surface as the Explorer, one small glyph, and the
+useful native shortcut hints left in place.
+
+Implementation:
+
+- set `editorGroup.emptyBackground` to each configured theme's actual
+  `sideBar.background`: Monokai Pro `#221f22`, Catppuccin Noctis Frappé
+  `#292c3c`, and both GitHub Light variants `#f6f8fa`;
+- replaced only `.letterpress`'s background artwork with a 44px, low-opacity
+  `⌘` inside a 72px box. The surrounding watermark container and `.shortcuts`
+  remain native, so Show All Commands and Go to File still display and update
+  with their real keybindings;
+- excluded high-contrast workbench classes, and extended the compatibility
+  checker to require both the installed `.letterpress` hook and the injected
+  glyph marker after a VS Code upgrade.
+
+Decisions and lessons:
+
+- **use the native colour boundary for the surface.** VS Code applies
+  `editorGroup.emptyBackground` directly to an empty group, so the background
+  needs no private selector; only changing the artwork crosses into injected
+  CSS;
+- **keep the watermark semantics and replace only its art.** Hiding the whole
+  watermark would also remove the two useful shortcut rows, while a custom image
+  would add an asset and a scaling path for one quiet symbol;
+- **theme matching is explicit.** VS Code colour customizations cannot reference
+  `sideBar.background` as another token, so each configured theme repeats its
+  installed sidebar value. If a theme changes that value later, these pairs must
+  be resynced.
+
+Verification:
+
+- `settings.json` parses as JSONC, and all four configured themes carry the
+  expected empty-group value copied from their installed Explorer surface;
+- `check_workbench_customizations.sh --source-only` passes with 60 balanced CSS
+  rule blocks, including both new watermark rules; shell syntax and
+  `git diff --check` pass;
+- the live settings and stylesheet paths both resolve to this repository, and
+  the full compatibility check passes the installed VS Code 1.133 `.letterpress`
+  DOM gate before stopping on the missing new injection marker, as expected
+  before the loader is rerun;
+- **not verified: the rendered result.** The colour setting is live through the
+  existing settings symlink, but the glyph needs **Reload Custom CSS and JS** and
+  a VS Code restart before it can be judged on screen.
+
+### 2026-08-15 — Tab file icons optically aligned with their titles
+
+Intent: the editor-tab file icons sat visibly above the adjacent filename text.
+Align the artwork without changing tab height, the text baseline, or the same
+icon theme's Explorer rendering.
+
+Diagnosis: the supplied 1022 x 72 Retina capture makes the mismatch measurable.
+Each TypeScript icon's solid blue square occupies y=16..39, centred at 27.5,
+while the active filename's dark ink occupies y=20..44, centred at 32. The icon
+therefore sits about 4.5 device pixels, or roughly 2 CSS pixels, above the
+title's optical centre. VS Code 1.133 centres `.monaco-icon-label::before` in its
+line box, and the PhpStorm TypeScript SVG is itself symmetric in a 16px viewbox;
+the mismatch is between geometric icon centring and the font's visible ink, not
+a malformed asset or unequal tab boxes.
+
+Implementation: on editor tabs with a file icon, set only the pseudo-element's
+`background-position-y` to `calc(50% + 2px)`. The pseudo-element dimensions,
+the label's 26px line-height, and the tab's 26px outer geometry remain unchanged.
+The compatibility checker now requires that optical offset in source and in the
+installed injection, and guards the native file-icon pseudo-element, tab
+line-box, and `.has-icon` class hooks on which it depends.
+
+Decisions and lessons:
+
+- **move the artwork, not the flex item.** A transform or relative offset on the
+  pseudo-element would also move its layout box; changing the background
+  position leaves spacing and clipping untouched;
+- **scope the correction to editor tabs.** Explorer rows use the same file icon
+  theme but a different text and row geometry, so a global icon-theme change
+  would solve one surface by shifting another;
+- **use an optical correction.** The SVG and native line box are geometrically
+  centred already; aligning visible icon and font ink is the relevant boundary.
+
+Verification:
+
+- before the CSS rule, the extended source check failed with
+  `missing the 2px tab file-icon optical alignment`;
+- after the rule, source-only verification passes with 61 balanced CSS rule
+  blocks; shell syntax and `git diff --check` pass, and the full checker reaches
+  the installed-injection gate, proving the three new native VS Code 1.133
+  selector/class checks pass;
+- `bash tests/run.sh` passes both headless Neovim suites;
+- the installed workbench is still on the older injection and stops first on
+  the previously added empty-editor glyph marker. Run **Reload Custom CSS and
+  JS**, restart VS Code, and rerun the full checker before judging the pixels;
+- **not verified: the rendered alignment.** The source correction is measured
+  from the supplied capture, but it is not active in a freshly reloaded VS Code
+  window yet.
+
+### 2026-08-15 — Actionless modern tabs now have balanced horizontal padding
+
+Intent: after the icon alignment was loaded, the active `generics.ts` tab still
+looked crowded on the left and loose on the right. Balance the content without
+changing the action spacing of pinned tabs.
+
+Diagnosis: the new 258 x 72 Retina capture confirms the perception. The active
+fill spans x=13..223, while the visible TypeScript square begins at x=21 and the
+filename ink ends at x=200. More importantly, VS Code 1.133's shipped modern-tab
+rule proves the underlying layout is asymmetric: every normal tab receives
+`padding: 0 var(--vscode-spacing-size80) 0 var(--vscode-spacing-size40)`, or 8px
+right and 4px left. This setup has `workbench.editor.tabActionCloseVisibility`
+disabled, which gives ordinary tabs `.close-action-off`; there is no close hit
+area requiring that ordinary-tab asymmetry. Pinned tabs still expose their
+separate unpin action.
+
+Implementation: raise only `.close-action-off:not(.sticky-compact)` modern
+tabs' left padding from the native 4px token to the same 8px token already used
+on the right. The right padding, icon spacing, tab height, fill geometry, and all
+tabs with a close or unpin action remain untouched. The compatibility checker
+now guards the native asymmetric padding rule, the runtime `.close-action-off`
+class, the source correction, and its installed injection marker.
+
+Decisions and lessons:
+
+- **balance the semantic padding boxes.** Font side bearings and transparent
+  space inside an SVG make visible-ink gaps imperfect measuring proxies; the
+  shipped 4px/8px declarations identify the actual mismatch;
+- **do not steal action space.** Reducing the right side would make a future
+  close/unpin glyph cover more of the filename. Increasing the actionless left
+  side preserves the existing right-side contract;
+- **keep pinned tabs out of the change.** Their action layer and reserved 28px
+  padding were deliberately repaired earlier and should remain authoritative.
+
+Verification:
+
+- before the CSS rule, the extended source check failed with
+  `missing the symmetric padding for actionless modern tabs`;
+- after the rule, source-only verification passes with 62 balanced CSS rule
+  blocks;
+- the full checker initially passed the source, shipped-CSS, runtime-class, and
+  existing injection gates, then stopped specifically on the missing new padding
+  marker. A later run passes all gates after `workbench.html` acquired the new
+  marker;
+- **not verified: the rendered balance.** The installed injection is current,
+  but the active window still needs a restart and inspection of an ordinary and
+  a pinned tab before calling the visual result complete.
+
+### 2026-08-15 — File-aware `Cmd+R` runner starts with TypeScript
+
+Intent: make `Cmd+R` run the active file through explicit, extensible rules.
+Start with `.ts`: save the current buffer, execute it visibly in a terminal, and
+show a clear message for every file that has no rule yet. Move the PhpStorm-style
+editor Replace action to `Shift+Cmd+R`.
+
+Diagnosis and command choice:
+
+- `Cmd+R` came from the installed IntelliJ IDEA Keybindings extension as
+  `editor.action.startFindReplaceAction`; the repository had also assigned
+  `Shift+Cmd+R` globally to `python.execInTerminal`, shadowing the keymap's
+  Replace in Path binding;
+- `/opt/homebrew/bin/ts` exists, but it is Moreutils' timestamp utility and its
+  usage is `ts [-r] [-i | -s] [-m] [format]`. It cannot execute TypeScript;
+- the active playground has `tsx` 4.23.1 as a local dev dependency. The runner
+  therefore uses `npx --no-install tsx <workspace-relative-file>`: project-local,
+  visible in the terminal, and unable to hide a network install when a project
+  lacks the required runner.
+
+Implementation:
+
+- replace the deprecated JavaScript-only
+  `javascript.suggest.completeFunctionCalls` setting with the unified
+  `js/ts.suggest.completeFunctionCalls`, enabling native call completion for
+  both languages;
+- add `local.current-file-runner`, installed through the existing local-extension
+  registry. Its pure rule layer currently accepts language `typescript`, suffix
+  `.ts`, and rejects declarations; the command layer saves dirty buffers, reuses
+  a dedicated **Run Current File** terminal per workspace, preserves editor
+  focus, and sends the quoted project-relative command;
+- unsupported, untitled, and missing-editor states use informational messages.
+  A failed save uses a warning and never starts the command;
+- explicitly remove the keymap's `Cmd+R` Replace binding, bind `Cmd+R` to the
+  runner while an editor has text focus, and bind `Shift+Cmd+R` to editor Replace.
+
+Decisions and lessons:
+
+- **one command owns dispatch.** Filename, language, and location rules belong
+  in an inspectable rule table, not in overlapping `when` clauses and terminal
+  text keybindings;
+- **use the project's runner.** A global alias would conflict with the existing
+  `ts` utility and make project behavior depend on an undocumented shell state;
+- **do not download on Run.** `--no-install` makes missing `tsx` an ordinary,
+  visible project error instead of mutating the project or global toolchain;
+- **save before execution.** The terminal runs the content visible in the editor,
+  while a failed save stops cleanly;
+- **keep action context narrow.** `Cmd+R` only runs with editor text focus, so it
+  does not steal terminal or picker keystrokes. Pinned/preview state is unrelated.
+
+Verification:
+
+- the runner's eight Node tests pass, covering project-relative and standalone
+  commands, declaration/TSX/JavaScript rejection, shell quoting, unsupported-file
+  messaging, dirty-file save, terminal reuse, and save failure;
+- from `/Users/mac/dev/node-playground`, the exact generated command
+  `npx --no-install tsx random/typescript-examples.ts` exits 0 and prints every
+  example through the final `.then(): Async User` line;
+- the existing installer linked the settings, keybindings, and extension source
+  into their live locations, and `code --list-extensions --show-versions`
+  reports `local.current-file-runner@0.0.1` after reloading the active window;
+- live `Cmd+R` on `package.json` shows
+  `I have not set up run logic for package.json (json) yet.`; live
+  `Shift+Cmd+R` opens the editor Find/Replace widget;
+- live `Cmd+R` on TypeScript sends
+  `npx --no-install tsx 'random/typescript-examples.ts'` to the dedicated
+  terminal. A smaller `generics.ts` run visibly printed its expected values,
+  and an exact rerun of the larger file in that VS Code terminal exited 0 and
+  reached `.then(): Async User`. One earlier large-file invocation displayed a
+  transform error, but the same command and environment did not reproduce it.

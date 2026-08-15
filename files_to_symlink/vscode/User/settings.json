@@ -209,7 +209,7 @@
 	"explorer.autoReveal": true,
 	"workbench.panel.opensMaximized": "never",
 	"security.workspace.trust.untrustedFiles": "open",
-	"javascript.suggest.completeFunctionCalls": true,
+	"js/ts.suggest.completeFunctionCalls": true,
 	"[javascript]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode",
 		"prettier.tabWidth": 2,
@@ -273,6 +273,9 @@
 		"[Monokai Pro]": {
 			"foreground": "#f7f7f7",
 			"descriptionForeground": "#f7f7f7",
+			// Empty editor groups should continue the Explorer surface instead of falling back to the
+			// theme's darker product-watermark canvas.
+			"editorGroup.emptyBackground": "#221f22",
 			"sideBar.foreground": "#f7f7f7",
 			"sideBarTitle.foreground": "#f7f7f7",
 			"sideBarSectionHeader.foreground": "#f7f7f7",
@@ -319,6 +322,7 @@
 		"[Catppuccin Noctis Frappé]": {
 			"foreground": "#f7f7f7",
 			"descriptionForeground": "#f7f7f7",
+			"editorGroup.emptyBackground": "#292c3c",
 			"sideBar.foreground": "#f7f7f7",
 			"sideBarTitle.foreground": "#f7f7f7",
 			"sideBarSectionHeader.foreground": "#f7f7f7",
@@ -357,6 +361,7 @@
 		"[GitHub Light]": {
 			"foreground": "#000000",
 			"descriptionForeground": "#000000",
+			"editorGroup.emptyBackground": "#f6f8fa",
 			"sideBar.foreground": "#000000",
 			"sideBarTitle.foreground": "#000000",
 			"sideBarSectionHeader.foreground": "#000000",
@@ -417,6 +422,7 @@
 		"[GitHub Light Default]": {
 			"foreground": "#000000",
 			"descriptionForeground": "#000000",
+			"editorGroup.emptyBackground": "#f6f8fa",
 			"sideBar.foreground": "#000000",
 			"sideBarTitle.foreground": "#000000",
 			"sideBarSectionHeader.foreground": "#000000",

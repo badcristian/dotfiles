@@ -243,6 +243,9 @@ first switches the client to the next session in the manual order.
 Each clickable button carries a short lowercase label — `vi`, `col`, `git`, `bg`,
 and the health state — because five bare icons in a row said nothing about what
 they opened. Read-only groups need none: their value is the label.
+The `git` link follows the active pane's current repository, so a pane opened in
+a different checkout goes to that remote. If the pane has no repository with a
+browser URL, it falls back to the tmux session's project repository.
 
 The bar is balanced five groups a side: tmux, battery, the Vim reference, the
 color picker and the pane counter on the left; usage, the repository link, the

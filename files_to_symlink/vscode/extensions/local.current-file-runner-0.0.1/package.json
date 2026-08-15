@@ -1,0 +1,28 @@
+{
+  "name": "current-file-runner",
+  "displayName": "Current File Runner",
+  "description": "Runs the active file through a small, explicit set of file-aware rules.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:currentFileRunner.run"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "currentFileRunner.run",
+        "title": "Run Current File"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

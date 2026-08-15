@@ -225,13 +225,17 @@ open_vim_cheatsheet() {
         -T " Vim Keys " "bash ~/tmux-vim-cheatsheet.sh picker"
 }
 
-open_session_repo() {
+open_active_repo() {
     local client_tty="$1"
+    local pane_path
     local session_path
 
+    # Read both paths at click time rather than trusting the last 15-second
+    # status render: the active pane or its cwd may have changed meanwhile.
+    pane_path="$(tmux display-message -c "$client_tty" -p '#{pane_current_path}' 2>/dev/null || true)"
     session_path="$(tmux display-message -c "$client_tty" -p '#{session_path}' 2>/dev/null)" || return 1
-    if ! bash "$HOME/tmux-repo.sh" open "$session_path"; then
-        tmux display-message -c "$client_tty" "No browser repository for this session"
+    if ! bash "$HOME/tmux-repo.sh" open "$pane_path" "$session_path"; then
+        tmux display-message -c "$client_tty" "No browser repository for the active pane or session"
     fi
 }
 
@@ -276,7 +280,7 @@ status_mouse_up() {
                 -T " System Health " "bash ~/tmux-health.sh popup"
             ;;
         repo)
-            open_session_repo "$client_tty"
+            open_active_repo "$client_tty"
             ;;
         *)
             bash "$HOME/tmux-session-ui.sh" mouse-up \

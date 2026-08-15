@@ -62,8 +62,19 @@
 		"command": "workbench.action.terminal.toggleTerminal"
 	},
 	{
+		"key": "cmd+r",
+		"command": "-editor.action.startFindReplaceAction",
+		"when": "editorFocus || editorIsOpen"
+	},
+	{
+		"key": "cmd+r",
+		"command": "currentFileRunner.run",
+		"when": "editorTextFocus"
+	},
+	{
 		"key": "shift+cmd+r",
-		"command": "python.execInTerminal"
+		"command": "editor.action.startFindReplaceAction",
+		"when": "editorFocus || editorIsOpen"
 	},
 	{
 		"key": "shift+cmd+v",

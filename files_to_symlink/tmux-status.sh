@@ -11,6 +11,7 @@ prefix_active=${6:-0}
 window_target=${7:-}
 session_path=${8:-}
 render_mode=${9:-content}
+pane_path=${10:-}
 ui_accent="${TMUX_UI_ACCENT:-colour4}"
 active_session_colour="#eb927b"
 case "$ui_accent" in
@@ -139,8 +140,11 @@ if [[ -n "$agent_usage" ]]; then
 fi
 
 repo_url=""
-if [[ -n $session_path ]]; then
-    repo_url="$(bash "$HOME/tmux-repo.sh" url "$session_path" 2>/dev/null || true)"
+# A pane may cd into, or be opened directly in, a different checkout from the
+# session project. Resolve that first; the helper treats the session path as a
+# fallback when the pane is outside Git or its repository has no browser remote.
+if [[ -n $pane_path || -n $session_path ]]; then
+    repo_url="$(bash "$HOME/tmux-repo.sh" url "$pane_path" "$session_path" 2>/dev/null || true)"
 fi
 
 repo_selector=""

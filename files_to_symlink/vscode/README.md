@@ -33,6 +33,11 @@ bash ~/dev/dotfiles/files_to_symlink/vscode/install_vscode.sh
 
 ## Included Local Extensions
 
+- `local.current-file-runner`: file-aware **Run Current File** command. `Cmd+R`
+  currently saves and runs ordinary `.ts` files through the workspace's local
+  `tsx`; unsupported files get an explicit informational message. Add future
+  language, filename, or location rules to this extension rather than stacking
+  conditional shell keybindings.
 - `local.smart-references`: PhpStorm-style references popup, custom `Cmd+B`, smart Backspace behavior. Also ships `laravelIntelligence.js` — a command-driven Laravel IDE-helper **generator** (command palette → **"Laravel: Refresh IDE Helpers & Icons"**). It scans models for Eloquent accessors (`getXAttribute` / `x(): Attribute`) and writes `@property-read` tags plus Restify fluent `: self`→`: static` overrides into `_ide_helper_manual.php` (a passive, IDE-only stub Intelephense merges over your models/vendor — so `$model->signature_count` and `->usingRelation()` resolve without editing app/vendor code), then refreshes the PhpStorm file icons. Reads files with `workspace.fs` (never opens documents) and registers **no** language providers, so it can't trigger a re-analysis storm. Pure helpers are unit-tested (`test/laravelIntelligence.test.js`). An earlier live-provider version was removed after it caused exactly that storm.
 - `local.php-smart-docblock`: local-variable PHPDoc action and `Cmd+Enter` jump-to-definition fallback.
 - `local.preview-pin-on-click`: preview tab reuse, pin on editor click, carry the last Markdown Preview/source mode across all `.md` files, and keep bottom breathing room in rendered Markdown previews.
@@ -115,6 +120,20 @@ The loader **inlines** each file into `workbench.html`, so editing one of them
 has no effect until **Reload Custom CSS and JS** is run and VS Code is
 restarted. A VS Code update replaces `workbench.html` and drops the injection;
 re-run **Enable Custom CSS and JS** after upgrades.
+
+Run the compatibility check after every VS Code upgrade:
+
+```bash
+bash ~/dev/dotfiles/files_to_symlink/vscode/check_workbench_customizations.sh
+```
+
+Immediately after an upgrade it normally reports that the injection is missing
+and tells you to re-enable it. It checks the bundled modern-tab selectors before
+that, so a changed DOM contract stops the workflow instead of silently loading
+CSS against the wrong elements. After **Enable Custom CSS and JS**, restart VS
+Code and rerun the command; all three checks should pass. This catches structural
+and deployment regressions. A close visual smoke test is still required because
+CSS and DOM checks cannot prove the final pixels.
 
 ### Corruption warning
 

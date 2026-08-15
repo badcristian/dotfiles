@@ -9,6 +9,7 @@ BACKUP_DIR="$DOTFILES_DIR/backups"
 LOCAL_EXTENSIONS=(
   "local.php-smart-docblock-0.0.1"
   "local.phpstorm-project-icons-0.0.1"
+  "local.current-file-runner-0.0.1"
   "local.preview-pin-on-click-0.0.1"
   "local.project-chooser-0.0.1"
   "local.smart-references-0.0.1"
@@ -162,6 +163,7 @@ done
 
 register_extension "local.php-smart-docblock" "local.php-smart-docblock-0.0.1"
 register_extension "local.phpstorm-project-icons" "local.phpstorm-project-icons-0.0.1"
+register_extension "local.current-file-runner" "local.current-file-runner-0.0.1"
 register_extension "local.preview-pin-on-click" "local.preview-pin-on-click-0.0.1"
 register_extension "local.project-chooser" "local.project-chooser-0.0.1"
 register_extension "local.smart-references" "local.smart-references-0.0.1"

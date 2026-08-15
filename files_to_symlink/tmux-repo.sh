@@ -66,11 +66,23 @@ repo_url_for_path() {
     normalize_remote_url "$remote"
 }
 
-open_repo_for_path() {
-    local project_path="${1:-}"
+repo_url_for_paths() {
+    local project_path
+
+    for project_path in "$@"; do
+        [[ -n $project_path ]] || continue
+        if repo_url_for_path "$project_path"; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+open_repo_for_paths() {
     local repo_url
 
-    repo_url="$(repo_url_for_path "$project_path")" || return 1
+    repo_url="$(repo_url_for_paths "$@")" || return 1
     /usr/bin/open "$repo_url"
 }
 
@@ -79,13 +91,13 @@ case "${1:-}" in
         normalize_remote_url "${2:-}"
         ;;
     url)
-        repo_url_for_path "${2:-}"
+        repo_url_for_paths "${@:2}"
         ;;
     open)
-        open_repo_for_path "${2:-}"
+        open_repo_for_paths "${@:2}"
         ;;
     *)
-        printf 'Usage: %s {normalize <remote>|url <project-path>|open <project-path>}\n' "$0" >&2
+        printf 'Usage: %s {normalize <remote>|url <path> [fallback-path ...]|open <path> [fallback-path ...]}\n' "$0" >&2
         exit 2
         ;;
 esac

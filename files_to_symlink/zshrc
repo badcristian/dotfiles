@@ -1,5 +1,10 @@
 
 export PATH="$HOME/bin:/usr/local/bin:$PATH"
+
+# Remove the short-lived NO_COLOR wrapper if this file is re-sourced in a shell
+# that loaded it. Codex should resolve to the installed binary again.
+unfunction codex 2>/dev/null
+
 # ALIAS
 
 alias dev="npm run dev"
