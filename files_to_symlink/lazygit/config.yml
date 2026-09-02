@@ -1,0 +1,9 @@
+# lazygit renders its own diffs and does not read git's core.pager, so delta has
+# to be named here too or the two disagree about what a diff looks like.
+#
+# --paging=never because lazygit is already the pager; letting delta start one
+# inside the panel hangs it waiting for a key that never arrives.
+git:
+  paging:
+    colorArg: always
+    pager: delta --dark --paging=never

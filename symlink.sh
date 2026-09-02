@@ -67,6 +67,21 @@ ln -sf $DOTFILES/tmux.conf ~/.tmux.conf
 ln -sf $DOTFILES/zshrc ~/.zshrc
 ln -sf $DOTFILES/editorconfig ~/.editorconfig
 
+# Git. The signing key id and the noreply address are already public in every
+# commit, so the only thing versioning this adds is the alias set and the delta
+# wiring. Credentials are not here: `credential.helper = cache` keeps them in
+# memory, and the GPG secret key stays in the keyring.
+ln -sf $DOTFILES/gitconfig ~/.gitconfig
+ln -sf $DOTFILES/gitignore ~/.gitignore
+ln -sf $DOTFILES/gitattributes ~/.gitattributes
+
+# lazygit renders diffs itself and ignores git's core.pager, so delta is named
+# separately there.
+if [ ! -d ~/.config/lazygit ]; then
+    mkdir -p ~/.config/lazygit
+fi
+ln -sf $DOTFILES/lazygit/config.yml ~/.config/lazygit/config.yml
+
 # cloudflared tunnel configs (credentials JSON + cert.pem are secrets — NOT versioned)
 ln -sf $DOTFILES/cloudflared/vanta.yml ~/.cloudflared/vanta.yml
 ln -sf $DOTFILES/cloudflared/growee.yml ~/.cloudflared/growee.yml
