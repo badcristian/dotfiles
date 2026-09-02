@@ -72,7 +72,88 @@ alias queue="php artisan queue:listen --timeout=0"
 alias scheduler="php artisan schedule:work"
 alias cf="config"
 
-# alias ls="lsd -la"
+# eza and bat are already installed; these put them in front of the defaults.
+# Aliases reach interactive zsh only, so scripts, #! files and anything invoked
+# as `bash foo.sh` still get the real ls/cat/top - tmux-health.sh keeps its
+# `top -l 2` sampling.
+#
+# Plain `eza`, not `eza -la`: the earlier `ls="lsd -la"` was dropped because a
+# bare `ls` then paid for a long listing every time. The long forms get their own
+# keys, and `ll` is not one of them - that is lazygit, above.
+alias ls="eza --icons=auto --group-directories-first"
+alias l="eza -l --icons=auto --git --group-directories-first"
+alias la="eza -la --icons=auto --git --group-directories-first"
+alias lt="eza --tree --level=2 --icons=auto --group-directories-first"
+
+# --paging=never, or `cat file` starts opening a pager, which is the one habit
+# cat does not have. Piped or redirected, bat drops its styling on its own.
+alias cat="bat --paging=never"
+
+# btop supersedes htop; both are installed and htop is now dead weight.
+alias top="btop"
+
+# fd, rg and dust take different flags from the tools they stand in for, and as
+# aliases they broke shell startup: sdkman-init.sh runs `find ... -type f`, which
+# fd reads as `-t ype`. `grep -r x .` is the same trap - rg's -r is --replace.
+#
+# Functions instead, because an alias is expanded while a file is being *parsed*,
+# so every sourced script inherits it, while a function is resolved at call time
+# and can look at what it was actually handed. A call carrying classic syntax is
+# passed to the original; anything else gets the replacement. So typing `find foo`
+# searches with fd, and sdkman keeps working.
+#
+# `command find` reaches the original. A leading backslash does not: that skips
+# aliases, and these are functions.
+# A shell that loaded the earlier alias version of these cannot parse a function
+# of the same name - zsh refuses with "defining function based on alias" - so a
+# re-source (`rr`) would fail where a fresh shell was fine. Same guard as `init`
+# above.
+unalias du find grep 2>/dev/null
+
+# $1 exact tokens, $2 short letters that may arrive bundled (`du -sh`, `grep -rn`),
+# then the call's own arguments.
+_classic_call() {
+    local exact=" ${1} " bundled="$2" argument character
+    shift 2
+
+    for argument in "$@"; do
+        [[ $exact == *" $argument "* ]] && return 0
+
+        if [[ -n $bundled && $argument == -[!-]* ]]; then
+            for (( character = 2; character <= ${#argument}; character++ )); do
+                [[ $bundled == *${argument[character]}* ]] && return 0
+            done
+        fi
+    done
+
+    return 1
+}
+
+find() {
+    # Single-dash long predicates - fd has no -type, and reads -depth as -d epth.
+    # No bundled set: find's classic syntax is always a whole word.
+    local exact='-type -name -iname -path -ipath -regex -iregex -exec -execdir -ok
+        -delete -print -print0 -printf -maxdepth -mindepth -size -perm -user -group
+        -links -inum -empty -prune -depth -ls -newer -newermt -mtime -atime -ctime
+        -mmin -amin -cmin'
+    _classic_call "$exact" '' "$@" && { command find "$@"; return; }
+    fd "$@"
+}
+
+grep() {
+    # -r/-R are the dangerous ones: rg is recursive already and spells -r --replace.
+    local exact='--recursive --include --exclude --exclude-dir --directories --null
+        --devices --no-messages'
+    _classic_call "$exact" 'rRdZ' "$@" && { command grep "$@"; return; }
+    rg "$@"
+}
+
+du() {
+    # dust always draws a tree; -s, -h and the unit flags have no equivalent.
+    local exact='--summarize --human-readable --all --total --one-file-system --max-depth'
+    _classic_call "$exact" 'shackmgx' "$@" && { command du "$@"; return; }
+    dust "$@"
+}
 
 ts() {
     npx tsc --noEmit && npx tsx "$@"
