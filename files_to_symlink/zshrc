@@ -262,6 +262,25 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # FZF
 source <(fzf --zsh)
 
+# ZOXIDE
+# --cmd cd replaces cd outright rather than adding a `z` to remember. A real path
+# still behaves exactly like the builtin - `cd ..`, `cd -`, `cd` alone - and only
+# an argument that matches no path is looked up in the frecency database, so
+# there is nothing new to learn and nothing old to unlearn. `cdi` is the
+# interactive picker if a guess is ever wrong.
+#
+# Interactive zsh only: scripts and #! files keep the builtin cd.
+#
+# compinit first, or zoxide silently skips its completion: its init ends with
+# `[[ ${+functions[compdef]} -ne 0 ]] && compdef __zoxide_z_complete cd`, and the
+# only compinit in this setup comes from sdkman-init.sh, which has to stay at the
+# very end of the file. Without this, `cd foo<TAB>` gets zsh's plain directory
+# completer and the frecency list is never offered. -C reuses the cached dump
+# rather than restatting every completion directory; sdkman's later call is then
+# the redundant one.
+autoload -Uz compinit && compinit -C
+eval "$(zoxide init zsh --cmd cd)"
+
 # ─── VI MODE ─────────────────────────────────────────── added 2026-08-05 ────
 # Vi keybindings on the command line. Press Esc to leave typing and get Vim
 # motions: b w 0 $ to move, ciw to change a word, cia to change a whole shell
