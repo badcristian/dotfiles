@@ -299,4 +299,93 @@ test('buildStubContent is unchanged when a project registers no macros', () => {
 });
 
 
+// ---- model concerns (@mixin Model on traits) ---------------------------------
+
+// Shape taken from a real concern: the boot method is where `static::` shows up, and it is exactly
+// what Intelephense cannot resolve against a bare trait.
+const BELONGS_TO_COMPANY = `<?php
+
+namespace App\\Domain\\Company\\Models\\Concerns;
+
+use Illuminate\\Database\\Eloquent\\Model;
+
+trait BelongsToCompany
+{
+    public static function bootBelongsToCompany(): void
+    {
+        static::addGlobalScope(new CompanyScope());
+
+        static::creating(static function (Model $model): void {});
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+}`;
+
+test('getTraitName reads the trait declaration', () => {
+	assert.strictEqual(h.getTraitName(BELONGS_TO_COMPANY), 'BelongsToCompany');
+	assert.strictEqual(h.getTraitName('<?php class NotATrait {}'), undefined);
+});
+
+test('usesEloquentModelApi detects model events and scopes', () => {
+	assert.strictEqual(h.usesEloquentModelApi(BELONGS_TO_COMPANY), true);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { static::creating(fn () => 1); } }'), true);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { static::addGlobalScope($s); } }'), true);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { self::observe(X::class); } }'), true);
+});
+
+test('usesEloquentModelApi detects relations declared on the instance', () => {
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function c() { return $this->belongsTo(C::class); } }'), true);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function c() { return $this->morphMany(C::class, "x"); } }'), true);
+});
+
+// The detector is the whole safety story: a trait that is merely NEAR models must not be told it is
+// one, or the mixin would silence genuinely undefined calls inside it.
+test('usesEloquentModelApi ignores traits with no Eloquent evidence', () => {
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { public function help(): string { return "x"; } }'), false);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { static::boot(); } }'), false);
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { $this->format($v); } }'), false);
+	// A method merely NAMED like the API, called on something else, is not evidence.
+	assert.strictEqual(h.usesEloquentModelApi('<?php trait T { function b() { $other->creating(); } }'), false);
+});
+
+// Regression: the real App\Domain\Global\Dtos\Concerns\HasAttributes is composed into DTO casts,
+// not models. getAttribute/setAttribute are an attribute-bag idiom, so they are not evidence — the
+// first cut of this detector claimed that trait and would have silenced diagnostics across the DTOs.
+test('usesEloquentModelApi does not claim an attribute-bag DTO concern', () => {
+	const dtoConcern = `<?php
+trait HasAttributes
+{
+    public function __get(string $key) { return $this->getAttribute($key); }
+    public function offsetSet($offset, $value): void { $this->setAttribute($offset, $value); }
+}`;
+
+	assert.strictEqual(h.usesEloquentModelApi(dtoConcern), false);
+});
+
+test('renderTraitMixinBlock emits a mergeable partial trait', () => {
+	const block = h.renderTraitMixinBlock('App\\Domain\\Company\\Models\\Concerns', 'BelongsToCompany');
+
+	assert.ok(block.includes('namespace App\\Domain\\Company\\Models\\Concerns {'));
+	assert.ok(block.includes('@mixin \\Illuminate\\Database\\Eloquent\\Model'));
+	// Empty body: intelephense merges this with the real declaration, so the trait keeps its methods.
+	assert.ok(block.includes('trait BelongsToCompany {}'));
+});
+
+test('buildStubContent includes model concerns and stays unchanged without them', () => {
+	const models = [{ namespace: 'App\\Models', className: 'User', properties: [{ name: 'avatar_url', type: 'string' }] }];
+	const traits = [{ namespace: 'App\\Concerns', traitName: 'HasUuid' }];
+
+	const withTraits = h.buildStubContent(models, [], traits);
+	assert.ok(withTraits.includes('trait HasUuid {}'));
+	assert.ok(withTraits.includes('@mixin \\Illuminate\\Database\\Eloquent\\Model'));
+	// The Restify overrides must still come last so their own trait block is not confused for one.
+	assert.ok(withTraits.indexOf('trait HasUuid {}') < withTraits.indexOf('ProxiesCanSeeToGate'));
+
+	assert.strictEqual(h.buildStubContent(models, []), h.buildStubContent(models, [], []));
+});
+
+
 console.log(`\n${passed} passing`);

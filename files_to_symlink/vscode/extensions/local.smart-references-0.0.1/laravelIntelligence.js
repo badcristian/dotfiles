@@ -16,6 +16,11 @@
 //      — so Http::facebookGraph() has a RETURN TYPE and the ->get() chained onto it resolves.
 //   3. Restify fluent-builder return-type overrides (: self -> : static) — so usingRelation(),
 //      description(), rules() etc. resolve through method chains (matches PhpStorm).
+//   4. @mixin Model on first-party traits that drive the Eloquent Model API — so static::creating()
+//      and static::addGlobalScope() inside a model concern stop reading as undefined. PhpStorm
+//      resolves `static::` in a trait by looking at the classes that USE the trait; Intelephense
+//      analyses a trait standalone, so the same code is a false positive there. The tag belongs in
+//      this generated file rather than in app/ source, which is what PhpStorm needs no edit for.
 // Then it also refreshes the PhpStorm file icons (combining the two dev-helper commands).
 
 const vscode = require('vscode');
@@ -96,6 +101,67 @@ function extractAccessorProperties(source) {
 function renderModelBlock(namespace, className, properties) {
 	const tags = properties.map((p) => ` * @property-read ${p.type} $${p.name}`).join('\n');
 	return `namespace ${namespace} {\n    /**\n${tags}\n     */\n    class ${className} {}\n}`;
+}
+
+// --------------------------------------------------------------------------------------
+// Model concerns: trait BelongsToCompany { static::creating(…) } -> @mixin Model.
+//
+// Intelephense resolves `static::` inside a trait against the trait itself, where none of the
+// Eloquent API exists, so every model concern reports undefined methods. Detection is deliberately
+// evidence-based rather than "every trait under Models/": a trait earns the mixin only by calling
+// API that exists nowhere but an Eloquent model, so a plain helper trait that happens to live
+// beside one is never told it is a model.
+// --------------------------------------------------------------------------------------
+
+// Statics declared by Illuminate\Database\Eloquent\Model (events, scopes, observers).
+const ELOQUENT_STATIC_API = new Set([
+	'addGlobalScope', 'observe', 'withoutEvents', 'withoutTouching', 'resolveRelationUsing',
+	'retrieved', 'creating', 'created', 'updating', 'updated', 'saving', 'saved',
+	'deleting', 'deleted', 'trashed', 'forceDeleting', 'forceDeleted',
+	'restoring', 'restored', 'replicating',
+]);
+
+// Instance-side Model API that shows up in the same concerns — relations above all.
+//
+// Deliberately excludes getAttribute/setAttribute/getKey/getTable/forceFill. They read as Eloquent
+// but any attribute-bag implements them: App\Domain\Global\Dtos\Concerns\HasAttributes calls
+// $this->getAttribute() and is composed into DTO casts, not models. Naming it a model would silence
+// real diagnostics in every one of them. Relation builders have no such second life.
+const ELOQUENT_INSTANCE_API = new Set([
+	'belongsTo', 'belongsToMany', 'hasOne', 'hasMany', 'hasOneThrough', 'hasManyThrough',
+	'morphTo', 'morphOne', 'morphMany', 'morphToMany', 'morphedByMany',
+	'newQuery', 'qualifyColumn',
+]);
+
+function getTraitName(source) {
+	return /\btrait\s+(\w+)/.exec(source)?.[1];
+}
+
+// True when the source calls Model API that cannot resolve against a bare trait.
+function usesEloquentModelApi(source) {
+	let match;
+
+	const staticCall = /(?:static|self)::(\w+)\s*\(/g;
+	while ((match = staticCall.exec(source)) !== null) {
+		if (ELOQUENT_STATIC_API.has(match[1])) {
+			return true;
+		}
+	}
+
+	const instanceCall = /\$this->(\w+)\s*\(/g;
+	while ((match = instanceCall.exec(source)) !== null) {
+		if (ELOQUENT_INSTANCE_API.has(match[1])) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// Render one trait's partial-trait stub block. The body stays empty on purpose: Intelephense merges
+// this declaration with the real one, so the docblock is added without hiding the trait's methods.
+function renderTraitMixinBlock(namespace, traitName) {
+	return `namespace ${namespace} {\n    /**\n     * @mixin \\Illuminate\\Database\\Eloquent\\Model\n     */\n    trait ${traitName} {}\n}`;
 }
 
 // --------------------------------------------------------------------------------------
@@ -367,7 +433,7 @@ namespace Binaryk\\LaravelRestify\\Traits {
     }
 }`;
 
-function buildStubContent(models, macroMethods = []) {
+function buildStubContent(models, macroMethods = [], traits = []) {
 	const header = `<?php
 
 /**
@@ -388,7 +454,9 @@ function buildStubContent(models, macroMethods = []) {
 	const macroBlocks = groupMacroMethods(macroMethods)
 		.map((group) => renderMacroBlock(group.namespace, group.className, group.methods));
 
-	return [header, ...modelBlocks, ...macroBlocks, RESTIFY_OVERRIDES].join('\n\n') + '\n';
+	const traitBlocks = traits.map((trait) => renderTraitMixinBlock(trait.namespace, trait.traitName));
+
+	return [header, ...modelBlocks, ...macroBlocks, ...traitBlocks, RESTIFY_OVERRIDES].join('\n\n') + '\n';
 }
 
 // --------------------------------------------------------------------------------------
@@ -463,6 +531,37 @@ async function scanMacroRegistrations(progress) {
 	return methods;
 }
 
+// Scan app/ for traits that drive the Eloquent Model API. Returns [{namespace, traitName}].
+async function scanTraitsForModelApi(progress) {
+	const files = await vscode.workspace.findFiles(
+		'app/**/*.php',
+		'{**/vendor/**,**/node_modules/**,**/storage/**,**/bootstrap/cache/**,**/_ide_helper*.php}',
+		MAX_FILES,
+	);
+	const traits = [];
+	let scanned = 0;
+	for (const uri of files) {
+		scanned++;
+		if (scanned % 200 === 0 && progress) {
+			progress.report({ message: `scanned ${scanned}/${files.length} files for model concerns…` });
+		}
+		const source = await readFileText(uri);
+		// Cheap pre-filter: only a trait declaration can contribute.
+		if (!source || !source.includes('trait ')) {
+			continue;
+		}
+		const traitName = getTraitName(source);
+		if (!traitName || !usesEloquentModelApi(source)) {
+			continue;
+		}
+		const namespace = getPhpNamespace(source);
+		if (namespace) {
+			traits.push({ namespace, traitName });
+		}
+	}
+	return traits;
+}
+
 async function generateHelperStub(progress) {
 	const folder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
 	if (!folder) {
@@ -471,7 +570,9 @@ async function generateHelperStub(progress) {
 	const models = await scanModelsForAccessors(progress);
 	progress?.report({ message: 'scanning for Macroable registrations…' });
 	const macroMethods = await scanMacroRegistrations(progress);
-	const content = buildStubContent(models, macroMethods);
+	progress?.report({ message: 'scanning for Eloquent model concerns…' });
+	const traits = await scanTraitsForModelApi(progress);
+	const content = buildStubContent(models, macroMethods, traits);
 	const stubUri = vscode.Uri.joinPath(folder.uri, STUB_FILENAME);
 	await vscode.workspace.fs.writeFile(stubUri, Buffer.from(content, 'utf8'));
 
@@ -479,7 +580,7 @@ async function generateHelperStub(progress) {
 	const macroCount = groupMacroMethods(macroMethods)
 		.reduce((total, group) => total + group.methods.length, 0);
 
-	return { stubUri, modelCount: models.length, propertyCount, macroCount };
+	return { stubUri, modelCount: models.length, propertyCount, macroCount, traitCount: traits.length };
 }
 
 // --------------------------------------------------------------------------------------
@@ -506,7 +607,7 @@ async function refreshLaravelHelpers() {
 		);
 
 		const choice = await vscode.window.showInformationMessage(
-			`IDE helpers refreshed: ${result.propertyCount} accessor propert${result.propertyCount === 1 ? 'y' : 'ies'} across ${result.modelCount} model(s), ${result.macroCount} macro(s) + Restify type overrides → ${STUB_FILENAME}. Reload if types don't update.`,
+			`IDE helpers refreshed: ${result.propertyCount} accessor propert${result.propertyCount === 1 ? 'y' : 'ies'} across ${result.modelCount} model(s), ${result.macroCount} macro(s), ${result.traitCount} model concern(s) + Restify type overrides → ${STUB_FILENAME}. Reload if types don't update.`,
 			'Reload Window',
 			'Open stub',
 		);
@@ -528,6 +629,11 @@ function register(context) {
 
 module.exports = {
 	register,
+	// `use` resolution is not specific to stub generation: relation navigation has to read the same
+	// imports to turn `FacebookAdAccount` into the class a workspace lookup can find. Public rather
+	// than reached for through `_internal`, which is the test seam.
+	getPhpImports,
+	resolvePhpClassName,
 	// Exposed for unit tests (pure, no vscode dependency).
 	_internal: {
 		ucfirst,
@@ -537,6 +643,9 @@ module.exports = {
 		normalizeType,
 		extractAccessorProperties,
 		renderModelBlock,
+		getTraitName,
+		usesEloquentModelApi,
+		renderTraitMixinBlock,
 		buildStubContent,
 		getPhpImports,
 		resolvePhpType,

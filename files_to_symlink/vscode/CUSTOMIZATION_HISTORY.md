@@ -1,6 +1,6 @@
 # VS Code customization intent, decisions, and history
 
-Last reviewed: 2026-08-15
+Last reviewed: 2026-08-20
 
 This is the durable context for the VS Code configuration and repository-owned
 local extensions in this directory. It explains what exists, why it exists,
@@ -116,6 +116,12 @@ The settings intentionally create a compact, low-noise editor:
 
 - JetBrains Mono, compact tabs, no minimap, no sticky scroll, and an eight-tab
   limit per editor group;
+- the glyph margin remains hidden, while injected workbench CSS gives every
+  rendered line number a fixed 4px inset from the left;
+- the shared Catppuccin pane surface — populated editor canvas, gutter, empty
+  groups, Explorer, and Codex sidebar all on `#292c3c` — is currently **not in
+  effect**: it lives in the `[Catppuccin Noctis Frappé]` block, and the dark
+  theme in force is now Macchiato. See the 2026-08-20 entry;
 - the integrated terminal uses JetBrainsMono Nerd Font Mono so Starship's
   monochrome language and Git glyphs render as single-cell symbols, while the
   editor keeps the ordinary JetBrains Mono family;
@@ -128,12 +134,21 @@ The settings intentionally create a compact, low-noise editor:
 - empty editor groups use the current theme's Explorer background and replace
   the oversized VS Code letterpress with a small, quiet `⌘`, while keeping the
   native shortcut hints;
-- injected workbench CSS tightens the UI, corrects light/dark tab text, rounds
-  the tabs and rings the active one, optically aligns tab file icons with their
+- there is no activity bar: `workbench.activityBar.location` is `"hidden"`, and
+  Explorer plus Extensions/Remote remain reachable through their scoped
+  keybindings;
+- injected workbench CSS tightens the UI, corrects light/dark tab text, keeps
+  every outer tab at 26px with centred 24px modern fill and action layers, maps
+  that active fill to the per-theme tab palette, keeps the pinned action visually
+  transparent over it, rings it, optically aligns tab file icons with their
   labels, balances actionless tabs' horizontal padding, and outlines the quick
   input widget with a light or dark border per theme;
-- every theme in use carries a full tab palette, because the two dark themes
-  ship active, inactive, hover, and bar backgrounds that are all one colour;
+- Monokai Pro, Catppuccin Noctis Frappé, and both GitHub Light themes carry a
+  full tab palette, because those dark themes ship active, inactive, hover, and
+  bar backgrounds that are all one colour. Catppuccin Noctis Macchiato, the dark
+  theme actually in force, has the same defect and does **not** yet have one —
+  its block pins `tab.selectedBackground` only, to hold the tab still while the
+  Explorer list colours were corrected;
 - an injected script preserves horizontal editor scroll around pointer and
   selection changes;
 - a second injected script anchors the quick input widget under the command
@@ -162,11 +177,9 @@ meanings without leaking into unrelated editors:
 
 | Shortcut | Intended behavior |
 | --- | --- |
-| `Cmd+B` | PHP smart definition/reference navigation |
+| `Cmd+B` | Smart definition/reference navigation through native and local providers |
 | `Option+Enter` | Quick fixes, including local PHP refactors and DocBlocks |
 | `Cmd+Enter` | PHP smart navigation or Markdown source/preview toggle |
-| `Cmd+R` | Run the active file through the local file-aware runner |
-| `Shift+Cmd+R` | Editor Find/Replace |
 | `Cmd+C` / `Cmd+V` | PHP-aware copy/paste, native behavior elsewhere |
 | `Backspace`, `Enter`, `=` | PHP-aware editing helpers |
 | `Shift+Cmd+.` | Regenerate the passive Laravel IDE helper |
@@ -234,7 +247,8 @@ framework-specific bridges:
 - PhpStorm-style `Cmd+B`: prefer a useful definition, then fall back to
   references when a definition is missing, self-referential, or ambiguous;
 - grouped reference picking with generated helper locations filtered out, a
-  labelled rule introducing every group, and test usages tinted and sorted last;
+  labelled rule introducing every group, import/export-only top-level grouping,
+  an orange current-file marker, and test usages tinted and sorted last;
 - PHP-aware copy/paste that can copy a variable token or replace a target
   variable with a copied expression;
 - smart Backspace, Enter, equals insertion, and chain splitting;
@@ -243,9 +257,18 @@ framework-specific bridges:
 - parent and trait method navigation and custom reference CodeLens counts;
 - Laravel route-controller, Gate/policy, policy-method, and translation-key
   references;
+- JSON key find-usages: Cmd+B on a key in any JSON file builds its dotted path
+  from the enclosing objects and arrays, then lists the vue-i18n `t(...)` call
+  sites that use it;
 - Laravel `config('file.nested.key')` definition navigation to the exact key in
   `config/file.php`, and `Log::channel('name')` to that channel in
   `config/logging.php`;
+- returned TypeScript/Vue composable members: Cmd+B on a locally declared member
+  returned from an exported factory follows matching imports and destructures to
+  its consumer bindings and template handlers;
+- Eloquent query-string navigation: `->with('metaToken')` opens `metaToken()` on
+  the model the chain started from, following a dotted path one hop at a time, and
+  `->where('status', …)` opens that column's `@property` line on the same model;
 - Laravel macro navigation in both directions: `Rule::uniqueCaseInsensitive(...)`
   opens the `Rule::macro('uniqueCaseInsensitive', ...)` registration, and the
   name in that registration finds every call site;
@@ -253,6 +276,9 @@ framework-specific bridges:
 - adding a more precise Laravel builder type to applicable callbacks;
 - fixing one-argument Laravel Collection PHPDoc types by adding their missing
   integer key type through Option+Enter;
+- splitting a one-line PHP function or method signature onto separate parameter
+  lines through Option+Enter, PSR-12 style, with the body brace pulled up beside
+  the closing parenthesis;
 - extending PHPDoc syntax highlighting so spaced generic arguments, annotation
   variables, and nullable markers keep meaningful type/variable scopes;
 - Explorer deletion while temporarily preventing auto-reveal from moving the
@@ -395,14 +421,6 @@ classifications need to be regenerated.
 This is a small wrapper around VS Code's built-in status-bar visibility command.
 It contributes the editor-title button used to reveal or hide a status bar that
 starts hidden.
-
-#### `local.current-file-runner`
-
-This extension owns the **Run Current File** command behind `Cmd+R`. Its rule
-layer is intentionally small and inspectable: ordinary `.ts` files run through
-the workspace's local `tsx`, while unsupported file types receive an explicit
-message. Add future filename, language, and location rules here instead of
-stacking overlapping terminal keybindings.
 
 #### `local.project-chooser`
 
@@ -567,6 +585,8 @@ node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/ext
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/phpMove.js
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/laravelIntelligence.js
 node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/laravelMacroNavigation.js
+node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/laravelQueryNavigation.js
+node --check files_to_symlink/vscode/extensions/local.smart-references-0.0.1/i18nKeyNavigation.js
 node --test files_to_symlink/vscode/extensions/local.smart-references-0.0.1/test/*.test.js
 
 node --check files_to_symlink/vscode/extensions/local.php-smart-docblock-0.0.1/extension.js
@@ -576,7 +596,6 @@ node --test files_to_symlink/vscode/extensions/local.preview-pin-on-click-0.0.1/
 
 node --check files_to_symlink/vscode/extensions/local.phpstorm-project-icons-0.0.1/extension.js
 node --check files_to_symlink/vscode/extensions/local.statusbar-toggle-0.0.1/extension.js
-node --test files_to_symlink/vscode/extensions/local.current-file-runner-0.0.1/test/*.test.js
 
 node --check files_to_symlink/vscode/extensions/local.project-chooser-0.0.1/extension.js
 node --check files_to_symlink/vscode/extensions/local.project-chooser-0.0.1/projects.js
@@ -3607,6 +3626,922 @@ Verification:
 - **not yet verified: the diagnostic clearing.** That needs a window reload in
   the ribeit-api window, which was not done from this session.
 
+### 2026-08-10 — Cmd+B resolves the strings in an Eloquent query
+
+Intent:
+
+- `->with('metaToken')`, `->where('status', …)` and
+  `->whereNotIn('facebook_business_id', $seen)` all reported "No other references
+  found". Make Cmd+B open the relation method, or the column's `@property` line,
+  on the model the query was built from.
+
+Implementation:
+
+- `laravelQueryNavigation.js` added, wired into `goToDefinition` in the branch that
+  runs only after native resolution came back empty — for a string literal it
+  always does, and running it first would put a workspace symbol lookup in front of
+  every ordinary Cmd+B;
+- a relation resolves to the method; a dotted path is walked a hop at a time,
+  reading each relation's own `belongsTo(X::class)`-style factory call to find the
+  next model, so the segment under the cursor is the one that opens;
+- a column resolves to its `@property` line on the model, with `$casts`/`$guarded`
+  as a second look for a column real enough to be cast but not documented.
+
+Decisions and lessons:
+
+- **the receiver is the whole problem, not the name.** Five models in
+  spro-marketing declare a `metaToken()`. Searching the workspace for the method
+  offers a picker of five and calls that navigation; only the type the chain
+  started from picks the right one. Everything here follows from resolving a chain
+  head and declining when it cannot be resolved;
+- **"any method starting with `where`" is the rule that looks dynamic and is
+  wrong.** `whereStatus('active')` is Laravel's dynamic where: the first argument
+  is the value and the column is in the method name, so a blanket rule sends Cmd+B
+  hunting for a column called `active`. The method sets are curated for that
+  reason; everything downstream of them — which model, which column, which file —
+  is inferred and needs no configuration;
+- **position alone cannot tell a column from a value.** The elements of
+  `whereIn('status', ['active', 'paused'])` sit at the same frozen argument index
+  as `'status'`, because an array argument is all one argument. Inside an array a
+  string counts only when the method takes arrays of columns (`select([…])`) or
+  when it is a key in a column => value map (`updateOrCreate(['col' => $v])`);
+- **scanning backwards from the cursor is the obvious approach and the wrong one.**
+  Whether a `)` closes anything depends on whether it sits inside a string, and
+  answering that means having read forwards from the top of the file anyway. One
+  forward pass keeps a bracket stack whose frames carry where the expression began,
+  which call it belongs to, and how many commas have passed — three questions, one
+  scan;
+- **a comma resets the frame's expression start**, so
+  `->when($flag, fn ($q) => $q->with('rel'))` is understood to hang off
+  `fn ($q) => $q` and correctly declines, rather than inheriting the outer model
+  and being right only by luck;
+- **`$this` in a builder is resolved from the generic the class already declares** —
+  `@extends Builder<FacebookAdAccount>` — not from its class name. Stripping
+  `QueryBuilder` off `FacebookAdAccountQueryBuilder` agrees with the generic in
+  every current case and is still a guess; the two names are free to diverge, and
+  opening the wrong model silently is worse than not navigating. This matters more
+  than it looks: this codebase keeps named queries in a builder class rather than
+  in model scopes, so `$this` is the common head, not the rare one;
+- declining on an unresolvable head is also what keeps `redirect()->with('status')`
+  and `view($v)->with('name', $x)` out of the feature. They spell session keys and
+  view variables with the same method name, and neither has a class at its head;
+- the column target is the model's `@property` line rather than a migration.
+  `status` on `facebook_ad_accounts` is touched by four separate migrations, so
+  "the migration that defines it" is not one place to navigate to; the model
+  documents each column exactly once, next to the relations;
+- `getPhpImports` and `resolvePhpClassName` were promoted out of
+  `laravelIntelligence._internal` into its public exports, and `scanPhpString` and
+  `skipPhpComment` exported from `laravelConfigNavigation` rather than
+  reimplemented. `_internal` is the test seam, and these now have real second
+  callers.
+
+Verification:
+
+- 32 new tests, 126 in the suite, all passing. Deliberately, about half the new
+  ones cover what must NOT resolve: a variable head, a nested closure, a builder
+  with no generic, a session flash, a view `with`, `whereRaw`, `whereKey`, the
+  value argument of `where`, the elements of a `whereIn` list, a relation argument
+  of `withSum`, and a name that is not a plain identifier;
+- run end to end against the real workspace with only the VS Code symbol lookup
+  stubbed by a filesystem search, at the exact reported lines:
+
+  | call | resolves to |
+  | --- | --- |
+  | `FacebookAdAccountQueryBuilder.php:33` `where('status', …)` | `FacebookAdAccount.php:19` |
+  | `FacebookAdAccountQueryBuilder.php:34` `with('metaToken')` | `FacebookAdAccount.php:78` |
+  | `FbBMService.php:210` `whereNotIn('facebook_business_id', …)` | `FacebookBusinessManager.php:19` |
+  | `FbBMService.php:211` `where('is_active', true)` | `FacebookBusinessManager.php:17` |
+  | `FbBMService.php:143` `updateOrCreate(['facebook_business_id' => …])` | `FacebookBusinessManager.php:19` |
+
+- `node --check` on every changed module; manifest bumped to 0.0.27 and validated
+  with `jq`; installer rerun so the registry picks the version up;
+- **not yet verified: Cmd+B itself.** That needs a window reload, which was not
+  done from this session.
+
+Known boundaries, all failing closed rather than guessing:
+
+- a chain headed by a variable — `$query->where('status', …)` — is not resolved;
+- the second column of `whereColumn('a', '=', 'b')`, and the column argument of
+  `withSum('lines', 'total')`, which belongs to the related model;
+- a `table.column` reference keeps only the column and resolves it against the head
+  model, which is wrong for a joined table;
+- a model with neither `@property` docblocks nor a `$casts`/`$guarded` entry for the
+  column. Migrations are not searched.
+
+Footnote on how the `$this` case was found: the first reported call was in
+`app/Jobs/Meta/SyncFbAdsJob.php`, written as
+`FacebookAdAccount::query()->with('metaToken')`. It moved into
+`FacebookAdAccountQueryBuilder::activeForSync()` while this work was in progress,
+and the head changed from a class to `$this`. Building against the first shape
+alone would have shipped a feature that worked on the example and missed the
+convention the codebase actually follows — worth re-reading the target file before
+trusting a premise collected earlier in a session.
+
+### 2026-08-10 — Activity bar moved to the title bar, and why hover-reveal was refused
+
+Intent:
+
+- remove the left icon column. The request was for it to hide by default and come
+  back on hover at the left edge.
+
+Implementation:
+
+- `workbench.activityBar.location` set to `"top"`. The Explorer, Search, Source
+  Control and Extensions icons move into the title bar row next to the command
+  center; the left column disappears and costs no vertical space either;
+- `workbench.activityBar.compact` kept, with a note that it is only read when the
+  location is `"default"`, so switching back stays a one-line change.
+
+Decisions and lessons:
+
+- **hover-reveal was investigated and refused, for two independent reasons.**
+  Neither is a matter of effort:
+  - *CSS can shrink the bar but cannot reclaim its space.* The part is a leaf in
+    a `.monaco-grid-view`, which is `position: relative; overflow: hidden` with
+    every leaf positioned and sized inline from the layout service. VS Code sizes
+    the bar itself through `--activity-bar-width`, which
+    `updateCompactStyle()` sets inline on the element — so a stylesheet rule does
+    win over it, and collapsing the bar to zero would still leave its ~36px cell
+    as a gap between the window edge and the sidebar. The result would look like a
+    blank margin, not a hidden bar;
+  - *the runtime toggle writes settings.* `workbench.action.toggleActivityBarVisibility`
+    persists `workbench.activityBar.location`, and `settings.json` is a symlink
+    into this repository — the same hazard already recorded for the project
+    chooser's window toggle, which is why that one lives in `globalState`;
+- a third option, `"hidden"`, was offered and not taken: it removes the part from
+  the DOM, which also removes anything for a hover rule to bring back, and it
+  would have meant new keybindings for the views that lost their icons;
+- **this change adds nothing to the injected layer**, which is the point. The
+  fragile path existed — a hot zone in `custom-workbench.css` — and it would have
+  bought a worse result than a native setting, while needing a recheck after every
+  VS Code update under decision 10.
+
+Verification:
+
+- `settings.json` parses, and `workbench.activityBar.location` reads `"top"`;
+- the title bar prerequisite holds by evidence rather than assumption:
+  `window.titleBarStyle` is unset, and the custom title bar is demonstrably active
+  already because `custom-anchor-quick-input-to-command-center.js` anchors to
+  `.part.titlebar .command-center` and works today;
+- that script re-measures `getBoundingClientRect()` on every show, so the quick
+  input follows the command center if the added icons shift the pill — no change
+  needed there. Confirmed by reading the script, not by watching it;
+- the setting applies live; no window reload and no `install_vscode.sh` run is
+  needed, because `settings.json` is already symlinked and VS Code watches it.
+
+### 2026-08-11 — Activity-bar icons centred, and the empty gutter band reclaimed
+
+Intent:
+
+- centre the activity-bar icons, which sat packed to the left;
+- stop the line-number gutter wasting horizontal space, starting with the empty
+  band to the left of the digits.
+
+Implementation:
+
+- `custom-workbench.css` centres the icon row. With
+  `workbench.activityBar.location: "top"` the icons are **not** in the title bar —
+  they are hosted by the sidebar's own header, in
+  `.pane-composite-part > .header-or-footer > .composite-bar-container`, which VS
+  Code gives `flex: 1` and packs to the start. The rule is scoped from the header
+  down rather than applied to `.actions-container`, which is the shared class for
+  every toolbar in the workbench and would have recentred unrelated ones;
+- `editor.glyphMargin` off and `editor.lineNumbersMinChars` from 3 to 2.
+
+Decisions and lessons:
+
+- **the gutter was measured, not eyeballed.** The screenshot was decoded and
+  reduced to a per-column ink profile — how many rows differ from the editor
+  background at each x. In 2x pixels:
+
+  ```
+  x   3.. 64   empty            62px = 31 CSS px
+  x  65.. 94   the two digits   ~7.5 CSS px per digit
+  x 106..111   change marks
+  x 136..138   indent guide, full height
+  x 199..211   code text begins
+  ```
+
+  31 CSS px with nothing drawn in it anywhere down a 1660px capture is not a
+  judgement call about whether the gutter "looks wide"; it is the glyph margin,
+  which exists only to hold breakpoint and bookmark icons;
+- **the glyph margin has a real cost and it is recorded here rather than
+  discovered later.** Bookmarks — which this setup uses, with a keybinding and an
+  expanded sidebar — draws its marker as a gutter icon, so a bookmarked line no
+  longer shows one. The bookmarks still exist, the sidebar still lists them, the
+  jump commands still work. Breakpoints likewise keep working while becoming
+  invisible. One setting reverses it;
+- `lineNumbersMinChars` is a floor, not a fixed width: VS Code uses
+  `max(minChars, digits in the last line number)`, so a thousand-line file still
+  gets four columns. Three reserved a column that only files of 100+ lines used;
+- folding controls are the next ~19 CSS px, in the band between the digits and the
+  indent guide, and were left alone. Reclaiming them means `editor.folding: false`,
+  which disables folding rather than just hiding its controls —
+  `showFoldingControls: "mouseover"` still reserves the space. That is a different
+  trade from removing an empty margin, so it was not bundled in.
+
+Corrections to the entry above it:
+
+- that entry, and the option offered when the change was made, described
+  `activityBar.location: "top"` as putting the icons in the title bar beside the
+  command center. It does not: it puts them in the sidebar header. The choice
+  between `"top"` and `"hidden"` is unaffected — the left column is gone either
+  way — but the description was wrong;
+- consequently the claim there that the change "adds nothing to the injected
+  layer" held only until the icons needed centring. Centring is not available as a
+  setting, so it is now one more rule in the fragile layer, subject to decision 10.
+
+Verification:
+
+- `settings.json` parses; `glyphMargin` reads false and `lineNumbersMinChars` 2;
+- the CSS file's braces balance, and the selector was taken from VS Code
+  1.132.0's own stylesheet rather than guessed:
+  `.monaco-workbench .pane-composite-part>.header-or-footer>.composite-bar-container`
+  with `flex: 1`, and `.monaco-action-bar .actions-container` as
+  `display:flex; width:100%`;
+- **not verified: any of it on screen.** The CSS needs "Enable/Reload Custom CSS
+  and JS" plus a restart before it applies at all, and neither was run from this
+  session. The two settings apply live. The honest next step is a fresh screenshot
+  measured the same way, to confirm the 31px band is gone rather than assume it.
+
+### 2026-08-11 — Overview-ruler git markers cleared and the scrollbar column narrowed
+
+Intent:
+
+- stop the blue marks on the right-hand scrollbar, make its background less
+  visible, and make the column narrower.
+
+Implementation, all in top-level `workbench.colorCustomizations` so every theme
+gets it, matching how `errorLens.*` and `gitDecoration.*` are already handled:
+
+- `editorOverviewRuler.modifiedForeground` cleared — the blue marks;
+- `editorOverviewRuler.background` and `.border` cleared — the dark track;
+- `scrollbar.shadow` cleared;
+- `editor.scrollbar.verticalScrollbarSize` set to 8.
+
+Decisions and lessons:
+
+- **the marks were identified by sampling, not by reading token names.** A column
+  profile of the screenshot gave the bands and their colours, which were then
+  matched against the active theme's JSON:
+
+  | measured | theme token | what it is |
+  | --- | --- | --- |
+  | `#2a2c3b` | `editorOverviewRuler.background` `#292c3c` | the track |
+  | `#92a9e9` | `editorOverviewRuler.modifiedForeground` `#8caaee` | git modified lines |
+  | `#48524e` | `editorOverviewRuler.addedForeground` `#a6d1893a` over the track | git added lines |
+  | `#3f4152` | `scrollbarSlider.background` `#c6d0f520` over the track | the thumb |
+
+  Every measurement came back one channel off from the theme value **in the same
+  direction** — a display-profile shift, not a different colour — which is what
+  makes the mapping certain rather than plausible. The blue marks turned out to be
+  git change markers; bookmarks and find matches were both plausible guesses and
+  both wrong;
+- **a documented restriction lost to a measurement.** VS Code documents
+  `editorOverviewRuler.background` as used "only when the minimap is enabled".
+  The minimap is off here and the band is painted in exactly that colour anyway,
+  so the doc is wrong for this build. Recorded because the natural reaction to
+  that sentence is to skip the key and go looking for a different one;
+- the surgical keys were preferred over `editor.overviewRulerLanes: 0`, which
+  removes the ruler's decorations wholesale and would have taken errors, warnings
+  and find matches with the git marks. Added and deleted lines — the olive and red
+  marks — are also left in place, because only the blue was objected to.
+
+Verification:
+
+- `settings.json` parses; the four colour keys and the scrollbar size read back
+  correctly, and all four per-theme blocks are intact;
+- the column measurement that motivated the width change: the scrollbar and
+  overview ruler share one column of 23 retina pixels, 11.5 CSS px;
+- these apply live — no reload, no installer run;
+- **not verified: the result on screen.** The honest next step is a second capture
+  measured the same way, which would show the track at the editor's own colour and
+  no `#92a9e9` anywhere in the column.
+
+Note on the previous entry: the icon-centring rule described there did nothing on
+screen. It was confirmed deployed — the rule was found inlined in the patched
+`workbench.html`, so the loader had picked it up — which means one of its `>`
+links does not exist in the live DOM. It has been rewritten with descendant
+combinators covering both hosts VS Code uses for the composite bar, and both
+candidate flex lines. Still unverified, and the DOM dump that would settle it has
+not been run yet.
+
+### 2026-08-11 — Reformat scoped to changed lines in one project only
+
+Intent: `Option+Cmd+L` reformatted whole files in `construction-frontend`, and a
+single `.vue` file came back with 12 insertions and 49 deletions and no semantic
+change. That repository's formatting was produced by a JetBrains IDE and is
+described in its `.editorconfig` almost entirely through `ij_*` keys, which only
+JetBrains implements. VS Code reads about five of that file's ~400 lines and
+ignores every rule governing attribute wrapping, so Volar rewraps to its own
+width and the diff buries the real edit.
+
+Implementation: a third `alt+cmd+l` binding was appended, running
+`editor.action.formatChanges` — "Format Modified Lines" — guarded by
+`resourcePath =~ /construction-frontend/`. It is last in the file, so where the
+guard matches it wins over the two `editor.action.formatDocument` bindings
+above; everywhere else those still apply unchanged.
+
+Decisions:
+
+- **the scope is a `when` clause, not a workspace file.** VS Code has no
+  per-workspace `keybindings.json`; `resourcePath =~` is the only way to give one
+  physical shortcut a project-specific meaning, which is the existing
+  context-scoped philosophy applied to a path instead of a language;
+- **no formatter was swapped.** `[javascript]` and `[typescript]` already point
+  at `vscode.typescript-language-features`, which has no print width and never
+  reflows lines — it was measured as near-inert on these files. `[vue]` points at
+  `Vue.volar`, which does reflow. Narrowing the *range* fixes that without
+  disturbing a global default that other projects rely on;
+- **Prettier was rejected as a reconciliation.** Measured over 60 committed
+  `.vue` files, its closest configuration (`printWidth: 120`, `singleQuote`,
+  `semi: false`) matched 5 of 60 exactly and averaged 105 changed lines per file.
+  `singleAttributePerLine` did not improve it. The gaps are structural — Prettier
+  reflows prose text where `ij_html_keep_line_breaks_in_text` preserves it, and
+  has no equivalent of `ij_typescript_imports_wrap = on_every_item`;
+- **the JetBrains headless formatter was investigated and abandoned.**
+  `format.sh` ships with the installed IntelliJ IDEA Ultimate 2026.1 and does
+  format `.js` and `.ts` correctly from the same `.editorconfig`, but reports
+  `Skipped, not supported` for `.vue`: `disabled_plugins.txt` contains
+  `com.intellij.modules.ultimate`, so the bundled Vue plugin never loads. That is
+  a licensing boundary, and `.vue` is 2,466 of the files that matter.
+
+Verification:
+
+- `keybindings.json` parses as JSONC — 77 entries, exactly one
+  `editor.action.formatChanges`, guard string as written;
+- the installed path is still a symlink back to this repository;
+- the churned `.vue` file was reverted; that repository's working tree now holds
+  only a pre-existing unrelated edit to `src/modules/common/config.js`;
+- **not verified: the binding's behaviour in a running VS Code window.** It has
+  not been reloaded and `Option+Cmd+L` has not been pressed inside or outside
+  `construction-frontend`. The honest next step is one press in each place —
+  changed lines only in the former, whole document in the latter.
+
+### 2026-08-11 — Model concerns get `@mixin Model`, generated rather than written into app/
+
+Intent: `static::addGlobalScope()` and `static::creating()` inside a trait such as
+`BelongsToCompany` read as `Undefined method` (P1013). PhpStorm resolves `static::`
+in a trait by looking at the classes that use it; Intelephense analyses a trait
+standalone, where none of the Eloquent API exists, so correct code reports
+errors. The fix that circulates for this is a `@mixin` docblock added to each
+trait — but PhpStorm needs no such edit, so neither should this setup. The tag
+belongs in the generated helper, not in application source.
+
+Implementation: a fourth section in `laravelIntelligence.js`. `getTraitName` and
+`usesEloquentModelApi` are pure; `scanTraitsForModelApi` walks `app/**/*.php`
+with the same `workspace.fs` discipline as the other scanners, and
+`renderTraitMixinBlock` emits an empty partial trait carrying
+`@mixin \Illuminate\Database\Eloquent\Model`. Intelephense merges it with the
+real declaration, which is the mechanism the Restify overrides already rely on.
+
+Decisions:
+
+- **evidence, not location.** A trait qualifies by calling API that exists
+  nowhere but an Eloquent model — the model events and `addGlobalScope` on the
+  static side, the relation builders and `newQuery`/`qualifyColumn` on the
+  instance side. "Every trait under `Models/Concerns`" would have been simpler
+  and wrong: `HasUuid` lives in `Global\Concerns`, and plain helper traits sit
+  beside models everywhere;
+- **`getAttribute`/`setAttribute`/`getKey`/`getTable`/`forceFill` are not
+  evidence, and this was learned the hard way.** The first cut included them and
+  claimed `Global\Dtos\Concerns\HasAttributes`, which is composed into DTO casts
+  (`Dtos\Cast\AP`, `GL`, `ES`, `IV`) rather than models. Any attribute bag
+  implements those names, so the mixin would have asserted "this is an Eloquent
+  model" across the DTO layer and silenced real diagnostics there. Dropping them
+  took the match count from 90 to 87 and removed the only false positive found;
+- **the trait body stays empty.** Declaring methods would risk shadowing the
+  real ones; an empty body contributes only the docblock;
+- **`@mixin` is a claim.** It asserts the trait is only ever composed into
+  models. That is why the detector demands positive evidence rather than
+  defaulting to "probably a model".
+
+Verification:
+
+- `node test/laravelIntelligence.test.js` — **28 passing**, six of them new,
+  including a regression fixture built from the real DTO concern;
+- the detector was run over `construction-backend/app` (486 traits): **87** earn
+  the mixin, all recognisably model concerns, and the three that prompted this —
+  `BelongsToCompany`, `WithAuthor` (52 models), `HasUuid` (10 models) — are all
+  covered. No `Dtos` namespace appears in the output;
+- `node --check` passes on the modified module;
+- **not verified: Intelephense's response.** The command has not been run in a
+  live window and the P1013 diagnostics have not been observed clearing. The
+  merge behaviour is documented and already used for a vendor trait
+  (`ProxiesCanSeeToGate`), but a redeclared *first-party* trait is new here. The
+  honest next step is to run "Laravel: Refresh IDE Helpers & Icons" in
+  `construction-backend`, reload, and reopen `BelongsToCompany.php`.
+
+Follow-up not taken: `construction-backend/.gitignore` lists `_ide_helper.php`
+and `_ide_helper_models.php` but not `_ide_helper_manual.php`, so the generated
+file is currently staged for commit there and will now carry 87 extra blocks.
+That is a change to a project repository and was left for its owner.
+
+### 2026-08-11 — Activity bar hidden outright, and the two views that needed keys
+
+Intent: the icon strip was still there. `"top"` did not put the icons beside the
+command center as the 2026-08-10 entry expected — it gives them a band of their
+own below the title bar, and the Explorer starts under it. Measured from a
+screenshot of the live window: the title bar's colour `#242633` ends at 9 CSS px
+and the strip's `#2a2c3b` runs from there through the bottom of the crop, so the
+band is real vertical space, not a title-bar row. The icons in it were not being
+used.
+
+Implementation: `workbench.activityBar.location` set to `"hidden"`, which removes
+the part from the DOM and lifts the sidebar by the band. Two keybindings replace
+the icons that were actually wanted:
+
+- `Shift+Cmd+1` — Explorer. Already bound, and independent of the icons;
+- `Shift+Cmd+X` — Extensions, and pressed again from Extensions, Remote Explorer.
+  Two entries keyed on `activeViewlet`, the same shape the Explorer toggle above
+  them already uses.
+
+Decisions:
+
+- **this reverses the third option refused on 2026-08-10**, and the reason it was
+  refused is the reason it is now correct. That entry set it aside because
+  `"hidden"` "would have meant new keybindings for the views that lost their
+  icons". That is exactly the trade being made: the icons were unused, so paying
+  two keybindings to reclaim the band is a gain rather than a cost. The earlier
+  entry stands as written — the trade changed, not the facts;
+- **the earlier entry's expectation about `"top"` was wrong** and is corrected
+  here rather than edited there. It predicted the icons would "cost no horizontal
+  or vertical space"; they cost a band. Anyone reading that entry alone would
+  reach for `"top"` again;
+- **`Shift+Cmd+X` cycles rather than closes.** `activeViewlet != extensions`
+  covers a hidden sidebar too, so the first press always lands on Extensions from
+  anywhere, and only a second press reaches Remote;
+- **no injected CSS was added.** Decision 10's recheck-after-update cost is
+  avoided; this remains two native settings keys and two keybindings.
+
+Verification:
+
+- both files parse — `settings.json` 134 entries with
+  `workbench.activityBar.location` reading `"hidden"`, `keybindings.json` 79
+  entries with the `Shift+Cmd+X` pair as written;
+- the command ids are not assumed: `workbench.view.remote`,
+  `workbench.view.extensions` and `workbench.view.explorer` were each found in
+  the shipped `workbench.desktop.main.js`, so all three resolve in this build;
+- the band measurement came from decoding the screenshot's pixels, not from
+  reading it;
+- **not verified: the result on screen.** The window has not been reloaded, and
+  neither `Shift+Cmd+X` press has been made. The honest next step is one press
+  from the Explorer — expect Extensions — and a second — expect Remote Explorer.
+
+### 2026-08-12 — Format Modified Lines withdrawn: it corrupts indentation in Vue templates
+
+Intent: undo the previous day's binding. `editor.action.formatChanges` on
+`Alt+Cmd+L` in `construction-frontend` was meant to limit reformat churn to the
+lines actually edited. It does that, and in `.vue` files it also mangles them.
+
+What it does wrong: range formatting hands the formatter only the changed line
+ranges. A `git diff` of a file under active work is many small scattered hunks —
+`DashboardPage.vue` had 289 insertions across dozens of them — and a hunk
+routinely covers *some* lines of a multi-line element. The formatter then
+re-indents those lines as if they were a standalone snippet, with no knowledge
+that they sit inside a tag opened eight columns in. Observed in one element:
+
+    <BaseInput
+        v-model="dashboard.name"
+        :placeholder="$t('Dashboard Name')"
+    :disabled="!canEditCurrent"          <- column 0
+      :style="{ width: nameWidth }"      <- partial indent
+        inline-errors
+        class="dashboard-page-input"
+    @blur="saveDashboard"                <- column 0
+    />
+
+Across the same file it also left attribute runs at indent 13 and pushed a
+`<style>` block to indent 64. Vue templates are the worst case for this: an
+attribute is by definition mid-element, so a hunk boundary almost always falls
+inside a construct. JS statements are mostly self-contained and survive it.
+
+Implementation: the binding was removed. `Alt+Cmd+L` is `editor.action.formatDocument`
+again everywhere, as it was before 2026-08-11.
+
+Decisions:
+
+- **the 2026-08-11 entry proposed this binding on reasoning, not evidence.** It
+  recorded the churn measurement that motivated it but never checked what range
+  formatting does to a partially-edited element. Reformat behaviour has to be
+  tried on a real dirty file, not argued from the command's description;
+- **the two options for `.vue` are now both known bad**, and that is the useful
+  result: whole-document format rewraps ~105 lines per file (measured over 60
+  files on 2026-08-11), range format corrupts indentation. Not formatting `.vue`
+  at all is the remaining honest answer until the repo adopts a shared formatter;
+- **whole-document format is the repair.** With full context the indentation
+  resolves correctly, so one `Alt+Cmd+L` on a damaged file fixes every region —
+  at the cost of that file's rewrap.
+
+Verification:
+
+- `keybindings.json` parses — 78 entries, zero `editor.action.formatChanges`,
+  the `Shift+Cmd+X` pair from the previous entry still present;
+- the damage was measured, not inferred: attribute lines at column 0 (L31, L35),
+  runs at odd indent 13 (L88, L120–L127) and 15 (L91), and a `<style>` block at
+  indents 64–67 from L505;
+- **not verified: the repair.** The file was being edited while this was written
+  — its length changed between two reads — so nothing was rewritten from here.
+
+### 2026-08-12 — The tab label's fade strip stopped staying dark on hover
+
+Intent: a 5px vertical band near the right edge of each tab kept its unhovered
+colour while the tab around it lifted, so hover read as broken on that strip.
+
+What it is: the label fade, a pseudo-element VS Code paints only while tabs are
+shrinking —
+
+    .tab.sizing-shrink > .tab-label > .monaco-icon-label-container:after {
+      content:""; position:absolute; right:0; width:5px; height:calc(100% - 2px) }
+
+`workbench.editor.tabSizing` is `"shrink"` here, which turns it on. Its gradient
+is painted from the tab's background at render and never repainted when hover
+changes that background. Hidden here with the same `display:none` VS Code applies
+one rule later under its `.style-override` class — a class this workbench does
+not carry, which is also why the `.monaco-workbench.style-override` block earlier
+in the file is currently dormant.
+
+Decisions and lessons:
+
+- **the first diagnosis was wrong, and the way it was reached is the lesson.**
+  `.tab-fade-hider` was proposed because VS Code gives it `width:5px` under
+  `.sizing-shrink.close-action-off`, and both classes are produced by settings in
+  use here. A rule matching on width and plausible trigger is not identification.
+  The DOM settled it in one call: `tab-fade-hider` computes to width `auto`,
+  meaning `display:none`, while `monaco-icon-label-container::after` reports
+  5 x 24. A rule was written and then removed on that evidence;
+- **a grep can rule things out that are there.** The search that should have found
+  this filtered CSS rules for `tab` in the selector; the owning class is
+  `monaco-icon-label-container`, which contains no such substring, so the one rule
+  that mattered was excluded from a search reported as "0 tab rules paint a
+  gradient". Filter on the property being hunted, not on where it is expected;
+- **hidden rather than recoloured.** Recolouring means restating the gradient per
+  hover state and per theme against a value VS Code writes inline; hiding is what
+  the product itself does in its newer style. The cost is that an over-long label
+  now clips instead of fading, and `workbench.editor.limit.value` caps tabs at 8,
+  so labels rarely truncate far enough for it to show.
+
+Verification:
+
+- `custom-workbench.css` parses — braces balanced at 50/50, 455 lines, and no
+  `tab-fade-hider` rule left behind;
+- the element identity is from the live DOM, not inferred: `5 x 24` for
+  `div.monaco-icon-label-container::after`, matching `width:5px` and
+  `height:calc(100% - 2px)` in the shipped stylesheet, and matching a band
+  measured at 5 CSS px from a screenshot;
+- **not verified: the result on screen.** Injected CSS needs "Reload Custom CSS
+  and JS" and a restart, which has not been run. The next step is that reload and
+  one hover over an inactive tab.
+
+### 2026-08-12 — Vue components resolve on Cmd+B without touching the project
+
+Intent: `Cmd+B` on `<DashboardPage />` reported "No other references found".
+The cause is not the tab, the tsconfig or the language server: the import is
+written without the extension —
+
+    const DashboardPage = () => import("@/modules/.../DashboardPage")
+
+TypeScript resolves a specifier by trying `.ts`, `.tsx`, `.d.ts`, `.js`, and
+**never `.vue`**; no compiler option adds it. Vite does resolve it, so the app
+builds and only the tooling is blind. Measured in construction-frontend: 2,664
+component imports carry the extension and **1,655 do not**, so roughly two in
+five components were unreachable.
+
+Adding `.vue` at the call sites is the upstream advice and would have been 1,655
+edits in a shared repository. The requirement was to fix it without repo changes,
+which is what this extension is for.
+
+Implementation: `vueComponentNavigation.js`, a definition provider for `vue`,
+`javascript` and `typescript`. It reads the binding out of the document already on
+screen — static import, `() => import(...)`, or `defineAsyncComponent` — maps the
+`@/` alias onto `src/`, and returns the first candidate that exists, trying
+`.vue` and `/index.vue` ahead of the extensions TypeScript would have tried.
+
+Decisions:
+
+- **a provider, not a branch in the Cmd+B command.** Cmd+B is a command here that
+  calls `vscode.executeDefinitionProvider` and falls back; registering a provider
+  instead means the same resolution also serves Cmd+Click and the peek widgets,
+  and it composes with the native result rather than replacing it;
+- **the workspace-scan lesson from the Laravel helpers still applies.** That
+  module is command-driven precisely because live providers get auto-invoked and
+  can trigger an analysis storm. This provider reads only the open document's
+  text and stats a few paths. The single `findFiles` call is a last resort for a
+  globally registered component, when the file declares no binding at all;
+- **package specifiers are ignored rather than chased.** Rewriting
+  `vue-feather-icons` into `src/` would invent paths and could shadow a real
+  node_modules resolution the language server already answers correctly;
+- **`.vue` is preferred over `.js` when both exist**, because the caller used the
+  name in a template.
+
+Verification:
+
+- `node test/vueComponentNavigation.test.js` — **11 passing**, including the
+  welcome.vue shape verbatim and a case asserting `DashboardPage` does not match
+  a `DashboardPageHeader` import;
+- run against the real repository: the failing case resolves
+  `@/modules/dashboard/components/dashboard/DashboardPage` to
+  `src/modules/dashboard/components/dashboard/DashboardPage.vue`, and **1,655 of
+  1,655** extensionless imports resolve — 100%;
+- `node --check` passes on the new module and on `extension.js`;
+- **not verified: behaviour in the extension host.** The window has not been
+  reloaded and no key has been pressed. The next step is a reload, then Cmd+B on
+  `<DashboardPage />` in `welcome.vue`.
+
+### 2026-08-13 — Playwright e2e files joined one TypeScript project for references
+
+Intent: `Cmd+B` inside `construction-frontend/e2e` reported "No other references
+found" on almost every symbol, including functions imported across support,
+model, and spec files.
+
+Diagnosis: the repository's root `tsconfig.json` includes only `src/**/*.ts`,
+`src/**/*.tsx`, declarations, and Vue files. Every `e2e/**/*.ts` file therefore
+sat outside the configured TypeScript project. The custom command was working as
+designed — it asked VS Code's definition and reference providers — but the
+provider did not own the complete Playwright file graph.
+
+Implementation: added `construction-frontend/e2e/tsconfig.json`. It defines a
+strict, no-emit NodeNext project over all e2e TypeScript files and the root
+`playwright.config.ts`. No Smart References code or keybinding changed; native
+TypeScript intelligence now supplies the missing cross-file locations to the
+existing command, Cmd+Click, rename, and other language features.
+
+Decisions and lessons:
+
+- **the project boundary is the fix.** Adding a text-search fallback to Smart
+  References would duplicate TypeScript badly: it could match comments and
+  unrelated same-name symbols while still lacking type identity;
+- **a dedicated config is safer than broadening the app config.** The root file
+  carries Vue-specific plugins, path aliases, type libraries, and application
+  source includes. Playwright is a Node project with a different runtime, so its
+  compiler boundary should say that explicitly;
+- **`playwright.config.ts` belongs to the same graph.** It imports the e2e
+  environment module, so including only the subtree would leave one real caller
+  outside reference results;
+- `Cmd+B` still means definition first and references second. On an imported use
+  it opens the declaration; on the declaration it shows the other uses. This
+  change restores the provider data rather than changing that navigation model.
+
+Verification:
+
+- TypeScript 6.0.3, the version bundled with VS Code 1.133.0, discovers
+  `e2e/tsconfig.json` from an e2e test file and loads all 21 e2e TypeScript files;
+- a language-service reference lookup for `gotoCreateForm` returns 9 locations
+  across `navigation.ts`, both entity models, and both entity specs;
+- syntactic, semantic, config, and compiler-option diagnostics over that project:
+  **zero**;
+- `git diff --check` passes in `construction-frontend`; its pre-existing
+  `src/modules/common/config.js` modification remains untouched;
+- **not verified: the live key press.** The running TypeScript server has not
+  been restarted from this terminal. Run **TypeScript: Restart TS Server** (or
+  reload the window), then press `Cmd+B` on `gotoCreateForm` in
+  `e2e/support/navigation.ts` to verify the picker in the live extension host.
+
+### 2026-08-13 — Breadcrumb suppression restored after a latent settings regression
+
+Intent: the breadcrumb row reappeared beneath the editor tabs, making the tabs
+look flush against another header strip instead of separated from the editor by
+their compact bottom spacing.
+
+Diagnosis: the custom tab CSS was still present in all three relevant places:
+the tracked source, the live User-folder symlink, and the CSS inlined into
+`workbench.html`. It still gives the 26px tabs a 30px container with 2px top and
+bottom padding. The missing piece was the native `breadcrumbs.enabled: false`
+setting. Git history shows it existed before the 2026-07-27 settings
+consolidation and was dropped in that commit. VS Code 1.133.0 still registers
+that exact setting and defaults it to `true`, so the regression stayed latent
+until the default was observed again.
+
+Implementation: restored `"breadcrumbs.enabled": false` in the tracked,
+symlinked `User/settings.json`, beside the tab settings it visually affects. No
+CSS selector, height, padding, or loader state changed.
+
+Decisions and lessons:
+
+- **use the native setting for a native row.** Hiding the breadcrumb widget with
+  injected CSS would duplicate a supported preference and add another fragile
+  DOM selector;
+- **the apparent tab-spacing failure was downstream.** The tab row retained its
+  2px bottom padding; the unexpected breadcrumb row immediately below it changed
+  the composition and consumed the space that used to lead into the editor;
+- **a current default can expose an old omission.** The visible regression did
+  not require a recent source edit: the setting had been absent since July while
+  another persisted state masked it.
+
+Verification:
+
+- the tracked and live settings paths resolve to the same repository file;
+- VS Code 1.133.0's bundled configuration schema still defines
+  `breadcrumbs.enabled` as a boolean with default `true`;
+- the injected `workbench.html` contains the compact-tab CSS, including the 30px
+  container and 2px vertical padding, so the loader is active;
+- settings JSONC parsing and repository whitespace checks pass;
+- the active VS Code 1.133.0 window was reloaded and captured with Developer
+  Tools closed: the breadcrumb row is gone, the 26px tabs remain vertically
+  separated inside their 30px row, and the editor begins beneath that gap.
+
+### 2026-08-13 — Active-tab effects moved onto VS Code's modern fill element
+
+Intent: the active tab looked like two nested buttons, and hovering it made the
+outer shape brighten around an unchanged inner shape. The result resembled
+uneven vertical padding or a missing bottom edge.
+
+Diagnosis: VS Code 1.133's `modern-ui-tabs` layout makes the outer `.tab`
+transparent and paints the rounded button on a new `.tab-fill` child, inset by
+one spacing step on the left and right. The existing custom ring and active-hover
+overlay predate that DOM. Both still targeted the outer `.tab`, overriding its
+required transparency while the native inner fill continued painting above it.
+The two independently rounded layers produced the double capsule in the
+screenshots; the tab's measured 26px height and zero vertical padding were not
+the fault.
+
+Implementation: split the custom ring and active-hover selectors at the actual
+layout boundary. Legacy tabs retain both effects on `.tab`; `modern-ui-tabs`
+applies them to `.tab-fill`. The modern hover rule adds only the 5% white overlay
+and leaves VS Code's active fill colour in place. Heights, padding, radius,
+palette, and the native horizontal inset are unchanged.
+
+Decisions and lessons:
+
+- **paint the element that owns the shape.** Adjusting top or bottom padding
+  would have moved the tab while leaving both paint layers intact;
+- **keep the legacy selector explicitly scoped.** The custom CSS can still load
+  without `modern-ui-tabs`, so the old DOM remains supported without being able
+  to override the modern parent's transparency;
+- **the hover was diagnostic.** It did not create the second layer; it made the
+  existing outer layer brighter and therefore easier to identify.
+
+Verification:
+
+- a one-off structural regression check fails before the change because the
+  shipped stylesheet contains the modern `.tab-fill` while both custom effects
+  target the outer tab;
+- after the change, the same check passes only when modern ring/hover selectors
+  target `.tab-fill` and the legacy outer selectors exclude `.modern-ui-tabs`;
+- **Reload Custom CSS and JS** was run through this setup's actual command-palette
+  binding, `Cmd+P` (`Shift+Cmd+P` pins an editor here), and the installed
+  `workbench.html` contains the new legacy/modern split under a fresh loader
+  session id;
+- after **Developer: Reload Window**, separate normal and pointer-hover captures
+  of the active `README.md` tab show one rounded fill and one ring. The former
+  brighter outer capsule and the apparently missing bottom edge are gone;
+- the repository checksum-repair script was not run because modifying the
+  application's integrity record was not authorized. The injected CSS works,
+  but VS Code may continue to show its expected modified-installation warning.
+
+### 2026-08-13 — Correction: modern tab spacing was clipping label bottoms
+
+Correction to the preceding entry: moving the ring and hover overlay to
+`.tab-fill` removed the double capsule, but its conclusion that the measured
+26px tab height was not involved was wrong. The full-window captures were too
+wide to expose the cropped glyph edge; the close screenshot did.
+
+Diagnosis: VS Code 1.133's non-wrapping modern-tab rule adds
+`border-block: var(--vscode-spacing-size40) solid transparent` to each `.tab`
+and normally grows its minimum height by two matching spacing steps. The compact
+customization overrides that minimum back to 26px and gives the label a 26px
+line-height, while the older rounded-tab rule clips the outer element with
+`overflow: hidden`. The transparent borders therefore consume part of the fixed
+26px box and the label overflows its remaining content area, cutting off the
+bottom of `README.md` and other labels. Pinned tabs made it especially clear
+because their semibold text and visible pin action fill more of the row.
+
+Implementation: set `border-block: 0` only on modern, non-wrapping editor tabs.
+The existing 30px `tabs-and-actions-container` still supplies 2px above and
+below the 26px tab, so this removes duplicated internal spacing rather than the
+intended gap. No font, line-height, pin padding, tab height, or wrapping layout
+changed.
+
+Decisions and lessons:
+
+- **the close crop outranks the full-window smoke test.** Shape correctness did
+  not prove text correctness at that scale;
+- **remove the duplicate spacing source.** Increasing the tab height would make
+  the whole header taller, and removing `overflow: hidden` would let the symptom
+  escape its box while reviving the accent-strip corner defect;
+- **scope out wrapping tabs.** They use a different border width as part of row
+  separation and `workbench.editor.wrapTabs` is disabled here.
+
+Verification:
+
+- a one-off check reproduces the conflict before the change: shipped modern
+  vertical borders, forced 26px tab and line-height, clipping enabled, and no
+  modern border reset;
+- after the change the structural check requires the modern non-wrapping
+  `border-block: 0` override and balanced CSS;
+- **Reload Custom CSS and JS** produced a fresh injected session containing the
+  border reset, then **Developer: Reload Window** applied it;
+- close normal and hovered captures show the semibold pinned `README.md` label
+  with an intact lower edge, and the descender on ordinary `dialog.ts` is fully
+  visible. The active tab remains one rounded shape in both states.
+
+### 2026-08-13 — Modern active fill toned down and centred within equal tab boxes
+
+Intent: the active tab remained too pale after the geometry repairs and its
+painted capsule looked taller than the unfilled tabs beside it. Every tab should
+occupy the same row height, with a quieter active state.
+
+Diagnosis: the outer geometry was already equal: the inspected active tab and
+the shared custom rule both report 26px, and that rule applies to every tab.
+Two current modern-UI defaults created the visual difference:
+
+- VS Code 1.133 paints `.tab-fill` from
+  `--modern-ui-editor-tab-action-active-background`, a 22% foreground mix over
+  the editor. The existing override targets the older
+  `--modern-ui-tab-active-background`, so the new fill ignored the deliberately
+  darker `tab.activeBackground` values in `settings.json`;
+- `.tab-fill` uses `inset: 0 ...`, painting the full 26px outer height. An
+  inactive tab has no capsule, so the full-height active shape reads taller even
+  though both outer boxes are identical.
+
+Implementation: point the current modern active-fill variable at
+`var(--vscode-tab-activeBackground)` and give every non-high-contrast modern
+`.tab-fill` a 1px block inset. Outer tabs remain 26px; active, selected, and
+hover fills are all centred at 24px. The label still owns the full 26px content
+area, so the clipping correction is preserved.
+
+Decisions and lessons:
+
+- **change the paint, not the tab.** Altering active height would make the boxes
+  genuinely unequal; the measured boxes were already equal;
+- **use the existing palette.** Both dark themes already carry active colors
+  derived for a restrained contrast ladder, so another literal grey would
+  create a second source of truth;
+- **apply the inset to every fill state.** Scoping it only to `.active` would
+  make inactive hover and multi-selection capsules a different height;
+- high-contrast themes retain VS Code's native geometry and colors.
+
+Verification:
+
+- the pre-change structural check fails with the installed 22% foreground mix,
+  equal 26px outer tabs, no current-variable redirect, and no vertical fill
+  inset;
+- after the change the check requires the current variable redirect, the shared
+  1px fill inset, equal 26px outer tabs, and balanced CSS;
+- **Reload Custom CSS and JS** produced a fresh installed session containing
+  both rules, followed by **Developer: Reload Window**;
+- close normal and active-hover captures show the active `README.md` fill on the
+  darker theme color, centred at the same bounds in both states. A separate
+  neighboring-tab hover capture uses the same vertical fill bounds, while every
+  label retains its intact baseline inside the unchanged 26px outer row.
+
+### 2026-08-13 — Pinned actions share the tab fill, with an upgrade guard
+
+Intent: hovering the pin drew a separate rectangle over the right end of the
+tab. On the active tab it had a different colour; on an inactive tab it appeared
+taller than the hover fill. Keep the pin visually part of one tab surface and
+make future VS Code updates fail visibly when this private DOM contract changes.
+
+Diagnosis: VS Code 1.133 paints two sibling layers with different geometry. The
+modern `.tab-fill` is now centred at 24px by this customization, but the shipped
+`.tab-actions` rule remains absolutely positioned at `top: 0; bottom: 0`, so its
+background covers all 26px. The active mismatch had a second cause: the custom
+5% hover lift belongs to `.tab-fill`, while the native action layer repaints the
+unlifted `--modern-ui-editor-tab-action-active-background` above it.
+
+Implementation:
+
+- centre modern `.tab-actions` with the same 1px block inset as `.tab-fill`;
+- keep the pinned action background transparent. Modern pinned tabs already
+  reserve 28px of right padding for the action, so there is no label underneath
+  to mask; the shared fill, active ring, and hover lift remain visible unchanged;
+- add `check_workbench_customizations.sh`. Its source-only mode checks the 26px
+  outer tab, 24px fill/action geometry, theme-backed active colour, transparent
+  pinned surface, and balanced CSS. Its normal mode also checks the installed
+  VS Code stylesheet for the semantic modern-tab hooks and confirms the current
+  repository CSS markers are present in `workbench.html`;
+- document that check as the first post-upgrade gate in `vscode/README.md` and
+  list it in the current deployment model above.
+
+Decisions and lessons:
+
+- **remove duplicate paint where the underlying layer is authoritative.** Trying
+  to reproduce the fill colour, ring, and image overlay on `.tab-actions` would
+  create two surfaces that can drift again;
+- **the action hit area remains.** Transparency changes only paint; the native
+  pin action, focus behavior, and reserved padding are untouched;
+- **private workbench CSS cannot be made update-proof.** VS Code updates replace
+  the injected HTML and may rename or restructure the DOM. The useful guarantee
+  is that the checker stops on a missing injection or missing semantic hook
+  before a checksum repair or a claim that the design survived;
+- **structural checks are necessary but not visual proof.** A close active-pin
+  and inactive-pin hover capture remains part of the update smoke test.
+
+Verification:
+
+- before the CSS fix, the new source check failed with
+  `missing the centred 24px tab action layer`;
+- before reinjection, the full check passed the source contract and failed on
+  the missing current `.tab > .tab-actions` marker in the installed workbench;
+- **Reload Custom CSS and JS** and **Developer: Reload Window** were run. The
+  full check then passed all three gates: 58 balanced source rule blocks, the
+  installed modern-tab DOM contract, and the current workbench injection;
+- close live captures with the pointer visibly over each pin show one continuous
+  active `README.md` fill and no separate tall rectangle behind the inactive
+  `data.ts` pin;
+- the checksum repair was not run; the expected modified-installation warning
+  may remain.
+
 ### 2026-08-13 — Empty editor groups now continue the Explorer surface
 
 Intent: replace the large VS Code logo and the editor-coloured empty canvas with
@@ -3822,3 +4757,1649 @@ Verification:
   and an exact rerun of the larger file in that VS Code terminal exited 0 and
   reached `.then(): Async User`. One earlier large-file invocation displayed a
   transform error, but the same command and environment did not reproduce it.
+
+### 2026-08-15 — Line numbers regain one column of left padding
+
+Intent: move the line-number digits slightly away from the editor's left edge
+without restoring the much wider glyph margin removed on 2026-08-11.
+
+Implementation: raise `editor.lineNumbersMinChars` from 2 to 4. VS Code treats
+this as a minimum character count and right-aligns the digits, so the supplied
+three-digit view gains one character cell on the left. The existing 4px line
+decoration strip to the right and the hidden glyph margin remain unchanged.
+
+Decisions and lessons:
+
+- **use the native layout setting.** The requested space is exactly the spare
+  capacity represented by `lineNumbersMinChars`; injected padding on private
+  gutter DOM would be more fragile and could overlap the editor canvas;
+- **keep the compact-gutter tradeoff.** Restoring `editor.glyphMargin` would add
+  roughly 31px in this setup and bring breakpoint/bookmark icons back, which is
+  a different and much larger change than the requested small inset;
+- the reserve is deliberately adaptive: files through 999 lines show at least
+  one blank character cell, while longer line numbers consume it as needed.
+
+Verification:
+
+- `settings.json` parses as JSONC and
+  `editor.lineNumbersMinChars` reads `4`;
+- `check_workbench_customizations.sh --source-only` passes with 62 balanced CSS
+  rule blocks, and `git diff --check` passes;
+- the live VS Code `settings.json` resolves to the repository file changed here,
+  so no installer or custom-CSS reinjection is needed;
+- **not verified: the rendered gutter.** The active editor was not captured after
+  the setting changed; inspect it in VS Code before treating the visual spacing
+  as final.
+
+### 2026-08-15 — Correction: line-number reserve must exceed the file's digit count
+
+The preceding change did not add padding in the reported editor. A follow-up
+capture showed line `100` still beginning at the left edge of the line-number
+column.
+
+Root cause: the earlier entry treated `lineNumbersMinChars` as though VS Code
+compared it with the currently visible line number. The installed VS Code 1.133
+layout code actually computes the model's total line-count digits first, then
+uses `max(lineNumbersDigitCount, lineNumbersMinChars)`. In a file with at least
+1,000 lines, both values were `4`, leaving no spare cell even while lines around
+`100` were visible.
+
+Implementation: set `editor.lineNumbersMinChars` to `5`, the installed VS Code
+default. Files through 9,999 lines now retain one full character cell to the
+left; the hidden glyph margin and 4px decoration strip remain unchanged.
+
+Decisions and lessons:
+
+- inspect `lineNumbersDigitCount` at the model boundary, not the digits visible
+  in the viewport;
+- a minimum of five is the smallest native value that guarantees one spare cell
+  for the reported four-digit model. A CSS inset is still unnecessary;
+- preserve the preceding entry as the record of the failed value and correct it
+  here rather than silently rewriting its conclusion.
+
+Verification:
+
+- `settings.json` parses as JSONC and
+  `editor.lineNumbersMinChars` reads `5`;
+- `check_workbench_customizations.sh --source-only` passes with 62 balanced CSS
+  rule blocks, and `git diff --check` passes;
+- the live VS Code `settings.json` resolves to the repository file changed here;
+- **not verified: the corrected rendered gutter.** The supplied capture proves
+  the value `4` failed, but it predates this correction to `5`.
+
+### 2026-08-16 — Line-number padding moved to the rendered gutter
+
+Intent: keep a visible left inset when line numbers cross from two to three
+digits. Two attempts through `editor.lineNumbersMinChars` left line `100`
+against the gutter edge.
+
+Root cause: `lineNumbersMinChars` is a Monaco editor option, but VS Code 1.133's
+regular text-editor pane overwrites it during editor creation. The installed
+workbench code reads the user's editor configuration and then merges
+`lineNumbersMinChars: 3` through `getConfigurationOverrides()`. The model layout
+therefore never received either repository value (`4` or `5`); both earlier
+entries diagnosed the Monaco width calculation without tracing the later
+workbench override.
+
+Implementation:
+
+- remove the ignored `editor.lineNumbersMinChars` key from `settings.json`;
+- translate only `.margin-view-overlays .line-numbers` 4px to the right. The
+  existing `editor.lineDecorationsWidth: 4` provides that room, so the fixed
+  inset consumes no additional editor width and does not move the code canvas;
+- extend the compatibility checker to guard the native line-number overlay, the
+  source rule, and its installed injection marker.
+
+Decisions and lessons:
+
+- **trace settings through the workbench boundary.** A registered Monaco option
+  and valid JSONC do not prove that VS Code's text-editor pane preserves it;
+- **use one fixed visual offset.** The request is independent of the file's line
+  count, so an adaptive minimum-character calculation is the wrong contract;
+- **keep the offset within reserved space.** Moving only the glyphs by the same
+  4px already allocated to line decorations avoids widening the gutter or
+  restoring breakpoint/bookmark lanes.
+
+Verification:
+
+- before the CSS rule, the extended source check failed with
+  `missing the fixed 4px line-number inset`;
+- after the rule, source verification passes with 63 balanced CSS rule blocks;
+- before reloading the loader, the full checker passed the source and native
+  overlay contracts, then stopped on the missing 4px injection marker;
+- **Reload Custom CSS and JS** and **Developer: Reload Window** were run through
+  VS Code's actual View menu. The full checker now passes the native line-number
+  overlay contract and confirms the current marker in `workbench.html`;
+- `settings.json` parses as JSONC, the ignored `lineNumbersMinChars` key is
+  absent, the 4px decoration strip remains, and `git diff --check` passes;
+- **not verified: the rendered pixels after reload.** The active workbench has
+  the rule, but a new gutter capture was not taken from this session.
+
+### 2026-08-16 — Catppuccin editor surface matches Explorer and Codex
+
+Intent: remove the lighter rectangle in the middle of the three-pane layout so
+the populated editor reads as the same surface as Explorer and the Codex
+sidebar.
+
+Diagnosis: direct samples from the supplied 3216 x 2090 capture measured both
+blank Explorer and Codex areas at rendered `#2a2c3b`, while the editor canvas
+was rendered `#313445`. The installed theme defines the corresponding source
+tokens as `sideBar.background: #292c3c` and `editor.background: #303446`; the
+one-channel difference between source and capture is consistent for both
+surfaces. The mismatch came from Catppuccin's editor token, not from an overlay
+or injected workbench rule.
+
+Implementation: in the `[Catppuccin Noctis Frappé]` color customization only,
+set `editor.background`, `editorGutter.background`, and
+`editorGroup.emptyBackground` to the theme's Explorer source value `#292c3c`.
+The other configured themes retain their own palettes, and tab fills keep their
+existing contrast ladder above the unified body surface.
+
+Decisions and lessons:
+
+- **change the native color boundary.** `editor.background` and
+  `editorGutter.background` are supported theme tokens and update populated
+  editors without private DOM selectors;
+- **compare source tokens as well as rendered pixels.** Explorer and Codex
+  already resolve to the same pixel value, but the capture shifts the CSS source
+  channels slightly; copying the theme's `sideBar.background` is what makes the
+  rendered surfaces exact;
+- **keep the gutter with the canvas.** Changing only `editor.background` would
+  leave a lighter line-number band along the editor's left edge.
+
+Verification:
+
+- `settings.json` parses as JSONC and all three Catppuccin editor-surface tokens
+  read `#292c3c`; the live settings path resolves to this repository;
+- a first window-scoped capture with the rendered pixel value copied directly
+  into settings proved the color-management boundary: CSS `#2a2c3b` rendered as
+  dominant `#2b2c3a` in the editor, while both side panes remained `#2a2c3b`;
+- inspection of the installed Catppuccin Noctis Frappé 3.1.9 theme confirmed
+  `sideBar.background: #292c3c`. After using that source value, a second capture
+  measured the dominant Explorer, populated editor/gutter, and Codex pixels all
+  as `#2a2c3b`;
+- the final window-scoped capture was inspected visually and shows one continuous
+  body surface across all three panes. Tab fills, borders, selections, and the
+  active-line overlay retain their intended contrast;
+- `git diff --check` passes. No custom-CSS reload was needed because these are
+  native theme tokens in the live symlinked settings file.
+
+### 2026-08-16 — Cmd+B follows members returned by TypeScript/Vue composables
+
+Intent: make Cmd+B on `closeTimeLog` in `useTimeLog.ts` show the places that use
+the member after `const { closeTimeLog } = useTimeLog()`, including Vue template
+handlers. TypeScript treats the local declaration, the return shorthand, and a
+consumer destructure as separate symbols, so its native reference provider only
+returned the declaration and `return { closeTimeLog }`.
+
+Implementation: add `returnedComposableNavigation.js` to Smart References. On an
+explicit Cmd+B only, it recognises a local function/value returned as a shorthand
+member of an exported function or arrow factory, finds named imports of that
+factory from the exact source file, and follows destructured members in `src/`
+TypeScript, JavaScript, and Vue files. The resulting binding occurrences join the
+ordinary reference picker. Native definitions and references still answer every
+other symbol; this does not register a live reference provider or run in CodeLens.
+
+Decisions and lessons:
+
+- this is a missing static relationship, not a project-boundary failure. A direct
+  TypeScript language-service probe found `closeTimeLog` only at its declaration
+  and return shorthand, while `useTimeLog` correctly found its import and calls;
+- constrain the bridge to returned shorthand members, named imports, and
+  destructuring from a source-root module. A general same-name scan would merge
+  unrelated functions and comments, recreating the ambiguity that native symbol
+  navigation avoids;
+- retain the current command-driven architecture. Scanning consumer files on a
+  reference provider would run during automatic editor queries, while a Cmd+B is
+  both deliberate and already the established Smart References boundary.
+
+Verification:
+
+- the new focused tests pass (4 cases), covering declaration recognition, return
+  shorthand rejection, named imports/destructures, and Vue-template/script uses;
+- a real-project helper probe resolves `useTimeLog.closeTimeLog` to lines 50, 72,
+  146, and 261 of `TimeLogDrawer.vue`;
+- all 128 Smart References tests, JavaScript syntax checks, manifest parsing, and
+  `git diff --check` pass; the extension installer updated the registered local
+  version to `0.0.28` and its live extension path points to this repository;
+- **not verified: the active Cmd+B.** Run **Developer: Reload Window**, then use
+  Cmd+B on `closeTimeLog` in `useTimeLog.ts`; the picker should show the four
+  `TimeLogDrawer.vue` locations above.
+
+### 2026-08-16 — Reference groups distinguish imports from composable calls
+
+Intent: correct the References picker after `useTimeLog` showed both its imports
+and `const { … } = useTimeLog()` calls under **Top level usages**.
+
+Root cause: the picker used `symbolName === 'top level'` as the whole grouping
+rule. Vue `<script setup>` supplies no enclosing document symbol for either a
+module import or a top-level initializer, even though only the import is a
+top-level navigation boundary worth separating.
+
+Implementation: extract the pure `referenceGrouping.js` rule. **Top level
+usages** now contains only `import` and `export` lines with no enclosing symbol;
+destructuring, function calls, and other executable initializers remain in
+**Usages**. The reference locations and their order within each group are
+unchanged.
+
+Verification:
+
+- the new focused grouping tests pass, covering import/export, a `useTimeLog()`
+  destructure, and a real enclosing function;
+- all 129 Smart References tests, syntax checks, manifest parsing, and
+  `git diff --check` pass; the extension installer updated the registered local
+  version to `0.0.29` and its live path points to this repository;
+- **not verified: the reloaded picker.** Run **Developer: Reload Window**, then
+  Cmd+B on `useTimeLog`; the two import rows remain under **Top level usages**
+  and the two destructuring rows appear under **Usages**.
+
+### 2026-08-16 — Current-file references gain an orange marker
+
+Intent: make references in the file where Cmd+B began recognisable immediately,
+without requiring users to read every filename.
+
+Implementation: carry the originating editor URI from `showReferencesAtLocation`
+through both picker and webview renderers. Matching locations receive an orange
+filled-circle icon in the native picker and a small orange badge over their
+normal symbol icon in the webview. The picker placeholder explains the marker;
+the webview badge retains the normal class/function/reference symbol beneath it.
+
+Decision: compare URIs rather than file names or workspace-relative paths, so
+same-named files and Remote SSH URIs cannot be incorrectly marked as current.
+
+Verification:
+
+- focused URI-comparison tests pass for matching, different, and absent origins;
+- all 130 Smart References tests, syntax checks, manifest parsing, and
+  `git diff --check` pass; the extension installer updated the registered local
+  version to `0.0.30` and its live path points to this repository;
+- **not verified: the reloaded visual picker.** Run **Developer: Reload Window**
+  and open References; rows from the source file should carry an orange dot.
+
+### 2026-08-17 — Current-file dot moves to the row's right edge
+
+Intent: retain the current-file marker without replacing the existing symbol
+icon, and keep the visual scan column separate from file/type information.
+
+Implementation: current-file rows now use the native picker item's right-side
+button slot for their orange dot. The webview adds one small final grid column
+and places the same dot there; ordinary rows reserve the column but leave it
+empty, keeping every code and method column aligned.
+
+Verification:
+
+- all 130 Smart References tests, syntax checks, manifest parsing, and
+  `git diff --check` pass; the extension installer updated the registered local
+  version to `0.0.31` and its live path points to this repository;
+- **not verified: the reloaded visual picker.** Run **Developer: Reload Window**
+  and open References to confirm the orange dot sits at the far right.
+
+### 2026-08-17 — Remove the reference preview separator
+
+Intent: keep each reference row visually quiet; the leading `|` before the
+source preview competed with method and function names without encoding any
+additional state.
+
+Implementation: the native QuickPick now displays the source preview directly,
+with no artificial separator or indentation. The webview already renders the
+same preview without one.
+
+Verification:
+
+- all 130 Smart References tests, JavaScript syntax, manifest parsing, and
+  `git diff --check` pass; the extension installer registered version `0.0.32`;
+- **not verified: the reloaded visual picker.** Run **Developer: Reload Window**
+  and open References to confirm source previews now begin directly with code.
+
+### 2026-08-17 — Persistent current-file home marker in QuickPick
+
+Intent: distinguish references in the file where Cmd+B began at a glance, even
+when the pointer is not over their rows.
+
+Root cause: VS Code renders QuickPick item buttons only on hover or focus. Its
+public `QuickInputButton` contract has no always-visible property, so the
+right-side button slot alone cannot carry persistent state.
+
+Implementation: replace the dot with a small orange `home` icon, whose tooltip
+states that it marks a reference in the current file. A narrowly scoped custom
+workbench rule displays only that button continuously, matched by its exact
+accessible label; other QuickPick actions retain their native hover behavior.
+
+Verification:
+
+- all 130 Smart References tests, JavaScript syntax, manifest parsing,
+  `check_workbench_customizations.sh`, and `git diff --check` pass; the
+  extension installer registered version `0.0.33`;
+- **not verified: the reloaded visual picker.** Run **Reload Custom CSS and JS**
+  followed by **Developer: Reload Window**, then open References with the
+  pointer off the rows. Current-file references should keep the orange home at
+  the far right.
+
+### 2026-08-17 — Toolbar-controlled PhpStorm-style file blame
+
+Intent: keep Git history out of the editor until it is needed, then show a
+compact author-and-age annotation for every line, like PhpStorm's Git Blame.
+
+Implementation: use the existing GitLens File Blame provider, not VS Code's
+built-in editor decoration. The latter only annotates selected lines. Setting
+`gitlens.fileAnnotations.command` to `blame` changes GitLens' editor-group
+toolbar control from an annotations menu into a direct toggle. Its annotation
+format shows a bounded author name and age. The always-on built-in active-line
+decoration is disabled; the ordinary Git status-bar item remains enabled.
+
+Decision: VS Code reserves the global layout controls in the application title
+bar (the controls shown in the supplied image). GitLens' supported placement is
+the active editor's top-right toolbar, immediately beside the editor actions,
+which is the closest native, upgrade-stable location.
+
+Verification:
+
+- settings JSONC parses with the intended values, the live settings path points
+  to this repository, the installed GitLens manifest supplies
+  `gitlens.toggleFileBlame:editor/title`, and `git diff --check` passes;
+- not verified: reload VS Code and open a committed file. The GitLens button in
+  the editor toolbar should toggle the full per-line blame column; the existing
+  Option+Command+B shortcut should do the same.
+
+### 2026-08-17 — Correction: GitLens must be enabled before its blame command exists
+
+The GitLens settings above are valid, but live verification found the installed
+`eamodio.gitlens` extension in VS Code's global disabled-extension list. The
+`construction-frontend` extension-host log confirms that it did not activate at
+startup, which is why VS Code reported `command 'gitlens.toggleFileBlame' not
+found` and supplied no toolbar button.
+
+Use the supported UI path — Extensions, search **GitLens**, then **Enable** —
+rather than editing VS Code's live state database while the application runs.
+After a window reload, the direct File Blame toolbar toggle and
+Option+Command+B configuration can be visually verified.
+
+### 2026-08-17 — Quiet, per-line GitLens blame labels
+
+Intent: retain the useful file-blame author context without a broad timestamp
+column or distracting coloured blocks.
+
+Implementation: File Blame now renders only a bounded 14-character author
+name. Compact mode is disabled so the author is shown on every line, while the
+heatmap and current-line group highlight are disabled to leave the editor's
+normal background and line emphasis intact.
+
+Verification:
+
+- settings JSONC parses with the four author-only presentation values, the live
+  settings path points to this repository, and `git diff --check` passes;
+- not verified: toggle File Blame off and back on, or reload VS Code, then
+  inspect the live rendering. Long names should truncate rather than widen the
+  column.
+
+### 2026-08-17 — Disable automatic current-line GitLens blame
+
+Intent: leave Git details entirely opt-in; clicking or moving the caret should
+not add a commit message beside the active line.
+
+Implementation: set `gitlens.currentLine.enabled` to `false`. This is separate
+from File Blame, which remains available only through its explicit toolbar or
+Option+Command+B toggle.
+
+Verification:
+
+- settings JSONC parses with `gitlens.currentLine.enabled: false`, the live
+  settings path points to this repository, and `git diff --check` passes;
+- not verified: move the caret in a regular editor with File Blame turned off;
+  no inline GitLens annotation should appear.
+
+### 2026-08-17 — File Blame uses author plus ISO date
+
+Intent: make the per-line annotation column useful enough to retain while
+remaining predictable and more compact than a relative date plus commit text.
+
+Implementation: File Blame now renders `${author|14} ${date}` and formats its
+absolute date as `YYYY-MM-DD`. Compact mode remains off, so this information
+appears on every line.
+
+Verification:
+
+- pending: parse the JSONC settings and toggle File Blame to refresh the live
+  annotations. Each row should read `Author YYYY-MM-DD` with no relative date.
+
+### 2026-08-17 — File Blame width follows actual labels
+
+Intent: avoid reserving an arbitrary author-name width in files whose commit
+authors have short names.
+
+Implementation: remove the `|14` fixed-width modifier from the author token.
+GitLens now formats `${author} ${date}`, so VS Code measures the actual labels
+in the file. The editor keeps one shared annotation margin, by design, so its
+width follows the longest actual author-plus-date value rather than shifting
+code horizontally on every line.
+
+Verification:
+
+- settings JSONC parses with the dynamic author-plus-date format, the live
+  settings path points to this repository, and `git diff --check` passes;
+- not verified: toggle File Blame to refresh the live annotations; short-author
+  files should use a narrower shared margin.
+
+### 2026-08-17 — Always show the Git author name
+
+Intent: retain the author identity in File Blame consistently, including on
+commits made by the configured local Git user.
+
+Implementation: set `gitlens.defaultCurrentUserNameStyle` to `name`, replacing
+GitLens' default `You` label with the actual author name.
+
+Verification:
+
+- settings JSONC parses with the `name` display style, the live settings path
+  points to this repository, and `git diff --check` passes;
+- not verified: refresh File Blame; local-user commits should show their author
+  name rather than `You`.
+
+### 2026-08-17 — Separate change markers from line numbers
+
+Intent: add a small visual gap between line numbers and Git's changed-line bars
+without restoring the much wider glyph margin.
+
+Implementation: enlarge `editor.lineDecorationsWidth` from 4px to 8px. The
+existing number inset remains 4px, while margin line decorations (`.cldr`) move
+4px into the new half of the lane. Code shifts right only by the additional 4px
+reserved for the lane, and source-control markers no longer sit against digits.
+
+Verification:
+
+- settings JSONC parses with an 8px line-decoration lane, the CSS source
+  contract passes with 65 balanced rule blocks, the live settings path points
+  to this repository, and `git diff --check` passes;
+- not verified: run **Reload Custom CSS and JS**, then **Developer: Reload
+  Window**, and inspect the rendered gutter. The change marker should sit 4px
+  farther from the line numbers.
+
+### 2026-08-17 — Slim gutter change markers
+
+Intent: make changed-line bars less visually heavy while preserving their
+separation from line numbers.
+
+Implementation: constrain margin line decorations to 3px wide. The Git marker
+remains in the far half of the eight-pixel decoration lane.
+
+Verification:
+
+- the CSS source contract passes with 65 balanced rule blocks and
+  `git diff --check` passes;
+- not verified: run **Reload Custom CSS and JS**, then **Developer: Reload
+  Window**, and inspect the slimmer rendered change bars.
+
+### 2026-08-17 — Further slim gutter change markers
+
+Intent: reduce the changed-line bars one final small step while retaining a
+visible status cue.
+
+Implementation: reduce the margin decoration width from 3px to 2px.
+
+Verification:
+
+- the CSS source contract passes with 65 balanced rule blocks and
+  `git diff --check` passes;
+- not verified: run **Reload Custom CSS and JS**, then **Developer: Reload
+  Window**, and inspect the 2px change bars.
+
+### 2026-08-17 — Cmd+B opens static import paths directly
+
+Intent: make Cmd+B on a local TypeScript, JavaScript, or Vue import path open
+the imported file rather than falling through to references for its binding.
+
+Implementation: add `importSpecifierNavigation.js`, a pure resolver that
+recognises a cursor inside a static `import` or re-export specifier. It resolves
+only `@/` aliases and `./`/`../` paths, tries TypeScript before JavaScript/Vue,
+and refuses package specifiers. Smart References runs this before ordinary
+definition/reference navigation and opens the resolved file at line one.
+
+Decision: scope it to import-string positions, not imported identifiers. Cmd+B
+on `useTimeLog` remains normal symbol navigation; Cmd+B on
+`@/modules/common/composables/useTimeLog` becomes file navigation.
+
+Verification:
+
+- the focused resolver suite passes (3 cases): static alias import, type import
+  and re-export recognition, relative resolution, and package refusal;
+- all 131 Smart References tests, JavaScript syntax checks, manifest parsing,
+  and `git diff --check` pass; a real `construction-frontend` check resolves
+  `@/modules/common/composables/useTimeLog` to `useTimeLog.ts`, and the
+  installer registered version `0.0.34`;
+- not verified: reload VS Code and invoke Cmd+B on the import path in
+  `useTimeLogFrame.ts`; it should open `useTimeLog.ts` directly.
+
+### 2026-08-19 — File Blame rows all share one width
+
+Intent: stop the blame column looking ragged. Each annotation row was sized to
+its own text, so a `cristian 2026-08-18` row ended several characters short of a
+`Cristi Jora 2022-09-22` row and every row's background stopped at a different
+column.
+
+Implementation: restore a fixed width on the author token —
+`gitlens.blame.format` is `${author|14} ${date}`. GitLens pads a token shorter
+than its width with non-breaking spaces (`padEnd`) and truncates a longer one
+with an ellipsis, and `${date}` is a fixed ten characters under the
+`YYYY-MM-DD` format, so every row renders exactly 14 + 1 + 10 = 25 characters.
+The annotation inherits the editor's monospace font (`gitlens.blame.fontFamily`
+is unset), so equal character counts are equal pixel widths.
+
+Decision: this reverses *File Blame width follows actual labels* (2026-08-17),
+which removed the same `|14` to avoid reserving width in short-author files.
+That reasoning only ever applied to the shared margin; the per-row background
+still followed each label. Uniform rows require a fixed reserve, so the width
+is back deliberately and the setting carries a comment saying why.
+
+Note: GitLens' token syntax puts the width immediately after the pipe and any
+alignment flag *after* the digits — `${author|14}` pads to the right (text left
+aligned), `${author|14-}` pads to the left. `${author|-14}` parses as no width
+at all, which is why it silently does nothing.
+
+Verification:
+
+- the settings JSONC parses (151 keys) with `${author|14} ${date}` and the
+  `YYYY-MM-DD` date format, the live settings path symlinks to this repository,
+  and `git diff --check` passes;
+- GitLens 19.0.1's formatter was read directly to confirm padding uses U+00A0
+  (so trailing padding renders rather than collapsing) and that over-long values
+  truncate to the same width;
+- not verified: toggle File Blame off and on in a file with mixed-length author
+  names; every row should end at the same column.
+
+### 2026-08-19 — Closing one window no longer quits VS Code
+
+Symptom: closing a single VS Code window closed every VS Code window.
+
+Cause: the quit rule from *Cmd+W closes an editor-less window, and the last
+window quits* (2026-07-30) decided on `#app:allWindows() == 0`. The
+accessibility APIs behind both `hs.application:allWindows()` and
+`hs.window.filter` only report windows on the **current Mission Control space**,
+so closing the last window on the active space read as "no windows left" while
+windows were still open on another space, and `app:kill()` took them all.
+
+Measured on this machine with five windows open, three on the focused space and
+two on another:
+
+| source | reported |
+| --- | --- |
+| `hs.application:allWindows()` | 3 |
+| `hs.window.filter:getWindows()` | 4 |
+| `code --status` (`window [n]` lines) | 5 |
+| `CGWindowListCopyWindowInfo` | 5 |
+
+Implementation, in `files_to_symlink/init.lua`:
+
+- the two accessibility reads now only *rule out* quitting, since both
+  undercount and neither can confirm zero;
+- when both read zero, an `hs.task` runs a JXA snippet through `osascript` that
+  counts VS Code's windows with `CGWindowListCopyWindowInfo`, which is not
+  scoped to a space, and the application is killed only on a count of zero;
+- a non-zero exit or unparseable output counts as "windows remain". A VS Code
+  left idle in the Dock is the old, harmless behavior; a wrong quit is not.
+
+Decisions and lessons:
+
+- `CGWindowListCopyWindowInfo` also returns VS Code's helper windows — one
+  hidden 500x500 window and several 1512x33 title bars — so the count is
+  narrowed to layer 0 and at least 600x400. Counting every layer-0 window would
+  have reported 10 for five real windows and the rule would never fire;
+- `code --status` is authoritative and space-independent too, but it took 3.7 s
+  and spawns the Node CLI, against 0.18 s for the CoreGraphics query;
+- JXA's `console.log` writes to stderr, so the snippet ends in an IIFE whose
+  return value osascript prints to stdout.
+
+Verification:
+
+- `luac -p files_to_symlink/init.lua` passes;
+- after **Reload Config**, running the snippet through `hs.task` from the live
+  Hammerspoon state returned `exit=0 out=5` while `hs.window.filter` reported 3
+  and `code --status` reported 5, so the guard sees the windows the old check
+  missed;
+- not verified: closing the genuinely last VS Code window should still quit the
+  application.
+
+### 2026-08-20 — The revealed file is visible in the Explorer again
+
+Symptom: with a file open and active, its row in the Explorer carried no
+highlight. Clicking the row highlighted it; clicking back into the editor made
+the highlight vanish again.
+
+`explorer.autoReveal` was never the cause — it is `true` and it was working. The
+cause is that the customizations were keyed to a theme that is no longer the one
+in force. `window.autoDetectColorScheme` is on, so in dark mode the active theme
+is `workbench.preferredDarkColorTheme`, and that was changed from **Catppuccin
+Noctis Frappé** to **Catppuccin Noctis Macchiato**. `workbench.colorTheme`
+(`Monokai Pro`) is inert while auto-detect is on, and both dark blocks in
+`workbench.colorCustomizations` — `[Monokai Pro]` and
+`[Catppuccin Noctis Frappé]` — stopped applying. Macchiato was rendering
+unmodified.
+
+Unmodified Macchiato defines, in
+`alexdauenhauer.catppuccin-noctis-3.1.9/themes/Catppuccin Noctis Macchiato-color-theme.json`:
+
+| key | value |
+| --- | --- |
+| `sideBar.background` | `#1e2030` |
+| `list.inactiveSelectionBackground` | `#1e2030` |
+| `list.inactiveFocusBackground` | `#1e2030` |
+| `list.activeSelectionBackground` | `#363a4f` |
+| `list.hoverBackground` | `#363a4f` |
+
+The selected row and the sidebar are the same colour, so the selection is only
+ever visible while the Explorer itself holds focus — which, when you are typing,
+it never does.
+
+Measured from the two screenshots, at 3216x2090 and 882x166:
+
+| sample | measured | theme value |
+| --- | --- | --- |
+| sidebar background | `#1e202f` | Mantle `#1e2030` |
+| editor background | `#252739` | Base `#24273a` |
+| title bar | `#181925` | Crust `#181926` |
+| highlight after clicking the row | `#373a4e` | Surface0 `#363a4f` |
+
+Every sample is one unit low per channel, uniformly — the screenshots' colour
+profile, not a colour difference. That ladder is also what identified the theme:
+Base `#24273a` for the editor rules out `siris01.catppuccin-theme`, whose
+Macchiato paints the editor Mantle `#1e2030`.
+
+Implementation: a `[Catppuccin Noctis Macchiato]` block in
+`workbench.colorCustomizations`, with a monotonic ladder out of the theme's own
+palette:
+
+| state | before | after |
+| --- | --- | --- |
+| hover | Surface0 `#363a4f` | Base `#24273a` |
+| revealed, Explorer unfocused | Mantle `#1e2030` | Surface0 `#363a4f` |
+| selected, Explorer focused | Surface0 `#363a4f` | Surface1 `#494d64` |
+
+Decisions:
+
+- the revealed file gets Surface0, the fill the theme already used for the
+  focused case, so the row now looks the same whether or not the Explorer has
+  focus — which is the state that was being asked for;
+- Surface2 `#5b6078` for the focused case was rejected on measurement: it puts
+  the theme's `list.*SelectionForeground` `#b7bdf8` at 3.44:1, under AA.
+  Surface1 holds it at 4.61:1, and Surface0 at 6.21:1;
+- hover had to come *down* to Base, because its old value is now the selection
+  fill and pointer feedback must not read as selection;
+- `tab.selectedBackground` is pinned to `#1e2030`. It is unset in this theme, so
+  it was defaulting to `list.inactiveSelectionBackground` and raising that key
+  would have repainted the active tab Surface0. This is the same defaulting
+  chain as the 2026-08-05 correction above, and the screenshot confirms it was
+  live: every tab measured Base `#24273a` — the theme sets `tab.activeBackground`
+  and `tab.inactiveBackground` to the same `#24273a` — while the active tab
+  measured Mantle `#1e2030`, a colour no `tab.*` key in the theme contains.
+
+Lesson: a per-theme block is silently disabled by a change to
+`workbench.preferredDarkColorTheme`, with no warning and no error. Nothing
+reports "these customizations match no active theme". When the preferred theme
+changes, every `[Theme Name]` key has to move with it.
+
+Still outstanding, and deliberately not done here: the `[Catppuccin Noctis
+Frappé]` blocks in **both** `workbench.colorCustomizations` and
+`workbench.tokenColorCustomizations` are still dead. Porting them is not a
+rename — their values are Frappé's palette (Base `#303446`, Mantle `#292c3c`),
+and every one has to be re-derived in Macchiato's.
+
+Verification:
+
+- `settings.json` parses as JSONC, and the block reads back under
+  `workbench.colorCustomizations["[Catppuccin Noctis Macchiato]"]`;
+- contrast ratios above computed from the sRGB relative-luminance formula;
+- theme values read from the installed 3.1.9 theme file;
+- screenshot samples decoded from the PNGs directly;
+- not verified: the rendered result. This needs the window reloaded and a look
+  at the Explorer with focus in the editor.
+
+### 2026-08-20 — Tabs keep their labels and the bar scrolls
+
+Intent: stop tabs from being compressed as the count grows. A row of four had
+already squeezed the filenames; the wanted behaviour is full-width tabs with a
+horizontally scrollable bar.
+
+Implementation: `workbench.editor.tabSizing` moved from `"shrink"` to `"fit"`.
+That is the whole change — `fit` keeps every tab wide enough for its complete
+label and lets the tabs container scroll once they overflow the bar.
+
+Decisions:
+
+- `workbench.editor.wrapTabs` stays `false`. Wrapping is the *alternative* to
+  scrolling, not a companion to it: with it on, an overflowing bar grows onto a
+  second row and never scrolls;
+- `workbench.editor.limit.value` stays at 8. Under `shrink` the cap was also
+  doing width duty; under `fit` it is back to being only a cap, and eight
+  full-width tabs will overflow and scroll on a laptop screen, which is the
+  point;
+- `workbench.editor.scrollToSwitchTabs` left unset (`false`), so a wheel or
+  trackpad gesture over the bar scrolls it rather than switching editor.
+
+The injected CSS rule that hides `.monaco-icon-label-container::after` — the 5px
+label fade documented in the 2026-08-05 hover work — is now inert: VS Code paints
+that pseudo-element only under `.tab.sizing-shrink`. It is kept, since it costs
+nothing and applies again if tabs ever shrink. Its comment was corrected rather
+than deleted, because the measurement it records (`#373b4c` fade against a
+`#474a5b` hovered tab) is still the reason the rule exists.
+
+Verification:
+
+- `settings.json` parses as JSONC and reads back `"fit"`, with `wrapTabs` false;
+- not verified: the rendered result. `tabSizing` applies live, but the CSS
+  comment edit needs **Reload Custom CSS and JS** plus a restart to be inlined —
+  a comment, so nothing depends on it.
+
+### 2026-08-20 — Option+Enter splits a PHP signature onto separate lines
+
+Intent: PhpStorm's "Split parameters onto separate lines" intention, on the same
+key. A one-line declaration
+
+```php
+    public function record(Device $device, string $instanceId, array $counts, ?string $hostname = null): void
+    {
+```
+
+becomes
+
+```php
+    public function record(
+        Device $device,
+        string $instanceId,
+        array $counts,
+        ?string $hostname = null
+    ): void {
+```
+
+Implementation:
+
+- `phpSignatureSplit.js`, a new module exporting `getPhpSignatureSplit(lineText,
+  nextLineText)`. Pure text in, pure text out — no `vscode` import — which is
+  what makes it testable under `node --test`, the same split the repository
+  already uses for `phpMove.js` and `jsonSmartEnter.js`;
+- `getSplitPhpSignatureEdit` in `extension.js` turns that into a document range,
+  and has two callers: the `smartReferences.splitPhpSignature` command and
+  `createSplitPhpSignatureAction`;
+- the code action is `CodeActionKind.QuickFix`, added to
+  `createPhpCodeActionProvider`. **That is what puts it on Option+Enter** —
+  `alt+enter` is bound to `editor.action.quickFix`, so the action appears in that
+  menu rather than needing a key of its own. Same route as the existing chain
+  split and the Collection PHPDoc fix.
+
+Decisions:
+
+- **Declarations only.** The `function` keyword is what distinguishes a
+  declaration from a call on a single line, and the closing line differs: a call
+  ends `);` or `),` with no brace to collect. Splitting call arguments is a
+  separate intention and was not written;
+- **commas are found by depth and quote state, not by `split(',')`.** Defaults
+  like `array $counts = [1, 2, 3]`, `Clock $clock = new Clock(1, 2)`, and
+  `string $sep = ', '` all contain commas that are not parameter separators;
+- **one parameter is left alone.** Splitting it lengthens the declaration without
+  making anything readable, and the action would then offer itself on nearly
+  every method line in the file, which is noise in the Option+Enter menu;
+- **the brace is pulled up.** PSR-12 §4.5 puts the closing parenthesis and the
+  opening brace together on one line. The edit range therefore extends through
+  the following line when that line is exactly `{`. An abstract or interface
+  method ends at `;` and keeps its own closing line — checked before the merge,
+  not after;
+- a PHP 8.0 trailing comma leaves an empty final entry, dropped rather than
+  emitted as a blank line;
+- comment lines beginning `//`, `#`, or `*` are skipped, so a commented-out
+  declaration is not rewritten.
+
+Not done, and worth knowing it was considered: the reverse — joining a split
+signature back onto one line. PhpStorm offers it as a separate intention. As a
+toggle on the same key it would be a surprise, since Option+Enter applies the
+action directly here rather than opening PhpStorm's menu.
+
+Verification:
+
+- `node --test test/phpSignatureSplit.test.js` — **12 passing**, all new, pinning
+  the exact output above plus the brace-already-inline, `;`, nested-default,
+  string-comma, promoted-property, `use (…)` closure, trailing-comma,
+  single-parameter, already-split, call, and comment cases;
+- `node --test test/*.test.js` across the extension — **143 passing, 0 failing**;
+- `node --check extension.js` passes, and `package.json` parses with the new
+  command, its `onCommand` activation event, and version `0.0.35`;
+- not verified in the running editor: the action appearing in the Option+Enter
+  menu. That needs **Developer: Reload Window** first, since the extension is
+  loaded from the symlinked directory at startup.
+
+### 2026-08-20 — VS Code 1.134.0 wiped the CSS injection
+
+Symptom: the References picker lost every custom style — no cards, no rounded
+inset rows, no orange group heading, no focused-card outline. Nothing had been
+edited in the picker rules.
+
+Cause: VS Code updated to **1.134.0** on 2026-08-18 21:45 and replaced
+`workbench.html`, which is the file `be5invis.vscode-custom-css` inlines the
+stylesheet into. Measured on the installed build: the file's mtime is the update
+timestamp, and it contains **zero** occurrences of any repository CSS marker.
+
+Nothing is specific to References. Every injected rule and both injected scripts
+went with it — the `⌘` letterpress, the tab geometry, the 4px line-number inset,
+the quick-input border, the horizontal-scroll preserver, the quick-input anchor.
+References is simply where the loss is most legible, because its two-line cards
+are drawn entirely by injected CSS and by nothing else.
+
+Fix: **Reload Custom CSS and JS**, then restart. Nothing else was broken —
+`vscode_custom_css.imports` still resolves, all three targets are symlinks back
+into this repository, and `workbench.html` is owned by the user and writable, so
+the patch needs no `chown`.
+
+Every DOM contract the picker cards depend on survives in 1.134.0, checked
+directly against the installed bundle: `quick-input-list-label-meta`,
+`quick-input-list-entry`, `quick-input-list-rows`, and
+`quick-input-list-separator-as-item` are all still present, as are `.has-icon`
+and `.close-action-off`.
+
+One contract in `check_workbench_customizations.sh` did go stale, and it was
+failing *before* the injection check could run — so the script reported a DOM
+contract break and never got as far as saying the injection was missing. In
+1.134.0 the modern tab base rule changed in two ways:
+
+```css
+/* 1.133 */ .modern-ui-tabs .part.editor .tabs-container>.tab{…padding:0 var(--vscode-spacing-size80) 0 var(--vscode-spacing-size40)!important}
+/* 1.134 */ .modern-ui-tabs .part.editor .tabs-container>.tab,.modern-ui-tabs .modern-ui-editor-tab{…padding:0 var(--vscode-spacing-size80) 0 var(--vscode-spacing-size60)!important}
+```
+
+The selector grew a second comma-separated arm, and the left padding went from
+`size40` to `size60`. Neither touches what the injected CSS actually relies on —
+that modern tabs are padded from the `--vscode-spacing-*` scale — so the check's
+regex now leaves the selector tail and the left value open.
+
+Worth noting for a future pass, not changed here: VS Code now applies
+`padding:0 var(--vscode-spacing-size80) 0 var(--vscode-spacing-size60)!important`
+to `.close-action-off:not(.sticky-compact)` itself. That is most of what this
+repository's actionless-tab padding rule was added to do; it now only pushes the
+left side from `size60` up to `size80`.
+
+Lesson: a VS Code update silently un-installs every workbench customization, and
+the first visible symptom is likely to be a picker, not a tab. Run
+`check_workbench_customizations.sh` after any update rather than diagnosing from
+what looks wrong on screen — but read past the first FAIL, because a stale native
+regex will pre-empt the injection check that actually explains the screen.
+
+Verification:
+
+- `workbench.html` at `/Applications/Visual Studio Code.app/…/workbench.html`,
+  mtime 2026-08-18 21:45, contains no injection marker — 0 matches;
+- `code --version` reports `1.134.0`;
+- all eight native CSS contracts, both JS class markers, and the four quick-input
+  class contracts were run individually against the installed bundle; only the
+  tab-padding regex failed, for the reason above;
+- after relaxing that regex, `check_workbench_customizations.sh` reaches and
+  fails on the correct check — the missing injection — with the right
+  instruction;
+- not verified: the restored rendering. That needs **Reload Custom CSS and JS**
+  and a restart, which cannot be run from a shell.
+
+### 2026-08-20 — Correction: `list.hoverBackground` also paints the code action widget
+
+The Macchiato block earlier today stepped `list.hoverBackground` down from the
+theme's Surface0 `#363a4f` to Base `#24273a`, purely to keep the Explorer ladder
+monotonic once Surface0 became the selection fill. That was wrong, and the
+symptom showed up on the next Option+Enter: the code action widget highlighted
+nothing. The selected action could be moved with the arrow keys and applied with
+Enter — it just could not be seen.
+
+`list.hoverBackground` is not only a hover. This build paints the **focused row
+of the code action widget** with it, and with `!important`:
+
+```css
+.action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled){
+  background-color:var(--vscode-list-hoverBackground)!important;
+  color:var(--vscode-list-hoverForeground);
+  outline:1px solid var(--vscode-menu-selectionBorder, transparent);
+  outline-offset:-2px}
+```
+
+The widget itself is `background-color:var(--vscode-menu-background)`, and this
+theme sets `menu.background` to Base `#24273a` — the exact value hover had just
+been given. Row and widget became one colour, and there was no outline to fall
+back on: the theme sets `menu.selectionBorder` to `#00000000`.
+
+Measured from the screenshot, 1634x666: the widget interior is a uniform
+`#252739` from y=94 to y=589 — every row, no exceptions — and its border is
+`#75789e`, which is `editorWidget.border` `#b7bdf88a` composited over Base. One
+sample of the widget, no second value anywhere in it.
+
+`editorActionList.focusBackground` is a red herring here and was checked before
+being dismissed. It exists, and in the bundle it defaults to
+`list.activeSelectionBackground`:
+
+```js
+ie("editorActionList.background",jd,…)        // jd = editorWidget.background
+ie("editorActionList.focusBackground",tk,…)   // tk = list.activeSelectionBackground
+```
+
+But the widget's own CSS never reads it for the focused row — the
+`list-hoverBackground` rule above wins with `!important`, and the measured widget
+background is `menu.background` rather than `editorWidget.background`, which is
+the second sign the `editorActionList.*` family is not what draws this widget.
+
+Fix: the block no longer sets `list.hoverBackground` at all. The theme's Surface0
+stands as the dimmest rung, which is 1.32:1 against the action widget — the
+contrast that widget had before this block existed. The Explorer ladder moves up
+one step to stay monotonic:
+
+| state | 2026-08-20 first pass | corrected |
+| --- | --- | --- |
+| hover | Base `#24273a` | Surface0 `#363a4f` (theme's own) |
+| revealed, Explorer unfocused | Surface0 `#363a4f` | Surface1 `#494d64` |
+| selected, Explorer focused | Surface1 `#494d64` | Surface2 `#5b6078` |
+
+This also supersedes the earlier decision to reject Surface2. That rejection was
+sound on its own terms — Surface2 puts the theme's `list.*SelectionForeground`
+`#b7bdf8` at 3.44:1, under AA — but the fix was available and is what both dark
+blocks above already do: write the selected label out. `#f7f7f7` measures 5.78:1
+on Surface2 and 7.75:1 on Surface1. The revealed file also gains contrast against
+the sidebar in the move, 1.44:1 → 1.94:1.
+
+`tab.selectedBackground` stays pinned to `#1e2030`; it still defaults to
+`list.inactiveSelectionBackground`, which is now Surface1.
+
+Lesson: a `list.*` colour is workbench-wide, and the widget it will be noticed in
+is not necessarily a list. Before stepping one of these down, grep the bundled
+CSS for `--vscode-list-<key>` and see what else consumes it — the code action
+widget, whose background comes from `menu.background` rather than any list
+colour, is not a place anyone would think to look for a regression in a hover.
+
+Not changed, and worth knowing: `quickInputList.focusBackground` in this theme is
+`#cad3f520`, a 12% wash, with `focusBorder` and `list.focusOutline` both
+`#00000000`. That is the same defect one widget over, and the reason the
+`[Catppuccin Noctis Frappé]` block writes `#626880` out. Under Macchiato the
+focused row in a picker is currently carried by the injected CSS outline alone,
+which is exactly the thing a VS Code update removes.
+
+Verification:
+
+- the `.action-widget … .focused` rule and `.action-widget{background-color:
+  var(--vscode-menu-background)}` read from the installed 1.134.0 bundle;
+- `editorActionList.*` defaults resolved from the bundle's registration calls;
+- widget interior and border sampled from the screenshot PNG;
+- contrast ratios from the sRGB relative-luminance formula;
+- `settings.json` parses as JSONC and reads back the six keys;
+- not verified: the rendered result. `colorCustomizations` apply live, so this
+  should be visible on the next Option+Enter without a reload.
+
+### 2026-08-26 — Cmd+B finds usages of a JSON key
+
+Intent:
+
+- make `Cmd+B` on a key in a vue-i18n locale file list the `t('...')` call sites
+  that use it, the same way it already works for a PHP symbol.
+
+Implementation:
+
+- added `i18nKeyNavigation.js`, a reference provider registered for `json` and
+  `jsonc`, with the JSON walk and the call-site match kept as pure functions;
+- the walk builds the dotted path from every enclosing container, so object keys
+  contribute their name and array elements contribute their index;
+- the call-site match covers `t`, `$t`, `tc`, `te`, `tm` and qualified forms
+  such as `i18n.global.t`, in single quotes, double quotes or backticks.
+
+Decisions and lessons:
+
+- the leaf name is not the key. `intro` appears twice in the file that prompted
+  this, under `interface` and under `lab`, so a search for the word under the
+  cursor would have conflated two unrelated strings;
+- nothing registered a reference provider for JSON, so `Cmd+B` was not merely
+  finding nothing there - its `editorHasReferenceProvider` clause was false and
+  the keybinding never fired at all. Registering any provider for the language
+  is what makes the existing binding live, so no keybinding change was needed;
+- the existing Laravel translation support was not extended, because it runs the
+  opposite direction: it resolves a key from inside `__()`/`trans()` and searches
+  `**/lang/**`. Both ends are wrong for a locale file under `resources/js`;
+- scoped to every JSON file rather than an i18n path pattern, on request. The
+  workspace scan is gated on a key path resolving at the cursor, and reference
+  providers are consulted on explicit request, so an ordinary `package.json` edit
+  costs nothing;
+- the closing-quote lookahead and the leading non-identifier boundary are both
+  load-bearing: without them `interface.introduction` and `format('...')` would
+  both register as usages. Each has a test.
+
+Verification:
+
+- JavaScript syntax on the new module and on `extension.js`, plus the complete
+  Smart References suite: 144 tests, 0 failures, including 15 new ones;
+- an end-to-end run against the real files outside VS Code resolved
+  `ro.json:162` to `interface.intro` and `ro.json:193` to `lab.intro`, each
+  finding exactly its one usage in `InterfacePage.vue:107` and
+  `LabTilesPage.vue:30` across 73 scanned files;
+- the installed extension is a symlink to this repository and already exposes
+  the new file, so a window reload is the only step left;
+- not verified: the rendered References picker. That needs a reloaded window.
+
+### 2026-08-26 — Cmd+B on an import path stopped assuming `@` means `src/`
+
+Intent:
+
+- make `Cmd+B` on `'@/layout/AppShell.vue'` open that file, in a project whose
+  `@` alias does not point at `src/` and from inside a `defineAsyncComponent`
+  dynamic import.
+
+Implementation:
+
+- `importSpecifierNavigation.js` now reads `compilerOptions.paths` from the
+  workspace `tsconfig.json` or `jsconfig.json` and resolves against it, keeping
+  the old `@/` to `src/` rule as the fallback when no config declares one;
+- the config is parsed as JSONC, because a real tsconfig carries comments;
+- targets resolve against `baseUrl` when set and against the config file's own
+  directory when not, which is the TypeScript 5+ rule the affected project
+  depends on, since TypeScript 6 deprecates `baseUrl`;
+- the specifier scanner now also recognises `import(...)` expressions, in single
+  quotes, double quotes or backticks;
+- the alias table is read per invocation rather than cached, so editing a
+  tsconfig takes effect without a window reload.
+
+Decisions and lessons:
+
+- this reverses part of *Cmd+B opens static import paths directly*
+  (2026-08-17), which excluded `import(...)` on the grounds that it was the
+  language service's responsibility. That premise was tested and does not hold
+  for a `.vue` target: asked to resolve `@/layout/AppShell.vue`, the project's
+  own TypeScript 6.0.3 maps the alias correctly and then tries
+  `AppShell.d.vue.ts`, `AppShell.vue.ts`, `AppShell.vue.tsx` and
+  `AppShell.vue.d.ts`, never the `.vue` file present on disk. Nobody was
+  answering, so the key did nothing;
+- the `src/` assumption was never a general rule, only the shape of the project
+  it was written against. The mapping is already declared in every project that
+  has one, so it is read rather than guessed;
+- package specifiers are still refused. Those resolve through `node_modules`,
+  which the language service does handle;
+- resolving a specifier that the language service could also resolve is
+  harmless, because both open the same file at line one.
+
+Verification:
+
+- 20 Smart References test files pass individually and together, 0 failures,
+  including 9 new cases covering dynamic imports, the `importSomething(` guard,
+  commented tsconfig parsing, `baseUrl`, longest-prefix wins, and the preserved
+  `src/` fallback;
+- an end-to-end run against the real files, outside VS Code, resolved the alias
+  table from `ribeit-depozit/tsconfig.json` to `resources/js` and turned
+  `App.vue:9` from `<root>/src/layout/AppShell.vue` (missing, so Cmd+B did
+  nothing) into `resources/js/layout/AppShell.vue` (present, so it opens). The
+  static import on `App.vue:5` was broken in the same way and is fixed by the
+  same change;
+- not verified: the jump itself in a running editor. That needs a window reload.
+
+### 2026-08-27 — The vertical rule between light-mode tabs removed
+
+Intent:
+
+- stop every tab in `GitHub Light` drawing a grey line down its right-hand side,
+  which the dark themes have not done since `tab.border` was made transparent in
+  both of them.
+
+Diagnosis, from measuring the screenshot rather than reading the settings:
+
+- the line between two tabs samples `#D2D7DD`, which is `#d0d7de` after the
+  screenshot's scaling. That is `tab.border`, set literally in both light blocks
+  while both dark blocks set it to `#00000000`;
+- the note beside `tab.lastPinnedBorder` already asserted that `tab.border` "is
+  already transparent per theme", so the settings file was describing a rule two
+  of its four blocks did not follow;
+- the obvious objection - that light needs the rule because its bar and its
+  inactive tab are both `#ffffff` - does not hold. Reading the two dark themes'
+  own `editorGroupHeader.tabsBackground` gives `#2d2a2e` for Monokai Pro against
+  a `#2d2a2e` inactive tab, and `#303446` for Catppuccin Noctis Frappe against a
+  `#303446` inactive tab. All three are a 1.000:1 separation. Dark has no
+  divider between two inactive tabs either, and never has.
+
+Implementation:
+
+- set `tab.border` to `#00000000` in `[GitHub Light]` and
+  `[GitHub Light Default]`, with the measurement recorded beside it.
+
+Decisions and lessons:
+
+- tabs are separated by the active fill and its ring, not by a rule between
+  every pair. That was already the design in dark; light now matches rather than
+  light gaining a new idea;
+- the tint alternative was rejected: lifting the light bar off `#ffffff` to
+  `#f6f8fa` would separate inactive tabs, but it would give light a divider
+  scheme dark does not have, which is the inconsistency this entry removes.
+  Worth revisiting only if adjacent inactive tabs prove genuinely hard to read.
+
+Verification:
+
+- the separator colour was sampled from the reported screenshot before changing
+  anything, and the two dark themes' bar colours were read from their own
+  installed theme JSON and compared by relative luminance;
+- `settings.json` parses as JSONC and reads back `#00000000` for all four theme
+  blocks, 150 top-level keys, and `git diff --check` passes;
+- not verified: the rendered tab strip. `colorCustomizations` apply live, so this
+  should show without a reload.
+
+### 2026-08-31 — Cmd+B on a config key read through the `Config` facade
+
+Intent:
+
+- make `Config::integer('auth.passwords.users.expire', 60)` jump to
+  `config/auth.php` the way `config('...')` already does. Before this it fell
+  through to the reference peek and reported "No other references found."
+
+Diagnosis:
+
+- `resolveLaravelConfigTarget` and `findLaravelConfigKeyRange` were already
+  correct; the gap was one regex. `getLaravelConfigKeyAtOffset` recognised the
+  `config()` helper and `Log::channel()` and nothing else, so the facade form
+  never produced a key to look up;
+- `Config::` resolves to the same `Illuminate\Config\Repository` the helper
+  returns, so every reader on it names a key just as directly. The typed readers
+  (`string`, `integer`, `float`, `boolean`, `array`, `collection`) are the ones
+  actually in use here - all three facade call sites in `ribeit-depozit` are
+  typed readers, none is a plain `get`.
+
+Implementation:
+
+- lifted the three prefix regexes out of the function body into named constants,
+  because a third one inline would have been the second unreadable literal in a
+  row;
+- added `CONFIG_FACADE_PATTERN`, matching the facade imported, root-namespaced,
+  and fully qualified, over `get|has|set|push|prepend|string|integer|float|
+  boolean|array|collection`.
+
+Decisions and lessons:
+
+- `getMany` is deliberately absent. Its keys sit inside an array literal, so the
+  prefix ends at `[` rather than at the call's own paren and the pattern would
+  never fire anyway; listing it would only imply support that does not exist;
+- the leading `(?:^|[^A-Za-z0-9_])` is what keeps `AppConfig::string(...)` from
+  matching, and it is tested.
+
+Verification:
+
+- 11 tests in `laravelConfigNavigation.test.js` (3 new), and 147 across the
+  extension's whole suite, all passing;
+- an end-to-end run outside VS Code against the real files resolved all three
+  facade call sites in `ribeit-depozit`:
+  `auth.passwords.users.expire` → `config/auth.php:101`,
+  `horizon.authorized_emails` → `config/horizon.php:98`, and
+  `app.url` → `config/app.php:57`;
+- not verified: the jump in a running editor. The extension is symlinked into
+  `~/.vscode/extensions`, so it needs a window reload.
+
+### 2026-08-31 — The `Parent` CodeLens no longer lands inside a docblock
+
+Intent:
+
+- stop `Parent` rendering between two `*` lines in the middle of `User.php`'s
+  class docblock, four lines above the class it annotates.
+
+Diagnosis:
+
+- the lens is this extension's own, from `createPhpParentCodeLensProvider`, and
+  it was correct in substance - it pointed at `Model::getKey()`, which is where
+  `User`'s `@method int getKey()` really comes from;
+- it was misplaced because Intelephense reports a `@method` tag as an ordinary
+  method symbol positioned on the tag's own line. `getKey` therefore resolved to
+  `User.php:41`, inside the docblock, and a CodeLens renders on the line above
+  its anchor - line 40, the blank `*`;
+- `PHPDOC_TAG_LINE_PATTERN` already existed for exactly this, with the finding
+  written beside it, and the reference-count lens already consulted it. The
+  Parent provider was the one path that never got the guard.
+
+Implementation:
+
+- skip a method symbol whose line matches `PHPDOC_TAG_LINE_PATTERN`, and hoist
+  `selectionRange || range` into a `range` local so the guard and the lens are
+  anchored to the same thing;
+- carried over the `range.start.line < document.lineCount` check from the
+  reference lens: symbols are fetched asynchronously, so the document may be
+  shorter by the time the lens is built, and an out-of-range `lineAt` rejects
+  the whole batch and blanks every lens in the file.
+
+Decisions and lessons:
+
+- suppressed rather than relocated. A `@method` tag whose whole content is "this
+  comes from the parent" gains nothing from a link that says the same, and
+  Cmd+B on the tag already resolves;
+- `@property` lines match the same pattern. They were never method symbols, so
+  nothing changes for them, but the guard covers them for free.
+
+Verification:
+
+- 4 new tests in `phpDocParentLens.test.js` reading the pattern and the provider
+  out of the shipped `extension.js`, the idiom `phpDocStaticCalls.test.js`
+  already uses; 151 across the extension's suite, all passing;
+- replayed the guard over the real `User.php`: it suppresses line 41 and the 11
+  `@property` lines, and leaves `casts()` at 54, `sendPasswordResetNotification()`
+  at 64, and `may()` at 73 untouched;
+- not verified: the rendered lens. The extension is symlinked into
+  `~/.vscode/extensions`, so it needs a window reload.
+
+### 2026-08-31 — Volar's reflow folded a newline into a translation key
+
+Intent:
+
+- `Option+Cmd+L` in `ribeit-depozit/resources/js/pages/roles/RoleMatrixPage.vue`
+  did not just rewrap the file, it changed a string. Stop that, without
+  disturbing the `[vue]` default the 2026-08-11 entry deliberately kept.
+
+Diagnosis:
+
+- `[vue]` points at `Vue.volar`, which formats the template through the HTML
+  formatter, which wraps at `html.format.wrapLineLength` - unset here, so the
+  default 120. The measurement: the `<AppButton>` line came back at 115 columns
+  with the next attribute pushed to a new line, and the prose line at 126;
+- the rewrap does not stop at the mustache. It folded two newlines and their
+  indentation *into* the JS string inside `t(...)`, and that string is the
+  translation key - `en.json:51` and `ro.json:51` both hold it verbatim. The
+  lookup would have missed and the Romanian page fallen back to a broken
+  English string. That is a semantic edit made by a formatter;
+- Prettier was ruled out as the culprit and then confirmed as the fix: piping
+  the committed file through the project's own Prettier reproduced it
+  byte-for-byte. Piping the *mangled* file through Prettier restored every line
+  of layout and left the corrupted string exactly as it was — the newlines are
+  content now, and no formatter will undo them.
+
+Implementation:
+
+- `[vue]` set to `esbenp.prettier-vscode` in `ribeit-depozit/.vscode/settings.json`,
+  not in the dotfiles.
+
+Decisions and lessons:
+
+- **the global stays on Volar.** The 2026-08-11 entry rejected Prettier as a
+  reconciliation on measurement — 5 of 60 `.vue` files matched in
+  `construction-frontend`, whose formatting comes from JetBrains `ij_*`
+  editorconfig keys VS Code cannot read. That measurement still holds, and it is
+  about that repository. `ribeit-depozit` is the opposite case: `.prettierrc.json`,
+  a `format:check` script, and `prettier --check .` reporting every file already
+  clean. So the formatter follows the repository, per workspace;
+- this is the second per-workspace override in that repository, after
+  `intelephense.environment.phpVersion: 8.5.0`. Neither is tracked here —
+  `/.vscode` is gitignored there — so this entry is where they are discoverable;
+- the general trap, worth carrying to any Vue project still on the Volar
+  formatter: an HTML-level rewrap treats a mustache as text. Any `t('long
+  string')` that crosses the wrap column is a candidate for the same corruption,
+  and it is invisible in review because the diff looks like reindentation.
+
+Verification:
+
+- the working-tree damage was reverted with `git checkout --`, and the file now
+  matches `HEAD`;
+- `npm run format:check` in `ribeit-depozit`: "All matched files use Prettier
+  code style", so the new formatter is a no-op on the committed tree rather than
+  a source of churn;
+- `.vscode/settings.json` parses with the comments stripped, 3 keys, `[vue]`
+  reading back `esbenp.prettier-vscode`;
+- not verified: the keypress itself. Workspace settings apply live, so no reload
+  is needed, but `Option+Cmd+L` has not been pressed again in that window.
+
+### 2026-08-31 — Cmd+B on a middleware alias
+
+Intent:
+
+- `Route::middleware('frontend-vm-secret')` in `ribeit-api/routes/internal-api.php`
+  reported no references. The alias is registered at `app/Http/Kernel.php:105`
+  and points at `ValidateFrontendVmSecret`, but Laravel maps the two at runtime,
+  so Intelephense sees a bare string.
+
+Diagnosis:
+
+- unlike the `Config` facade gap the same day, this was not a missing pattern -
+  the extension had no middleware reader at all. `grep -n middleware *.js`
+  returned nothing;
+- the registration has moved between major versions but not in shape:
+  `$middlewareAliases` in `Kernel.php` through Laravel 10, `$middleware->alias([...])`
+  in `bootstrap/app.php` from 11 on. Both write `'alias' => Class::class`, so one
+  reader answers for either. Both generations are live here - `ribeit-api` and
+  `growee` on the first, `ribeit-depozit`, `construction-backend` and `dfs-api`
+  on the second.
+
+Implementation:
+
+- new `laravelMiddlewareNavigation.js`, reusing `scanPhpString` and
+  `skipPhpComment` from `laravelConfigNavigation` rather than re-deciding what a
+  comment is;
+- `resolveLaravelMiddlewareTarget` in `extension.js`, added to the fallback loop
+  that runs only after native resolution comes back empty - which for a string
+  literal it always does;
+- the jump lands on the middleware class, not on the map that names it. The
+  alias map is resolved to a class name, the class name through the file's own
+  imports, and the FQN through composer PSR-4 including `vendor`.
+
+Decisions and lessons:
+
+- **a parameterised alias is split at the colon.** `throttle:60,1` and
+  `auth:sanctum` name the alias before it; the rest is arguments to `handle()`;
+- **the framework's own file is the third source, and it was found by testing
+  rather than by reading.** `signed` in `construction-backend` read correctly as
+  an alias and then resolved to nothing, because Laravel 11 stopped publishing
+  the defaults into the app - they live only in the framework's
+  `Configuration/Middleware.php`. It is last in the list so an app that
+  overrides an alias still wins, and it is read only when the app files have
+  already come back empty;
+- **a conditional value is left alone.** That same file registers `throttle` as
+  a ternary on `$this->throttleWithRedis`, naming two classes. The pattern is
+  anchored to a plain `Class::class`, so it declines rather than guessing - and
+  the ordinary case still works, because an app on Laravel 10 has `throttle` in
+  its own Kernel;
+- the alias-array prefix in the call pattern is what lets the cursor sit on any
+  entry of `middleware(['backup-secret', 'throttle:60,1'])`, not only the first.
+
+Verification:
+
+- 10 tests in `laravelMiddlewareNavigation.test.js`, 161 across the extension's
+  whole suite, all passing;
+- an end-to-end run outside VS Code resolved five real call sites across both
+  Laravel generations and both app and vendor middleware:
+  `frontend-vm-secret` → `app/Http/Middleware/ValidateFrontendVmSecret.php:16`,
+  `backup-secret` → `.../ValidateBackupSecret.php:9`,
+  `throttle:66,1` → `vendor/.../Routing/Middleware/ThrottleRequests.php:18`
+  (Kernel.php, Laravel 10), then in `construction-backend`
+  `auth:sanctum` → `app/Http/Middleware/Authenticate.php:8` (bootstrap/app.php)
+  and `signed` → `vendor/.../Routing/Middleware/ValidateSignature.php:9`
+  (framework defaults);
+- not verified: the jump in a running editor. Needs a window reload.
+
+### 2026-08-31 — The slider under the tab strip hidden, scrolling kept
+
+Intent:
+
+- remove the horizontal scrollbar drawn under the editor tabs. The strip stays
+  scrollable; only the slider goes.
+
+Diagnosis:
+
+- the first instinct was a `custom-workbench.css` rule, and the DOM for one was
+  confirmed - `.tabs-and-actions-container` holds a `.monaco-scrollable-element`
+  whose direct child is `.scrollbar.horizontal`, per VS Code's own stylesheet;
+- it is not needed. `workbench.editor.titleScrollbarVisibility` exists in this
+  build, `auto | visible | hidden`, defaulting to `auto`. Read out of the
+  settings registry rather than guessed, with its own description: "Controls the
+  visibility of the scrollbars used for tabs and breadcrumbs in the editor title
+  area", and `hidden` documented as "The horizontal scrollbar will always be
+  hidden";
+- it changes only what is painted. The setting resolves to a `ScrollbarVisibility`
+  value handed to the ScrollableElement, which keeps handling wheel and trackpad
+  events either way. Dragging was never available here anyway: the workbench
+  stylesheet sets `pointer-events: none` on `.scrollbar.horizontal`.
+
+Implementation:
+
+- `"workbench.editor.titleScrollbarVisibility": "hidden"` in `settings.json`,
+  beside the other tab-strip keys.
+
+Decisions and lessons:
+
+- **check the settings registry before writing CSS.** This setup carries 569
+  lines of workbench CSS, and the reflex is to add one more rule. A grep for
+  `"workbench\.[a-zA-Z.]*[Ss]crollbar` in `workbench.desktop.main.js` answered
+  it in one call, and a supported setting survives VS Code renaming a class
+  where an injected rule silently stops matching;
+- the setting also covers the breadcrumbs' scrollbar in the same title area.
+  That is wider than what was asked for, but it is the same strip and the same
+  ornament, so it was taken rather than narrowed with CSS.
+
+Verification:
+
+- the enum and both descriptions were read out of the shipped settings schema
+  and `nls.messages.js`, not assumed;
+- `settings.json` parses as JSONC, 151 top-level keys, and the new key reads
+  back `hidden`;
+- settings of this kind apply live, so no reload should be needed;
+- not verified: the tab strip on screen. The honest check is one glance at the
+  bar with more tabs open than fit.
+
+### 2026-09-01 — Cmd+B on a key *inside* a config file finds its readers
+
+Intent:
+
+- `config/tls.php`, cursor on `'key_bits'`, Cmd+B answered "No other references
+  found" while three call sites read it. The forward jump — from
+  `config('tls.key_bits')` into the file — already worked; the return trip did
+  not exist.
+
+Diagnosis:
+
+- Intelephense sees an array key on one side and a string argument on the other
+  and relates neither, so it has nothing to report and is not wrong to say so;
+- `smartReferences.go` already merges custom finders in `getReferenceTargets`,
+  one per convention Intelephense cannot see. There was simply no config one.
+
+Implementation:
+
+- `laravelConfigNavigation.js` grew the reverse of each half it already had:
+  - `getLaravelConfigKeyPathAtOffset(source, offset)` — the dotted path of the
+    key under the cursor, minus the file name. The mirror of
+    `findLaravelConfigKeyRange`, walking the same token stream from the `return`
+    array down, one segment per enclosing array;
+  - `findLaravelConfigKeyReadRanges(source, key)` — every literal in a file that
+    names that key;
+- both directions now read one walk, `forEachConfigKeyRead`, so a call site the
+  forward jump follows is by construction a call site the reverse search finds.
+  `getLaravelConfigKeyAtOffset` is the same walk stopping at the cursor;
+- `findDirectArrayKey` became a `directArrayKeys` generator with the by-name
+  lookup on top, because the reverse walk needs to enumerate keys rather than
+  ask for one. Second caller, so the extraction is paid for;
+- `getLaravelConfigKeyReferences` in `extension.js`, joined to the existing
+  `Promise.all`.
+
+Decisions and lessons:
+
+- **flat `config/` only, matching the forward jump.** Laravel's
+  `LoadConfiguration` does recurse and prefixes nested directories with dots,
+  but `resolveLaravelConfigTarget` has always assumed `config/<name>.php`. All
+  three repos are flat. Teaching one direction and not the other is how the two
+  drift, so a nested config directory is a change to both or to neither;
+- **exact key match, not ancestors.** `config('tls')` reads `key_bits` too, but
+  counting parent reads would put every `config('app')` in the list of every key
+  in `app.php`. The forward jump treats `config('tls')` as naming the file, and
+  the reverse treats it as a different key;
+- **the cheap pre-filter is the last segment, not the dotted key.**
+  `Log::channel('single')` reads `logging.channels.single` while spelling only
+  `single`, so a `text.includes(key)` guard would skip exactly the files the
+  walk exists to recognise;
+- the prefix window bounding `forEachConfigKeyRead` is 160 chars. Longest thing
+  that can match is a root-namespaced facade call, `\Illuminate\Support\Facades\Config::collection(`,
+  about 45. Without a bound, scanning a whole file's literals re-slices the
+  source at each one.
+
+Verification:
+
+- `node --test files_to_symlink/vscode/extensions/local.smart-references-0.0.1/test/*.test.js`
+  — 166 passing, 5 new;
+- against the real `ribeit-api`: cursor on `'key_bits'` in `config/tls.php`
+  resolves to `tls.key_bits` and returns exactly the three readers `grep` finds
+  — `TlsCertHealthService.php:158`, `TlsCertificateService.php:103` and `:141`;
+- round-trip over three repos: every dotted config key read anywhere in
+  `ribeit-api`, `ribeit-depozit` and `construction-backend` that the forward
+  jump resolves to a file position (166 of them) reads back as the same path.
+  No mismatches;
+- not verified in a running editor. Needs a window reload.
+
+### 2026-09-01 — Cmd+B on `$model->increment()`
+
+Intent:
+
+- `TlsCertificateSyncController.php`, cursor on `increment` in
+  `$record->increment('bundle_fetches', 1, [...])`, Cmd+B answered "No other
+  references found".
+
+Diagnosis:
+
+- not a typing failure and not an extension gap at first sight — Intelephense is
+  correct. Laravel 12 declares `increment` **protected** on
+  `Illuminate\Database\Eloquent\Model` (`Model.php:1021`), so a controller
+  calling it is calling an inaccessible member and there is nothing to resolve;
+- it is not the Builder's `increment` either. A grep of `Model.php`, its
+  `Concerns/` traits and `Database/Concerns/` finds exactly one declaration of
+  the name reachable on a model, and it is the protected one;
+- the call nevertheless does the right thing, because `Model::__call` opens with
+  an explicit re-dispatch:
+
+  ```php
+  if (in_array($method, ['increment', 'decrement', 'incrementQuietly', 'decrementQuietly'])) {
+      return $this->$method(...$parameters);
+  }
+  ```
+
+  Inaccessible from outside, so `__call` fires; `$this->$method(...)` runs from
+  inside the class, so the protected declaration executes. **Worth knowing that
+  this special case exists**: without it the call would fall to
+  `forwardCallTo($this->newQuery(), ...)` and hit `Builder::increment`, which is
+  an unscoped bulk `UPDATE` over the whole table rather than one row;
+- both call sites in `ribeit-api` are this shape — the controller, and
+  `ProcessedPage.php:65` where the receiver is an `updateOrCreate()` result.
+
+Implementation:
+
+- `laravelModelMagicCalls.js`: `getModelMagicMethodAtOffset(source, offset)`
+  reads the method name under the cursor when it is one of the four the
+  framework re-dispatches. It walks with the shared `scanPhpString` /
+  `skipPhpComment`, so `'$x->increment('` inside a message is not read as a call;
+- `resolveLaravelModelMagicCallTarget` in `extension.js` opens the vendor
+  `Model.php` and reuses the existing `getPhpMethodDeclarationRanges`, joined to
+  the fallback list in `goToDefinition`.
+
+Decisions and lessons:
+
+- **the target is the protected declaration, not a stub or a doc line.** Landing
+  on `Model.php:1021` puts `incrementOrDecrement` on the next screen, which is
+  the code that answers what the call actually does to the row;
+- **no check that the receiver is really a model.** Those four names are the
+  whole of the framework's re-dispatch list, and the resolver runs only where
+  native resolution already came back empty, so the only way to reach it wrongly
+  is `->increment()` on a class that has no such method — a call that resolved
+  nowhere before and now resolves somewhere explicable. Cheap receiver type
+  inference for `$record` does not exist here, and an expensive one does not
+  belong on a Cmd+B fallback;
+- **the visibility is the version guard.** Where a framework declares these
+  public, Intelephense resolves the call itself and this code never runs. Nothing
+  has to test the Laravel version;
+- sticky regex rather than `source.slice(index)` per `-`, so the walk stays
+  linear on a long file.
+
+Verification:
+
+- `node --test files_to_symlink/vscode/extensions/local.smart-references-0.0.1/test/*.test.js`
+  — 174 passing, 8 new, covering nullsafe calls, chains, `incrementBy` as a
+  near-miss, static calls, and strings and comments;
+- against the real `ribeit-api`, both call sites read `increment` and land on
+  `Model.php:1021 protected function increment(...)`;
+- not verified in a running editor. Needs a window reload.
+
+### 2026-09-01 — Cmd+B on a trait landed on our own stub
+
+Intent:
+
+- `TlsCertificate.php`, Cmd+B on `HasCreator`, and the editor opens
+  `_ide_helper_manual.php:207` — `trait HasCreator {}`, an empty body — instead
+  of `app/Shared/Traits/HasCreator.php`.
+
+Diagnosis:
+
+- the stub is **ours**. `laravelIntelligence.js` writes it: a model concern earns
+  a partial trait carrying `@mixin \Illuminate\Database\Eloquent\Model`, so
+  `static::creating(…)` inside the trait resolves. The declaration is empty on
+  purpose — Intelephense merges it with the real one — and that merge is exactly
+  what makes it a plausible Go-to-Definition target;
+- `resolveLaravelHelperTarget` exists to hop from stub to real source and was
+  already wired in. It simply could not see a trait: `getStubClassDeclaration`
+  matched `\bclass\s+`, `isMatchingPhpClassSource` matched `class`, and the
+  inline pattern that finds the name in the real file matched `class`. Three
+  regexes, one word each;
+- the generator emits **65 trait stubs against 11 class stubs** in this repo. The
+  half that was never read back was the larger half.
+
+Implementation:
+
+- `getStubClassDeclaration` → `getStubTypeDeclaration`, returning `typeName`, and
+  `isMatchingPhpClassSource` → `isMatchingPhpTypeSource`. Both now accept
+  `class|interface|trait`, as does the pattern in `resolveLaravelHelperTarget`
+  that locates the name in the real file.
+
+Decisions and lessons:
+
+- **renamed rather than widened in place.** A function called
+  `getStubClassDeclaration` that answers for traits is how the next reader
+  reintroduces the bug. Four call sites, worth it;
+- `findClassFileUri`'s symbol-kind filter was left alone. Whether Intelephense
+  reports a PHP trait as `SymbolKind.Class` is not something to guess at: if it
+  does, the symbol path answers, and if it does not, `classes.length === 0` falls
+  to `findClassFileBySource`, which globs `**/HasCreator.php` and matches by
+  source — and that fallback is precisely what the widened
+  `isMatchingPhpTypeSource` fixes. Both paths now land;
+- **a generator and its reader are one feature.** This extension writes the stub
+  file and reads it back, and the two halves were taught different vocabularies.
+  Anything added to `renderTraitMixinBlock`'s output has to be added to what
+  `resolveLaravelHelperTarget` recognises in the same change.
+
+Verification:
+
+- `node --test files_to_symlink/vscode/extensions/local.smart-references-0.0.1/test/*.test.js`
+  — 177 passing, 3 new for the trait shape;
+- against the real `ribeit-api` stub: `HasCreator` at `_ide_helper_manual.php:207`
+  now resolves to `app/Shared/Traits/HasCreator.php:17`, and 70 of the 76
+  declarations in that file resolve to first-party source. The 6 that do not are
+  all vendor types — `Illuminate\Http\Request`, `Rule`, `Blueprint`, `Http`, two
+  Restify ones — which are `@method`/fluent-override stubs handled by the macro
+  branch and were never meant to resolve by type;
+- not verified in a running editor. Needs a window reload.
+
+### 2026-09-02 — New windows open where the last one was, not offset from it
+
+Intent:
+
+- a new VS Code window should fill the screen with a margin, the way Swish's
+  maximize leaves it. It was opening slightly right of centre and slightly small.
+
+Diagnosis:
+
+- measured first, with Hammerspoon rather than by eye. The screen's usable frame
+  is `0,33 1512x949`; every already-placed window sat at `8,41 1496x933` — that
+  frame inset 8px per side. So the target is not "maximized": it is the inset,
+  and Swish is what puts windows there;
+- the offset is VS Code's own, out of `main.js`:
+
+  ```js
+  s.x = centred; s.y = centred;
+  let l = true;
+  if (newWindowDimensions === "inherit") { s = {...lastActiveState}; l = false; }
+  if (l) s = ensureNoOverlap(s);
+
+  ensureNoOverlap(e) {
+      while (openWindows.some(r => r.x === e.x || r.y === e.y)) { e.x += 30; e.y += 30; }
+  }
+  ```
+
+  With the setting unset, `l` stays true and `ensureNoOverlap` nudges the new
+  window +30,+30 until neither coordinate collides with an open one. That is the
+  whole of "slightly to the right, and not quite full size".
+
+Implementation:
+
+- `"window.newWindowDimensions": "inherit"` in `settings.json`, beside
+  `window.restoreWindows`.
+
+Decisions and lessons:
+
+- **`inherit`, not `maximized`.** `maximized` sets `mode = 0` and a real
+  macOS maximize, which fills the usable frame edge to edge and loses the 8px
+  gap that was the point of the request. `inherit` copies the last window's
+  bounds verbatim, gap included;
+- the setting's real work is the `l = false` it sets, which *skips*
+  `ensureNoOverlap`. Reading the branch is what showed that the cascade — not the
+  default size — was the complaint;
+- **known weakness, stated rather than hidden.** `inherit` copies whatever the
+  last active window was. Snap one to half-screen and the next new window is
+  half-screen. It fits here because Swish's maximize is by far the most-used
+  action on this machine (969 uses against 290 for halves), but if that bites,
+  the deterministic version is a Hammerspoon `hs.window.filter` rule on VS Code
+  window creation setting the frame to `screen:frame()` inset by 8 — this repo
+  already symlinks `init.lua` to `~/.hammerspoon/init.lua`;
+- no Hammerspoon rule was written. A supported setting that answers the request
+  beats automation that would have to be maintained against it.
+
+Verification:
+
+- `settings.json` parses as JSONC, 152 top-level keys, and the key reads back
+  `inherit`;
+- end-to-end on the real machine: `code -n` with the setting live, then measured
+  all three windows through Hammerspoon. The new one came up at `8,41 1496x933`,
+  identical to the two already open, with no +30 offset;
+- settings of this kind apply live, so no reload was needed and none was done.

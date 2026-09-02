@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.26",
+	"version": "0.0.35",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -31,6 +31,7 @@
 		"onCommand:smartReferences.smartEquals",
 		"onCommand:smartReferences.smartCursorUp",
 		"onCommand:smartReferences.splitPhpChain",
+		"onCommand:smartReferences.splitPhpSignature",
 		"onCommand:smartReferences.applyPhpInlayHints",
 		"onCommand:smartReferences.deleteFileWithoutAutoReveal",
 		"onCommand:smartReferences.toggleFileMarker",
@@ -106,6 +107,10 @@
 			{
 				"command": "smartReferences.splitPhpChain",
 				"title": "Smart References: Split PHP Chain"
+			},
+			{
+				"command": "smartReferences.splitPhpSignature",
+				"title": "Smart References: Split PHP Signature"
 			},
 			{
 				"command": "smartReferences.applyPhpInlayHints",

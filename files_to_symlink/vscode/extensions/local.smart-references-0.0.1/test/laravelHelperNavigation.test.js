@@ -4,9 +4,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-	getStubClassDeclaration,
 	getStubMethodName,
-	isMatchingPhpClassSource,
+	getStubTypeDeclaration,
+	isMatchingPhpTypeSource,
 } = require('../laravelHelperNavigation');
 
 test('finds the real namespaced class represented by a manual helper stub line', () => {
@@ -20,9 +20,9 @@ namespace App\\Models {
 }
 `;
 
-	assert.deepEqual(getStubClassDeclaration(source, 6), {
+	assert.deepEqual(getStubTypeDeclaration(source, 6), {
 		namespace: 'App\\Models',
-		className: 'FacebookBusinessManager',
+		typeName: 'FacebookBusinessManager',
 	});
 });
 
@@ -34,7 +34,7 @@ test('does not treat an accessor property line as a class declaration', () => {
     class FacebookBusinessManager {}
 }`;
 
-	assert.equal(getStubClassDeclaration(source, 2), undefined);
+	assert.equal(getStubTypeDeclaration(source, 2), undefined);
 });
 
 test('does not cross into an earlier namespace block', () => {
@@ -45,7 +45,7 @@ test('does not cross into an earlier namespace block', () => {
 class UnscopedModel {}
 `;
 
-	assert.equal(getStubClassDeclaration(source, 4), undefined);
+	assert.equal(getStubTypeDeclaration(source, 4), undefined);
 });
 
 test('matches the real class source without being confused by later comments', () => {
@@ -58,8 +58,8 @@ class FacebookBusinessManager extends Model
 }
 `;
 
-	assert.equal(isMatchingPhpClassSource(source, 'FacebookBusinessManager', 'App\\Models'), true);
-	assert.equal(isMatchingPhpClassSource(source, 'FacebookBusinessManager', 'Other\\Models'), false);
+	assert.equal(isMatchingPhpTypeSource(source, 'FacebookBusinessManager', 'App\\Models'), true);
+	assert.equal(isMatchingPhpTypeSource(source, 'FacebookBusinessManager', 'Other\\Models'), false);
 });
 
 test('reads the macro name out of a generated @method tag', () => {
@@ -93,4 +93,47 @@ test('does not read a method name off an accessor property or a class line', () 
 
 	assert.equal(getStubMethodName(source, 2), undefined);
 	assert.equal(getStubMethodName(source, 4), undefined);
+});
+
+test('finds the real namespaced trait represented by a mixin stub line', () => {
+	const source = `<?php
+
+namespace App\\Shared\\Traits {
+    use Illuminate\\Database\\Eloquent\\Model;
+
+    /** @mixin Model */
+    trait HasCreator {}
+}
+`;
+
+	assert.deepEqual(getStubTypeDeclaration(source, 6), {
+		namespace: 'App\\Shared\\Traits',
+		typeName: 'HasCreator',
+	});
+});
+
+test('matches a real trait source, which is what the workspace-symbol fallback reads', () => {
+	const source = `<?php
+
+namespace App\\Shared\\Traits;
+
+use Illuminate\\Database\\Eloquent\\Model;
+
+trait HasCreator
+{
+}
+`;
+
+	assert.equal(isMatchingPhpTypeSource(source, 'HasCreator', 'App\\Shared\\Traits'), true);
+	assert.equal(isMatchingPhpTypeSource(source, 'HasCreator', 'App\\Models'), false);
+});
+
+test('does not read a use statement as the trait declaration', () => {
+	const source = `namespace App\\Shared\\Traits {
+    use Illuminate\\Database\\Eloquent\\Model;
+
+    trait HasCreator {}
+}`;
+
+	assert.equal(getStubTypeDeclaration(source, 1), undefined);
 });

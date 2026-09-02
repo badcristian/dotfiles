@@ -1,11 +1,17 @@
 'use strict';
 
-function getStubClassDeclaration(source, targetLine) {
+// `class` and `trait` both, because the generator emits both: a model gets a partial class carrying
+// @property-read tags, a model concern gets a partial trait carrying @mixin Model. Only the class
+// half was ever read back, so Cmd+B on `use HasCreator;` landed on the empty stub instead of on the
+// trait — the one dead end this redirect exists to prevent.
+const STUB_TYPE_DECLARATION = /\b(?:class|interface|trait)\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/;
+
+function getStubTypeDeclaration(source, targetLine) {
 	const lines = String(source).split('\n');
 	const line = lines[targetLine];
-	const classMatch = line && line.match(/\bclass\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/);
+	const typeMatch = line && line.match(STUB_TYPE_DECLARATION);
 
-	if (!classMatch) {
+	if (!typeMatch) {
 		return undefined;
 	}
 
@@ -15,7 +21,7 @@ function getStubClassDeclaration(source, targetLine) {
 		if (namespaceMatch) {
 			return {
 				namespace: namespaceMatch[1].trim(),
-				className: classMatch[1],
+				typeName: typeMatch[1],
 			};
 		}
 
@@ -47,16 +53,18 @@ function getStubMethodName(source, targetLine) {
 	return undefined;
 }
 
-function isMatchingPhpClassSource(source, className, namespace) {
+// The fallback path when Intelephense's workspace symbols do not offer the type, so it has to accept
+// everything the stub can declare too.
+function isMatchingPhpTypeSource(source, typeName, namespace) {
 	const text = String(source);
 	const declaredNamespace = text.match(/^\s*namespace\s+([^;]+);/m)?.[1]?.trim();
-	const declaredClass = text.match(/^\s*(?:abstract\s+|final\s+|readonly\s+)*class\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/m)?.[1];
+	const declaredType = text.match(/^\s*(?:abstract\s+|final\s+|readonly\s+)*(?:class|interface|trait)\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b/m)?.[1];
 
-	return declaredNamespace === String(namespace).replace(/^\\/, '') && declaredClass === className;
+	return declaredNamespace === String(namespace).replace(/^\\/, '') && declaredType === typeName;
 }
 
 module.exports = {
-	getStubClassDeclaration,
 	getStubMethodName,
-	isMatchingPhpClassSource,
+	getStubTypeDeclaration,
+	isMatchingPhpTypeSource,
 };

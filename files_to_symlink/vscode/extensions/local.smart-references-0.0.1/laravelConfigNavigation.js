@@ -42,7 +42,35 @@ function skipPhpComment(source, start) {
 	return undefined;
 }
 
-function getLaravelConfigKeyAtOffset(source, offset) {
+const CONFIG_HELPER_PATTERN = /(?:^|[^A-Za-z0-9_\\])config\s*\(\s*$/s;
+
+// The facades are matched imported, fully qualified, and root-namespaced, because all three appear
+// in practice.
+//
+// `Config::` is the same Repository the helper returns, so its readers name a key just as directly.
+// `getMany` is left out: its keys sit in an array literal, so the prefix never ends at the paren.
+const CONFIG_FACADE_PATTERN = /(?:^|[^A-Za-z0-9_])\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*Config\s*::\s*(?:get|has|set|push|prepend|string|integer|float|boolean|array|collection)\s*\(\s*$/s;
+
+// Laravel resolves Log::channel('name') through config('logging.channels.name'), so the literal
+// names a config key exactly as directly as config() does.
+const LOG_CHANNEL_PATTERN = /(?:^|[^A-Za-z0-9_])\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*Log\s*::\s*channel\s*\(\s*$/s;
+
+/** Longest prefix that can match is a root-namespaced facade call, ~45 chars. */
+const PREFIX_WINDOW = 160;
+
+function resolveConfigKeyRead(prefix, value) {
+	if (CONFIG_HELPER_PATTERN.test(prefix) || CONFIG_FACADE_PATTERN.test(prefix)) {
+		return value;
+	}
+
+	return LOG_CHANNEL_PATTERN.test(prefix)
+		? `logging.channels.${value}`
+		: undefined;
+}
+
+// Every literal that names a config key, in source order. Both directions of the jump read this one
+// walk, so a call site the forward jump follows is a call site the reverse search finds.
+function forEachConfigKeyRead(source, visit) {
 	let index = 0;
 
 	while (index < source.length) {
@@ -59,28 +87,41 @@ function getLaravelConfigKeyAtOffset(source, offset) {
 
 		const literal = scanPhpString(source, index);
 		if (!literal) {
-			return undefined;
+			return;
 		}
 
-		if (offset >= literal.start && offset <= literal.end) {
-			const prefix = source.slice(0, index);
+		const key = resolveConfigKeyRead(source.slice(Math.max(0, index - PREFIX_WINDOW), index), literal.value);
 
-			if (/(?:^|[^A-Za-z0-9_\\])config\s*\(\s*$/s.test(prefix)) {
-				return literal.value;
-			}
-
-			// Laravel resolves Log::channel('name') through config('logging.channels.name'), so the
-			// literal names a config key exactly as directly as config() does. The facade is matched
-			// imported, fully qualified, and root-namespaced, because all three appear in practice.
-			return /(?:^|[^A-Za-z0-9_])\\?(?:[A-Za-z_][A-Za-z0-9_]*\\)*Log\s*::\s*channel\s*\(\s*$/s.test(prefix)
-				? `logging.channels.${literal.value}`
-				: undefined;
+		if (key !== undefined) {
+			visit(key, literal);
 		}
 
 		index = literal.nextOffset;
 	}
+}
 
-	return undefined;
+function getLaravelConfigKeyAtOffset(source, offset) {
+	let found;
+
+	forEachConfigKeyRead(source, (key, literal) => {
+		if (offset >= literal.start && offset <= literal.end) {
+			found = key;
+		}
+	});
+
+	return found;
+}
+
+function findLaravelConfigKeyReadRanges(source, key) {
+	const ranges = [];
+
+	forEachConfigKeyRead(source, (candidate, literal) => {
+		if (candidate === key) {
+			ranges.push({ start: literal.start, end: literal.end });
+		}
+	});
+
+	return ranges;
 }
 
 function tokenizePhp(source) {
@@ -178,7 +219,7 @@ function findReturnArray(tokens) {
 	return undefined;
 }
 
-function findDirectArrayKey(tokens, openIndex, closeIndex, key) {
+function* directArrayKeys(tokens, openIndex, closeIndex) {
 	const nestedClosings = [];
 
 	for (let index = openIndex + 1; index < closeIndex; index++) {
@@ -194,12 +235,15 @@ function findDirectArrayKey(tokens, openIndex, closeIndex, key) {
 			continue;
 		}
 
-		if (
-			nestedClosings.length === 0
-			&& token.type === 'string'
-			&& token.value === key
-			&& tokens[index + 1]?.type === 'arrow'
-		) {
+		if (nestedClosings.length === 0 && token.type === 'string' && tokens[index + 1]?.type === 'arrow') {
+			yield index;
+		}
+	}
+}
+
+function findDirectArrayKey(tokens, openIndex, closeIndex, key) {
+	for (const index of directArrayKeys(tokens, openIndex, closeIndex)) {
+		if (tokens[index].value === key) {
 			return index;
 		}
 	}
@@ -261,7 +305,53 @@ function findLaravelConfigKeyRange(source, keySegments) {
 	return undefined;
 }
 
+function findConfigKeyPath(tokens, openIndex, closeIndex, offset) {
+	for (const keyIndex of directArrayKeys(tokens, openIndex, closeIndex)) {
+		const key = tokens[keyIndex];
+
+		if (offset >= key.start && offset <= key.end) {
+			return [key.value];
+		}
+
+		const valueOpen = getArrayValueOpen(tokens, keyIndex, closeIndex);
+		const valueClose = valueOpen === undefined ? undefined : findContainerClose(tokens, valueOpen, closeIndex);
+
+		if (valueClose === undefined) {
+			continue;
+		}
+
+		const nested = findConfigKeyPath(tokens, valueOpen, valueClose, offset);
+
+		if (nested) {
+			return [key.value, ...nested];
+		}
+	}
+
+	return undefined;
+}
+
+// The reverse of findLaravelConfigKeyRange: the dotted path of the key under the cursor, minus the
+// file name the caller already knows. One segment per enclosing array, so the cursor on `'single'`
+// inside logging's `'channels'` answers `['channels', 'single']`.
+function getLaravelConfigKeyPathAtOffset(source, offset) {
+	const tokens = tokenizePhp(source);
+	const openIndex = findReturnArray(tokens);
+	const closeIndex = openIndex === undefined ? undefined : findContainerClose(tokens, openIndex);
+
+	if (closeIndex === undefined) {
+		return undefined;
+	}
+
+	return findConfigKeyPath(tokens, openIndex, closeIndex, offset);
+}
+
 module.exports = {
 	findLaravelConfigKeyRange,
+	findLaravelConfigKeyReadRanges,
 	getLaravelConfigKeyAtOffset,
+	getLaravelConfigKeyPathAtOffset,
+	// Shared with laravelRelationNavigation, which walks the same string literals for a different
+	// reason. Reading PHP text without them means re-deciding what is a comment and what is escaped.
+	scanPhpString,
+	skipPhpComment,
 };

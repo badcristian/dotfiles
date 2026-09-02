@@ -3,23 +3,45 @@ const path = require('path');
 // Laravel IDE-helper generator — a single on-demand COMMAND (no live providers). Safe: it never
 // registers a Definition/Reference provider, so it can't be auto-invoked into a re-analysis storm.
 const laravelIntelligence = require('./laravelIntelligence');
+const vueComponentNavigation = require('./vueComponentNavigation');
+const i18nKeyNavigation = require('./i18nKeyNavigation');
+const returnedComposableNavigation = require('./returnedComposableNavigation');
+const importSpecifierNavigation = require('./importSpecifierNavigation');
+const { isTopLevelReference } = require('./referenceGrouping');
+const { isCurrentFileReference } = require('./referenceCurrentFile');
 const {
-	getStubClassDeclaration,
+	getStubTypeDeclaration,
 	getStubMethodName,
-	isMatchingPhpClassSource,
+	isMatchingPhpTypeSource,
 } = require('./laravelHelperNavigation');
 const phpMove = require('./phpMove');
 const { shouldInsertJsonComma } = require('./jsonSmartEnter');
+const { getPhpSignatureSplit } = require('./phpSignatureSplit');
 const {
 	findLaravelConfigKeyRange,
+	findLaravelConfigKeyReadRanges,
 	getLaravelConfigKeyAtOffset,
+	getLaravelConfigKeyPathAtOffset,
 } = require('./laravelConfigNavigation');
+const {
+	findMiddlewareAliasClass,
+	findPhpClassDeclarationRange,
+	getMiddlewareAliasAtOffset,
+} = require('./laravelMiddlewareNavigation');
+const { getModelMagicMethodAtOffset } = require('./laravelModelMagicCalls');
 const {
 	findMacroCallRanges,
 	findMacroRegistrations,
 	getMacroCallNameAtOffset,
 	getMacroRegistrationNameAtOffset,
 } = require('./laravelMacroNavigation');
+const {
+	findModelPropertyRange,
+	findRelationMethodRange,
+	getEloquentColumnAtOffset,
+	getEloquentRelationAtOffset,
+	getRelatedModelFromRelation,
+} = require('./laravelQueryNavigation');
 const { getLaravelCollectionKeyTypeEdit } = require('./phpDocCollectionFix');
 const { appendGitignoreEntries, getGitignoreEntry } = require('./gitignore');
 const {
@@ -30,6 +52,8 @@ const {
 } = require('./fileMarkers');
 
 const PHP_SEARCH_EXCLUDE = '{**/{.git,vendor,node_modules,storage,tmp,bootstrap/cache}/**,**/.phpstorm.meta.php,**/_ide_helper*.php}';
+const COMPOSABLE_REFERENCE_GLOB = 'src/**/*.{ts,tsx,js,jsx,vue}';
+const COMPOSABLE_REFERENCE_EXCLUDE = '{**/{node_modules,dist,coverage,.git}/**}';
 const MARKED_FILES_STORAGE_KEY = 'smartReferences.markedFiles.v1';
 let referencesPanel;
 
@@ -127,6 +151,78 @@ function positionFromOffset(source, offset) {
 
 function rangeFromOffsets(source, start, end) {
 	return new vscode.Range(positionFromOffset(source, start), positionFromOffset(source, end));
+}
+
+// A returned composable member is a genuine static relationship that TypeScript does not expose:
+// `return { closeTimeLog }` and `const { closeTimeLog } = useTimeLog()` are separate symbols.
+// Limit this bridge to an explicit Cmd+B and to `src/`, where the @/ convention is defined. That
+// keeps it out of automatic provider/CodeLens paths and avoids treating a workspace-wide word scan
+// as general JavaScript intelligence.
+function importSpecifierResolvesToSource(specifier, importerUri, sourceUri, folderUri) {
+	const importerPath = getUriPath(importerUri);
+	const folderPath = getUriPath(folderUri);
+	const sourcePath = getUriPath(sourceUri);
+	let basePath;
+
+	if (specifier.startsWith('@/')) {
+		basePath = path.join(folderPath, 'src', specifier.slice(2));
+	} else if (specifier.startsWith('./') || specifier.startsWith('../')) {
+		basePath = path.resolve(path.dirname(importerPath), specifier);
+	} else {
+		return false;
+	}
+
+	const candidates = /\.(?:ts|tsx|js|jsx|vue)$/.test(basePath)
+		? [basePath]
+		: ['.ts', '.tsx', '.js', '.jsx', '.vue', '/index.ts', '/index.tsx', '/index.js', '/index.jsx', '/index.vue']
+			.map((suffix) => basePath + suffix);
+
+	return candidates.some((candidate) => path.normalize(candidate) === path.normalize(sourcePath));
+}
+
+async function getReturnedComposableMemberReferences(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+
+	if (!['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'vue'].includes(document.languageId)) {
+		return [];
+	}
+
+	const source = document.getText();
+	const member = returnedComposableNavigation.findReturnedComposableMember(source, document.offsetAt(position));
+	const folderUri = getWorkspaceFolderUri(uri);
+
+	if (!member || !folderUri || !getUriPath(uri).startsWith(`${getUriPath(folderUri)}/src/`)) {
+		return [];
+	}
+
+	const files = await vscode.workspace.findFiles(COMPOSABLE_REFERENCE_GLOB, COMPOSABLE_REFERENCE_EXCLUDE);
+	const locations = [];
+
+	await forEachFileText(files, async (fileSource, fileUri) => {
+		if (sameUri(fileUri, uri)) {
+			return;
+		}
+
+		const imports = returnedComposableNavigation.findNamedImportBindings(fileSource, member.factoryName)
+			.filter((binding) => importSpecifierResolvesToSource(binding.specifier, fileUri, uri, folderUri));
+
+		for (const imported of imports) {
+			for (const localName of returnedComposableNavigation.findReturnedMemberBindings(fileSource, imported.localName, member.memberName)) {
+				for (const offset of returnedComposableNavigation.findBindingUsages(fileSource, localName)) {
+					locations.push({
+						uri: fileUri,
+						range: rangeFromOffsets(fileSource, offset, offset + localName.length),
+					});
+				}
+			}
+		}
+	});
+
+	if (locations.length > 0) {
+		logDebug(`Composable member references: ${member.factoryName}.${member.memberName} -> ${locations.length} consumer locations`);
+	}
+
+	return locations;
 }
 
 function getFileName(uri) {
@@ -443,7 +539,7 @@ async function findClassFileBySource(className, namespace) {
 	for (const candidate of candidates) {
 		const text = await tryReadWorkspaceText(candidate);
 
-		if (text && isMatchingPhpClassSource(text, className, namespace)) {
+		if (text && isMatchingPhpTypeSource(text, className, namespace)) {
 			return candidate;
 		}
 	}
@@ -520,29 +616,29 @@ async function resolveLaravelHelperTarget(target) {
 		return undefined;
 	}
 
-	const stubClass = getStubClassDeclaration(stubText, target.range.start.line);
+	const stubType = getStubTypeDeclaration(stubText, target.range.start.line);
 
-	if (stubClass) {
-		const classUri = await findClassFileUri(stubClass.className, stubClass.namespace);
-		const classText = classUri && await tryReadWorkspaceText(classUri);
-		const classPattern = new RegExp(`\\b(?:abstract\\s+|final\\s+|readonly\\s+)*class\\s+(${escapeRegExp(stubClass.className)})\\b`);
-		const classMatch = classText && classText.match(classPattern);
+	if (stubType) {
+		const typeUri = await findClassFileUri(stubType.typeName, stubType.namespace);
+		const typeText = typeUri && await tryReadWorkspaceText(typeUri);
+		const typePattern = new RegExp(`\\b(?:abstract\\s+|final\\s+|readonly\\s+)*(?:class|interface|trait)\\s+(${escapeRegExp(stubType.typeName)})\\b`);
+		const typeMatch = typeText && typeText.match(typePattern);
 
-		if (classUri && classText && classMatch) {
-			const classNameOffset = classMatch.index + classMatch[0].lastIndexOf(classMatch[1]);
-			const classPosition = offsetToPosition(classText, classNameOffset);
-			logDebug(`  class redirect: ${stubClass.namespace}\\${stubClass.className} -> ${classUri.path}:${classPosition.line + 1}`);
+		if (typeUri && typeText && typeMatch) {
+			const typeNameOffset = typeMatch.index + typeMatch[0].lastIndexOf(typeMatch[1]);
+			const typePosition = offsetToPosition(typeText, typeNameOffset);
+			logDebug(`  type redirect: ${stubType.namespace}\\${stubType.typeName} -> ${typeUri.path}:${typePosition.line + 1}`);
 
 			return {
-				uri: classUri,
+				uri: typeUri,
 				range: new vscode.Range(
-					classPosition,
-					classPosition.translate(0, stubClass.className.length),
+					typePosition,
+					typePosition.translate(0, stubType.typeName.length),
 				),
 			};
 		}
 
-		logDebug(`  real class not found for ${stubClass.namespace}\\${stubClass.className}`);
+		logDebug(`  real declaration not found for ${stubType.namespace}\\${stubType.typeName}`);
 		return undefined;
 	}
 
@@ -853,6 +949,124 @@ async function resolveLaravelConfigTarget(uri, position) {
 	};
 }
 
+// The reverse of the config jump: from a key in config/<file>.php, every call site that reads it.
+// Intelephense sees an array key on one side and a string argument on the other and relates
+// neither, so a setting with three readers answers "No other references found".
+//
+// Only a file directly under the workspace's config/ qualifies, which is the same shape the forward
+// jump resolves; a nested config directory would have to be taught to both at once.
+async function getLaravelConfigKeyReferences(uri, position) {
+	const workspaceFolderUri = getWorkspaceFolderUri(uri);
+	const filePath = getUriPath(uri);
+	const configDir = workspaceFolderUri ? `${getUriPath(workspaceFolderUri)}/config/` : undefined;
+
+	if (!configDir || !filePath.startsWith(configDir) || !/^[A-Za-z0-9_-]+\.php$/.test(filePath.slice(configDir.length))) {
+		return [];
+	}
+
+	const document = await vscode.workspace.openTextDocument(uri);
+	const keyPath = getLaravelConfigKeyPathAtOffset(document.getText(), document.offsetAt(position));
+
+	if (!keyPath) {
+		return [];
+	}
+
+	const key = [path.basename(filePath, '.php'), ...keyPath].join('.');
+	const files = await vscode.workspace.findFiles(
+		'{app,bootstrap,config,database,routes,tests,resources}/**/*.php',
+		PHP_SEARCH_EXCLUDE,
+		4000,
+	);
+	// The last segment, not the dotted key: a Log::channel('single') read spells only that segment,
+	// and the whole point of the walk below is that it recognises those too.
+	const requiredText = keyPath.at(-1);
+	const references = [];
+
+	await forEachFileText(files, (text, fileUri) => {
+		if (!text.includes(requiredText)) {
+			return;
+		}
+
+		for (const range of findLaravelConfigKeyReadRanges(text, key)) {
+			references.push({
+				uri: fileUri,
+				range: rangeFromOffsets(text, range.start, range.end),
+			});
+		}
+	});
+
+	logDebug(`Laravel config key references: ${key} -> ${references.length} read(s)`);
+
+	return references;
+}
+
+// The registration moved between major versions but not in shape: `$middlewareAliases` in
+// Kernel.php through Laravel 10, `$middleware->alias([...])` in bootstrap/app.php from 11 on. Both
+// write `'alias' => Class::class`, so the same reader answers for either, and the jump lands on
+// the middleware class rather than on the map that names it.
+//
+// The vendor file is the third entry because Laravel 11 stopped publishing the defaults into the
+// app: `signed`, `verified` and the rest are only in the framework's own defaultAliases(). It is
+// last so an app that overrides an alias still wins, and it is read only when the app files have
+// already come back empty.
+const MIDDLEWARE_ALIAS_FILES = [
+	'app/Http/Kernel.php',
+	'bootstrap/app.php',
+	'vendor/laravel/framework/src/Illuminate/Foundation/Configuration/Middleware.php',
+];
+
+async function resolveLaravelMiddlewareTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const alias = getMiddlewareAliasAtOffset(document.getText(), document.offsetAt(position));
+	const workspaceFolderUri = getWorkspaceFolderUri(uri);
+
+	if (!alias || !workspaceFolderUri) {
+		return undefined;
+	}
+
+	for (const relativePath of MIDDLEWARE_ALIAS_FILES) {
+		const registrationUri = vscode.Uri.joinPath(workspaceFolderUri, relativePath);
+		const registrationSource = await tryReadWorkspaceText(registrationUri);
+		const registration = registrationSource
+			? findMiddlewareAliasClass(registrationSource, alias)
+			: undefined;
+
+		if (!registration) {
+			continue;
+		}
+
+		const fqn = resolvePhpClassName(registrationSource, registration.className);
+		const classUri = fqn ? await getPhpClassUriFromFqn(fqn, workspaceFolderUri) : undefined;
+
+		if (!classUri) {
+			// Registered but unresolvable — a vendor alias behind an unbuilt autoloader, say. The
+			// registration line still answers what the alias is.
+			logDebug(`Laravel middleware alias ${alias}: ${registration.className} did not resolve`);
+
+			return {
+				uri: registrationUri,
+				range: rangeFromOffsets(registrationSource, registration.start, registration.end),
+			};
+		}
+
+		const classSource = await readWorkspaceText(classUri);
+		const declaration = findPhpClassDeclarationRange(classSource, fqn.split('\\').pop());
+
+		logDebug(`Laravel middleware redirect: ${alias} -> ${classUri.path}`);
+
+		return {
+			uri: classUri,
+			range: declaration
+				? rangeFromOffsets(classSource, declaration.start, declaration.end)
+				: new vscode.Range(0, 0, 0, 0),
+		};
+	}
+
+	logDebug(`Laravel middleware alias not registered: ${alias}`);
+
+	return undefined;
+}
+
 // Laravel adds macros to a class at runtime, so Intelephense reports `Rule::uniqueCaseInsensitive()`
 // as undefined and has no target to offer, and only a scan of first-party source can find the
 // `::macro('name', …)` that defines it. That scan runs whenever native resolution comes back empty,
@@ -940,6 +1154,149 @@ async function resolveLaravelMacroTarget(uri, position) {
 	return registration;
 }
 
+// Laravel eager-loads a relation by name — `->with('metaToken')` — so the string and the
+// `metaToken()` method on the model are connected only by a runtime convention, and Intelephense
+// offers no definition for either. Cmd+B used to fall through to the reference picker and report
+// "No other references found", which is true of the literal and useless to the reader.
+//
+// Answering it needs the receiver, not a name search: five models in this workspace declare a
+// `metaToken()`, and only the type the chain started from picks the right one. A dotted path is
+// walked one hop at a time, reading each relation's own factory call to find the next model, so the
+// segment under the cursor is the one that opens.
+async function resolveLaravelRelationTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const source = document.getText();
+	const relation = getEloquentRelationAtOffset(source, document.offsetAt(position));
+
+	if (!relation) {
+		return undefined;
+	}
+
+	let target = await openPhpClass(relation.headClass, source);
+
+	for (let index = 0; index <= relation.segmentIndex; index++) {
+		if (!target) {
+			logDebug('Laravel relation: no source for the model at this hop');
+
+			return undefined;
+		}
+
+		const segment = relation.segments[index];
+
+		if (index === relation.segmentIndex) {
+			const range = findRelationMethodRange(target.text, segment);
+
+			if (!range) {
+				logDebug(`Laravel relation: ${target.uri.path} declares no ${segment}()`);
+
+				return undefined;
+			}
+
+			logDebug(`Laravel relation redirect: ${segment} -> ${target.uri.path}`);
+
+			return { uri: target.uri, range: rangeFromOffsets(target.text, range.start, range.end) };
+		}
+
+		const related = getRelatedModelFromRelation(target.text, segment);
+
+		if (!related) {
+			logDebug(`Laravel relation: ${segment}() names no related model`);
+
+			return undefined;
+		}
+
+		target = await openPhpClass(related, target.text);
+	}
+
+	return undefined;
+}
+
+// A class name as written in `contextSource`, opened. The name is resolved through that file's `use`
+// statements first, so a hop from one model to the next reads the imports of the file it hopped
+// from rather than the one navigation started in.
+async function openPhpClass(className, contextSource) {
+	const fqn = String(laravelIntelligence.resolvePhpClassName(
+		className,
+		laravelIntelligence.getPhpImports(contextSource),
+		getPhpNamespace(contextSource),
+	)).replace(/^\\/, '');
+
+	const shortName = fqn.split('\\').pop();
+	const namespace = fqn.slice(0, Math.max(0, fqn.length - shortName.length - 1));
+	const classUri = await findClassFileUri(shortName, namespace);
+	const text = classUri && await tryReadWorkspaceText(classUri);
+
+	return text ? { uri: classUri, text } : undefined;
+}
+
+// The other half of the same problem: `->where('status', …)` names a column, and a column is as
+// invisible to Intelephense as a relation is. The model documents its columns as `@property`, which
+// is where this lands — one place per column, unlike the migration history, where `status` on
+// facebook_ad_accounts is touched by four separate files.
+async function resolveLaravelColumnTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const source = document.getText();
+	const column = getEloquentColumnAtOffset(source, document.offsetAt(position));
+
+	if (!column) {
+		return undefined;
+	}
+
+	const target = await openPhpClass(column.headClass, source);
+
+	if (!target) {
+		logDebug(`Laravel column: no source for ${column.headClass}`);
+
+		return undefined;
+	}
+
+	const range = findModelPropertyRange(target.text, column.column);
+
+	if (!range) {
+		logDebug(`Laravel column: ${target.uri.path} documents no $${column.column}`);
+
+		return undefined;
+	}
+
+	logDebug(`Laravel column redirect: ${column.column} -> ${target.uri.path}`);
+
+	return { uri: target.uri, range: rangeFromOffsets(target.text, range.start, range.end) };
+}
+
+// `$model->increment('n')` is dispatched by Model::__call to Model's own protected increment, so
+// there is no accessible declaration for Intelephense to resolve and Cmd+B falls through to a
+// reference search that also finds nothing. The protected declaration is what the reader wants.
+//
+// No check that the receiver really is a model: the four names are the whole of the framework's
+// re-dispatch list, and this runs only where native resolution already came back empty. Calling
+// `increment` on a class that has no such method lands here instead of nowhere, which is a fair
+// trade for a name set this small.
+const ELOQUENT_MODEL_FILE = 'vendor/laravel/framework/src/Illuminate/Database/Eloquent/Model.php';
+
+async function resolveLaravelModelMagicCallTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const method = getModelMagicMethodAtOffset(document.getText(), document.offsetAt(position));
+	const workspaceFolderUri = getWorkspaceFolderUri(uri);
+
+	if (!method || !workspaceFolderUri) {
+		return undefined;
+	}
+
+	const modelUri = vscode.Uri.joinPath(workspaceFolderUri, ELOQUENT_MODEL_FILE);
+	const modelSource = await tryReadWorkspaceText(modelUri);
+	const [range] = modelSource ? getPhpMethodDeclarationRanges(modelSource, method) : [];
+
+	if (!range) {
+		logDebug(`Laravel model magic call: no ${method} in ${ELOQUENT_MODEL_FILE}`);
+
+		return undefined;
+	}
+
+	logDebug(`Laravel model magic call redirect: ${method} -> ${modelUri.path}`);
+
+	return { uri: modelUri, range: rangeFromOffsets(modelSource, range.start, range.end) };
+}
+
 async function goToDefinition(uri, position) {
 	try {
 		const configTarget = await resolveLaravelConfigTarget(uri, position);
@@ -960,6 +1317,35 @@ async function goToDefinition(uri, position) {
 	const definitions = await getDefinitionTargets(uri, position);
 
 	if (definitions.length === 0) {
+		// Only when native resolution came back empty, which for a string literal it always does.
+		// Running it first would put a workspace symbol lookup in front of every ordinary Cmd+B.
+		// Relation first: the two method sets are disjoint, so at most one of these answers, and
+		// checking relations first keeps `withSum('lines', 'total')` from reading its relation
+		// argument as a column. Middleware is disjoint from both — it reads only `middleware(` — and
+		// the magic-call redirect reads a method name rather than any string argument at all.
+		for (const resolve of [
+			resolveLaravelRelationTarget,
+			resolveLaravelColumnTarget,
+			resolveLaravelMiddlewareTarget,
+			resolveLaravelModelMagicCallTarget,
+		]) {
+			try {
+				const queryTarget = await resolve(uri, position);
+
+				if (queryTarget && !isCurrentLocation(queryTarget, uri, position)) {
+					await vscode.window.showTextDocument(queryTarget.uri, {
+						selection: queryTarget.range,
+						preserveFocus: false,
+						preview: false,
+					});
+
+					return 'opened';
+				}
+			} catch (error) {
+				logDebug(`Laravel query redirect threw: ${error && error.message ? error.message : error}`);
+			}
+		}
+
 		try {
 			const macroTarget = await resolveLaravelMacroTarget(uri, position);
 
@@ -1081,7 +1467,7 @@ function formatSymbolDescription(context) {
 }
 
 function formatReferenceDetail(context) {
-	return context.line ? `    | ${context.line}` : '    |';
+	return context.line || '';
 }
 
 function getWorkspaceRelativePath(uri) {
@@ -1225,6 +1611,10 @@ function compareReferenceItems(a, b) {
 // therefore an ordinary item, which is also why navigation has to be walked past it below. The
 // `blank` codicon draws nothing and gives the workbench stylesheet a class to recognise the row by.
 const REFERENCE_HEADER_ICON = new vscode.ThemeIcon('blank');
+const CURRENT_FILE_REFERENCE_BUTTON = {
+	iconPath: new vscode.ThemeIcon('home', new vscode.ThemeColor('charts.orange')),
+	tooltip: 'Reference in the current file',
+};
 
 function withReferenceHeaders(items) {
 	const grouped = [];
@@ -1283,7 +1673,7 @@ function uniqueReferenceItems(items) {
 	});
 }
 
-async function buildReferenceItems(references) {
+async function buildReferenceItems(references, originUri) {
 	const documentCache = new Map();
 	const symbolCache = new Map();
 	let items = await Promise.all(references.map(async (reference) => {
@@ -1291,8 +1681,9 @@ async function buildReferenceItems(references) {
 		const lineNumber = reference.range.start.line + 1;
 		const fileName = getFileName(reference.uri);
 		const uriPath = getUriPath(reference.uri);
-		const isTopLevel = context.symbolName === 'top level';
+		const isTopLevel = isTopLevelReference(context.symbolName, context.line);
 		const isTest = isTestReferencePath(uriPath, fileName);
+		const isCurrentFile = isCurrentFileReference(reference.uri, originUri);
 		const group = getReferenceGroup({
 			isTest,
 			isTopLevel,
@@ -1311,6 +1702,8 @@ async function buildReferenceItems(references) {
 			iconPath: isTest
 				? new vscode.ThemeIcon('beaker', new vscode.ThemeColor('charts.green'))
 				: getSymbolThemeIcon(context.symbolKind),
+			buttons: isCurrentFile ? [CURRENT_FILE_REFERENCE_BUTTON] : undefined,
+			isCurrentFile,
 			reference,
 			sortKey: {
 				fileName: fileName.toLocaleLowerCase(),
@@ -1330,13 +1723,13 @@ async function buildReferenceItems(references) {
 	return uniqueReferenceItems(items);
 }
 
-async function showReferencesPicker(references) {
-	const referenceItems = await buildReferenceItems(references);
+async function showReferencesPicker(references, originUri) {
+	const referenceItems = await buildReferenceItems(references, originUri);
 	const groupedItems = withReferenceHeaders(referenceItems);
 	const picker = vscode.window.createQuickPick();
 
 	picker.title = 'References';
-	picker.placeholder = 'Select a reference';
+	picker.placeholder = 'Select a reference · orange home = current file';
 	picker.matchOnDescription = true;
 	picker.matchOnDetail = true;
 	picker.items = groupedItems;
@@ -1442,6 +1835,7 @@ function getWebviewReferenceRows(items) {
 		relativePath: item.relativePath,
 		sourceLine: item.sourceLine,
 		symbolKindLabel: item.symbolKindLabel,
+		isCurrentFile: item.isCurrentFile,
 		iconLetter: getWebviewIconLetter(item.symbolKindLabel),
 		groupLabel: item.sortKey.groupLabel,
 		groupIndex: item.sortKey.groupIndex,
@@ -1474,7 +1868,7 @@ function getReferencesWebviewHtml(webview, rows) {
 		:root {
 			color-scheme: dark light;
 			--row-height: 31px;
-			--grid-template: 28px minmax(170px, 0.95fr) 54px minmax(280px, 2.1fr) minmax(140px, 0.8fr);
+			--grid-template: 28px minmax(170px, 0.95fr) 54px minmax(280px, 2.1fr) minmax(140px, 0.8fr) 14px;
 		}
 
 		* {
@@ -1619,6 +2013,18 @@ function getReferencesWebviewHtml(webview, rows) {
 			color: var(--vscode-charts-green);
 		}
 
+		.current-file-dot {
+			width: 7px;
+			height: 7px;
+			justify-self: end;
+			border-radius: 50%;
+		}
+
+		.current-file-dot.current {
+			border: 1px solid var(--vscode-editorWidget-background);
+			background: var(--vscode-charts-orange);
+		}
+
 		.file {
 			min-width: 0;
 			font-weight: 650;
@@ -1758,8 +2164,11 @@ function getReferencesWebviewHtml(webview, rows) {
 
 				const element = document.createElement('div');
 				element.className = 'reference-row';
+				if (row.isCurrentFile) {
+					element.classList.add('current-file');
+				}
 				element.dataset.id = row.id;
-				element.title = row.relativePath;
+				element.title = row.isCurrentFile ? 'Current file · ' + row.relativePath : row.relativePath;
 
 				const icon = document.createElement('div');
 				icon.className = 'icon ' + row.symbolKindLabel;
@@ -1780,6 +2189,10 @@ function getReferencesWebviewHtml(webview, rows) {
 				appendText(element, 'line', String(row.lineNumber));
 				appendText(element, 'code truncate', row.sourceLine);
 				appendText(element, 'method truncate', row.methodName || 'top level');
+				const currentFileDot = document.createElement('span');
+				currentFileDot.className = row.isCurrentFile ? 'current-file-dot current' : 'current-file-dot';
+				currentFileDot.title = row.isCurrentFile ? 'Reference in the current file' : '';
+				element.appendChild(currentFileDot);
 
 				element.addEventListener('mouseenter', () => {
 					const rowElements = [...list.querySelectorAll('.reference-row')];
@@ -1838,8 +2251,8 @@ async function openReferenceLocation(reference, viewColumn) {
 	});
 }
 
-async function showReferencesWebview(references) {
-	const items = await buildReferenceItems(references);
+async function showReferencesWebview(references, originUri) {
+	const items = await buildReferenceItems(references, originUri);
 	const rows = getWebviewReferenceRows(items);
 	const referenceById = new Map(items.map((item, index) => [String(index), item.reference]));
 	const originViewColumn = vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
@@ -1874,7 +2287,7 @@ async function showReferencesWebview(references) {
 
 		if (message.type === 'quickPick') {
 			referencesPanel?.dispose();
-			await showReferencesPicker(references);
+			await showReferencesPicker(references, originUri);
 			return;
 		}
 
@@ -1891,13 +2304,13 @@ async function showReferencesWebview(references) {
 	});
 }
 
-async function showReferences(references) {
+async function showReferences(references, originUri) {
 	if (getReferenceViewMode() === 'quickPick') {
-		await showReferencesPicker(references);
+		await showReferencesPicker(references, originUri);
 		return;
 	}
 
-	await showReferencesWebview(references);
+	await showReferencesWebview(references, originUri);
 }
 
 function getRouteControllerClassRanges(routeSource, controllerFqn, controllerClassName) {
@@ -2672,6 +3085,19 @@ function createPhpParentCodeLensProvider() {
 			const lenses = [];
 
 			for (const method of methodSymbols) {
+				const range = method.selectionRange || method.range;
+
+				// A `@method` tag is reported as a method symbol on the tag's own line, so the lens
+				// lands mid-docblock to say what the tag already says. The line guard is for the
+				// async fetch above: the document may already be shorter, and an out-of-range
+				// lineAt would reject the batch and blank every lens.
+				if (
+					range.start.line < document.lineCount
+					&& PHPDOC_TAG_LINE_PATTERN.test(document.lineAt(range.start.line).text)
+				) {
+					continue;
+				}
+
 				if (!parentLocationCache.has(method.name)) {
 					parentLocationCache.set(method.name, getParentPhpMethodLocation(document, method.name));
 				}
@@ -2682,7 +3108,7 @@ function createPhpParentCodeLensProvider() {
 					continue;
 				}
 
-				lenses.push(new vscode.CodeLens(method.selectionRange || method.range, {
+				lenses.push(new vscode.CodeLens(range, {
 					title: 'Parent',
 					command: 'smartReferences.openLocation',
 					arguments: [parentLocation],
@@ -2893,16 +3319,78 @@ async function getLanguageProviderReferences(uri, position) {
 	return Array.isArray(references) ? filterProviderLocations(references) : [];
 }
 
+// `@/` is not universally `src/`. construction-frontend maps it there, ribeit-depozit maps it to
+// `resources/js`, and the mapping is already written down in the project's own tsconfig. Read it
+// rather than guess. This is one small file read per Cmd+B on an import string, which is cheaper
+// than the stat calls that follow it, so it is deliberately not cached: an edited tsconfig takes
+// effect immediately instead of at the next window reload.
+async function getWorkspacePathAliases(folderUri) {
+	for (const name of ['tsconfig.json', 'jsconfig.json']) {
+		try {
+			const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folderUri, name));
+			const aliases = importSpecifierNavigation.getPathAliases(
+				Buffer.from(bytes).toString('utf8'),
+				folderUri.fsPath,
+			);
+
+			if (aliases.length > 0) {
+				return aliases;
+			}
+		} catch (error) {
+			// No config of this name here; try the next.
+		}
+	}
+
+	return [];
+}
+
+async function getImportSpecifierTarget(document, position) {
+	if (!['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'vue'].includes(document.languageId)) {
+		return undefined;
+	}
+
+	const specifier = importSpecifierNavigation.findImportSpecifierAtOffset(
+		document.getText(),
+		document.offsetAt(position),
+	);
+	const folder = specifier && vscode.workspace.getWorkspaceFolder(document.uri);
+
+	if (!specifier || !folder || document.uri.scheme !== 'file' || folder.uri.scheme !== 'file') {
+		return undefined;
+	}
+
+	const fileDir = path.dirname(document.uri.fsPath);
+	const srcRoot = path.join(folder.uri.fsPath, 'src');
+	const aliases = await getWorkspacePathAliases(folder.uri);
+
+	for (const candidate of importSpecifierNavigation.resolveImportSpecifierCandidates(specifier.specifier, fileDir, srcRoot, aliases)) {
+		try {
+			const uri = vscode.Uri.file(candidate);
+			const stat = await vscode.workspace.fs.stat(uri);
+
+			if (stat.type === vscode.FileType.File) {
+				return new vscode.Location(uri, new vscode.Position(0, 0));
+			}
+		} catch {
+			// A missing candidate is normal; try the next extension/index form.
+		}
+	}
+
+	return undefined;
+}
+
 async function getReferenceTargets(uri, position, options = {}) {
-	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences, accessorPropertyReferences, macroCallReferences] = await Promise.all([
+	const [definitions, invokeRouteReferences, gatePolicyReferences, gatePolicyMethodReferences, languageProviderReferences, translationReferences, configKeyReferences, accessorPropertyReferences, macroCallReferences, returnedComposableMemberReferences] = await Promise.all([
 		getDefinitionTargets(uri, position),
 		getInvokeRouteReferences(uri, position),
 		getLaravelGatePolicyReferences(uri, position),
 		getLaravelGatePolicyMethodReferences(uri, position),
 		options.includeLanguageProviderReferences ? getLanguageProviderReferences(uri, position) : [],
 		getLaravelTranslationReferences(uri, position),
+		getLaravelConfigKeyReferences(uri, position),
 		getAccessorPropertyReferences(uri, position),
 		getLaravelMacroCallReferences(uri, position),
+		options.includeLanguageProviderReferences ? getReturnedComposableMemberReferences(uri, position) : [],
 	]);
 	// On a docblock tag the provider's answer is about the base class, so it is either narrowed to
 	// this class's `Class::name(` call sites or, when the tag cannot be answered exactly, to the
@@ -2928,8 +3416,10 @@ async function getReferenceTargets(uri, position, options = {}) {
 		...gatePolicyReferences,
 		...gatePolicyMethodReferences,
 		...translationReferences,
+		...configKeyReferences,
 		...accessorPropertyReferences,
 		...macroCallReferences,
+		...returnedComposableMemberReferences,
 	];
 
 	if (customReferences.length === 0) {
@@ -2980,7 +3470,7 @@ async function showReferencesAtLocation(uri, position, options = {}) {
 		return;
 	}
 
-	await showReferences(targets);
+	await showReferences(targets, uri);
 }
 
 async function goToSmartReference(options = {}) {
@@ -2995,6 +3485,17 @@ async function goToSmartReference(options = {}) {
 	const forcePicker = Boolean(options.forcePicker);
 
 	if (!forcePicker) {
+		const importSpecifierTarget = await getImportSpecifierTarget(editor.document, position);
+
+		if (importSpecifierTarget) {
+			await vscode.window.showTextDocument(importSpecifierTarget.uri, {
+				selection: importSpecifierTarget.range,
+				preserveFocus: false,
+				preview: false,
+			});
+			return;
+		}
+
 		const definitionResult = await goToDefinition(uri, position);
 
 		if (definitionResult === 'opened') {
@@ -3637,6 +4138,39 @@ async function splitPhpChainAtSelection() {
 	});
 }
 
+function getSplitPhpSignatureEdit(document, lineNumber) {
+	const line = document.lineAt(lineNumber);
+	const nextLine = lineNumber + 1 < document.lineCount ? document.lineAt(lineNumber + 1) : undefined;
+	const split = getPhpSignatureSplit(line.text, nextLine?.text);
+
+	if (!split) {
+		return undefined;
+	}
+
+	return {
+		range: new vscode.Range(line.range.start, split.consumesNextLine ? nextLine.range.end : line.range.end),
+		replacement: split.replacement,
+	};
+}
+
+async function splitPhpSignatureAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getSplitPhpSignatureEdit(editor.document, editor.selection.active.line);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getInlayHintLabelText(label) {
 	if (Array.isArray(label)) {
 		return label.map((part) => typeof part === 'string' ? part : part.value).join('');
@@ -3998,6 +4532,21 @@ function createSplitPhpChainAction(document, range) {
 	}
 
 	const action = new vscode.CodeAction('Split chained -> calls onto separate lines', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
+function createSplitPhpSignatureAction(document, range) {
+	const edit = getSplitPhpSignatureEdit(document, range.start.line);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Split parameters onto separate lines', vscode.CodeActionKind.QuickFix);
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 	action.isPreferred = true;
@@ -4734,6 +5283,12 @@ function createPhpCodeActionProvider() {
 				actions.push(splitChainAction);
 			}
 
+			const splitSignatureAction = createSplitPhpSignatureAction(document, range);
+
+			if (splitSignatureAction) {
+				actions.push(splitSignatureAction);
+			}
+
 			const inlayHintsAction = await createApplyPhpInlayHintsAction(document, range);
 
 			if (inlayHintsAction) {
@@ -5065,6 +5620,13 @@ function activate(context) {
 
 	laravelIntelligence.register(context); // registers the "Refresh Laravel IDE Helpers" command only
 
+	// Go-to-definition for Vue components whose import omits the .vue extension, which TypeScript
+	// cannot resolve and Vite can. Registered as a provider rather than folded into the Cmd+B command
+	// so Cmd+Click reaches it too; it reads only the open document and stats candidate paths, so it
+	// carries none of the workspace-scan cost that keeps the Laravel helpers command-driven.
+	vueComponentNavigation.register(context);
+	i18nKeyNavigation.register(context); // the only reference provider for JSON, so Cmd+B binds there
+
 	// The macro index is built from PHP source, so any PHP write can add or remove a registration.
 	// Dropping it is cheap and rebuilding is lazy, so there is nothing to gain from working out which
 	// file changed — the next lookup that needs the index pays for one scan.
@@ -5108,6 +5670,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.smartEquals', smartEquals));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.smartCursorUp', smartCursorUp));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpChain', splitPhpChainAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpSignature', splitPhpSignatureAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.toggleFileMarker', async (resourceUri, selectedResourceUris) => {
