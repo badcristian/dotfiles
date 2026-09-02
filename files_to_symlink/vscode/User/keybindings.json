@@ -372,5 +372,15 @@
 		"key": "delete",
 		"command": "smartReferences.deleteFileWithoutAutoReveal",
 		"when": "filesExplorerFocus && !inputFocus"
+	},
+	{
+		"key": "shift+cmd+x",
+		"command": "workbench.view.remote",
+		"when": "activeViewlet == 'workbench.view.extensions'"
+	},
+	{
+		"key": "shift+cmd+x",
+		"command": "workbench.view.extensions",
+		"when": "activeViewlet != 'workbench.view.extensions'"
 	}
 ]

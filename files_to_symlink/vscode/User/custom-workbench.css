@@ -36,6 +36,24 @@
 	opacity: 0.16;
 }
 
+/* The workbench overwrites `editor.lineNumbersMinChars` with 3 when it creates every regular text
+ * editor, so changing that Monaco option in User settings never reaches the rendered gutter. Move
+ * only the number glyphs 4px into the eight-pixel line-decoration strip instead. The second four
+ * pixels remain a breathing gap before source-control change bars, without restoring the glyph
+ * margin. */
+.monaco-workbench .monaco-editor .margin-view-overlays .line-numbers {
+	transform: translateX(4px) !important;
+}
+
+/* Source-control changes are margin decorations (`.cldr`). Place them in the far half of the
+ * enlarged strip so the marker does not visually touch the line-number column. With the glyph
+ * margin hidden this only shifts narrow gutter decorations; code still begins after the reserved
+ * line-decoration lane. */
+.monaco-workbench .monaco-editor .margin-view-overlays .cldr {
+	transform: translateX(4px) !important;
+	width: 2px !important;
+}
+
 /* Compact editor tabs. */
 .monaco-workbench .part.editor .title.tabs {
 	--editor-group-tab-height: 26px !important;
@@ -113,6 +131,34 @@
 	--modern-ui-tab-hover-background: var(--vscode-tab-hoverBackground) !important;
 }
 
+/* VS Code 1.133's modern editor tabs use a newer variable than `.style-override` above. Its default
+ * mixes 22% of the workbench foreground into the editor background, which is much brighter than
+ * the deliberately measured `tab.activeBackground` values in `settings.json`. Keep the modern
+ * fill on the same per-theme palette instead of deriving it from near-white foreground text. */
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) {
+	--modern-ui-editor-tab-action-active-background: var(--vscode-tab-activeBackground) !important;
+}
+
+/* All outer tabs are 26px. Centre every modern fill state inside that common box so the active or
+ * hovered capsule is 24px tall rather than making the painted tab look taller than its siblings. */
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) .part.editor .tabs-container > .tab > .tab-fill {
+	inset-block: 1px !important;
+}
+
+/* Modern tab actions are a separate absolutely positioned layer. VS Code stretches it from
+ * `top: 0` to `bottom: 0`, so its hover colour was 26px tall while the fill above is 24px. Keep
+ * every action hit area centred on the same block bounds. Pinned tabs already reserve 28px for
+ * the action, so their layer does not need an opaque colour to mask label text; leaving it
+ * transparent exposes the exact fill, hover lift, and active ring underneath instead of drawing a
+ * second, slightly different button over the pin. */
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) .part.editor .tabs-container > .tab > .tab-actions {
+	inset-block: 1px !important;
+}
+
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) .part.editor .tabs-container > .tab.sticky > .tab-actions {
+	background-color: transparent !important;
+}
+
 /* A hairline around the active tab, which the fill alone cannot draw cleanly: `tab.activeBorder`
  * and `tab.activeBorderTop` are strips along one edge, not a border around the shape, and a real
  * `border` would eat 2px out of a row whose height is pinned at 26px. An inset shadow costs no
@@ -123,7 +169,8 @@
  * translucent ring composites to each theme's own border colour anyway: over Monokai Pro's active
  * tab it resolves to #5b595c, which is exactly that theme's border, and over Catppuccin's to
  * #5c5f70, a shade off its Surface2. */
-.monaco-workbench.vs-dark .part.editor .editor-group-container > .title .tabs-container > .tab.active {
+.monaco-workbench.vs-dark:not(.modern-ui-tabs) .part.editor .editor-group-container > .title .tabs-container > .tab.active,
+.monaco-workbench.vs-dark.modern-ui-tabs .part.editor .editor-group-container > .title .tabs-container > .tab.active > .tab-fill {
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14) !important;
 }
 
@@ -142,7 +189,8 @@
  *
  * The strips are deliberately not hidden: `--tab-border-top-color` also carries
  * `tab.activeModifiedBorder`, so a dirty tab still marks itself along the top. */
-.monaco-workbench.vs .part.editor .editor-group-container > .title .tabs-container > .tab.active {
+.monaco-workbench.vs:not(.modern-ui-tabs) .part.editor .editor-group-container > .title .tabs-container > .tab.active,
+.monaco-workbench.vs.modern-ui-tabs .part.editor .editor-group-container > .title .tabs-container > .tab.active > .tab-fill {
 	box-shadow: inset 0 0 0 1px var(--tab-border-bottom-color, transparent) !important;
 }
 
@@ -151,9 +199,40 @@
  * off the bar necessarily sits below it and *darkens* it — pointing at the selected tab dimmed it.
  * VS Code has no separate colour for the hovered-active tab, so the lift is layered here instead: a
  * flat overlay raises whatever the fill happens to be, in either theme, and cannot invert. */
-.monaco-workbench.vs-dark .part.editor .editor-group-container > .title .tabs-container > .tab.active:hover {
+.monaco-workbench.vs-dark:not(.modern-ui-tabs) .part.editor .editor-group-container > .title .tabs-container > .tab.active:hover {
 	background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)) !important;
 	background-color: var(--vscode-tab-activeBackground) !important;
+}
+
+/* VS Code 1.133's modern tab UI leaves the outer `.tab` transparent and paints the rounded button
+ * on an inset `.tab-fill` child. Painting the parent here creates a second capsule around that
+ * child, so the modern selector applies the same hover lift to the element that owns the fill. */
+.monaco-workbench.vs-dark.modern-ui-tabs .part.editor .editor-group-container > .title .tabs-container > .tab.active:hover > .tab-fill {
+	background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)) !important;
+}
+
+/* A 5px vertical band at the right edge of a tab that stays dark while the tab lifts on hover.
+ * It is the label's fade, a pseudo-element VS Code paints only when tabs are shrinking:
+ *
+ *   .tab.sizing-shrink > .tab-label > .monaco-icon-label-container:after {
+ *     content:""; position:absolute; right:0; width:5px; height:calc(100% - 2px) }
+ *
+ * `workbench.editor.tabSizing` is "fit" as of 2026-08-20, so the pseudo-element is no longer
+ * painted at all and this rule is inert — kept because it costs nothing and goes straight back to
+ * work if tabs ever shrink again. Under "shrink" its gradient was painted
+ * from the tab's background when the tab renders and is not repainted when hover changes that
+ * background, so it keeps the unhovered colour — measured at #373b4c against a hovered tab of
+ * #474a5b. Confirmed from the DOM, which reports it as 5 x 24.
+ *
+ * Hidden rather than recoloured, which is what VS Code's own "modern" style does one rule later:
+ *
+ *   .style-override ... .monaco-icon-label-container:after { display: none }
+ *
+ * That class is not active on this workbench, so the same rule is applied unconditionally. The cost
+ * was that an over-long tab label cut off rather than fading; under "fit" labels are never
+ * truncated, so there is nothing left to fade. */
+.monaco-workbench .part.editor .editor-group-container > .title .tabs-container > .tab > .tab-label > .monaco-icon-label-container::after {
+	display: none !important;
 }
 
 /* Explorer and tab label contrast, corrected per theme. */
@@ -450,4 +529,41 @@
 
 .monaco-workbench .quick-input-widget .quick-input-list .monaco-list-row:has(.quick-input-list-icon.codicon-blank) .quick-input-list-rows > .quick-input-list-row {
 	line-height: 14px !important;
+}
+
+/* Smart References uses this small home as a non-interactive state marker: the reference is in the
+ * file where Cmd+B began. VS Code deliberately hides QuickPick row actions until hover/focus, but
+ * that would hide the state this icon is meant to communicate. Scope the override to its exact
+ * accessible label so every other picker retains the native hover-only action behaviour. */
+.monaco-workbench .quick-input-widget .quick-input-list .quick-input-list-entry-action-bar .action-label[aria-label="Reference in the current file"] {
+	display: block !important;
+	color: var(--vscode-charts-orange) !important;
+}
+
+/* Centre the activity-bar icons.
+ *
+ * With `workbench.activityBar.location: "top"` the icons are not in the title bar — they are hosted
+ * by the sidebar itself, in a `.composite-bar-container` that VS Code gives `flex: 1` and packs to
+ * the start.
+ *
+ * Which element holds that container is not fixed. VS Code's own rules address both
+ * `.pane-composite-part > .title > .composite-bar-container` and
+ * `... > .header-or-footer > .composite-bar-container`, and the JS adds `has-composite-bar` to
+ * whichever one it used, so both are matched here. A first attempt chained `>` all the way down to
+ * `.actions-container` and changed nothing on screen, which means one of those links does not exist
+ * in the live DOM; descendant combinators do not care which.
+ *
+ * Both candidates for the flex line are set, because it depends on whether `.composite-bar` fills
+ * its container: centring the container moves the bar within the header, centring `.actions-container`
+ * moves the icons within the bar. Whichever is the loose one, the other is already centred and the
+ * rule is a no-op. Scoped to the composite bar so no other toolbar is recentred.
+ */
+.monaco-workbench .pane-composite-part > .title > .composite-bar-container,
+.monaco-workbench .pane-composite-part > .header-or-footer > .composite-bar-container {
+	justify-content: center !important;
+}
+
+.monaco-workbench .pane-composite-part > .title > .composite-bar-container .monaco-action-bar .actions-container,
+.monaco-workbench .pane-composite-part > .header-or-footer > .composite-bar-container .monaco-action-bar .actions-container {
+	justify-content: center !important;
 }
