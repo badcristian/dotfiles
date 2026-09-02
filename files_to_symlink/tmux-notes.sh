@@ -14,8 +14,24 @@ notes_root="${TMUX_PROJECT_NOTES_DIR:-$HOME/.local/share/tmux-project-notes}"
 notes_editor="${TMUX_NOTES_EDITOR:-nvim}"
 notes_workspace="${TMUX_NOTES_WORKSPACE:-$HOME/tmux-notes.lua}"
 
+previous_extended_keys=""
+
+restore_popup_state() {
+    tmux set-option -gu @notes_popup_open 2>/dev/null || true
+
+    if [[ -n "$previous_extended_keys" ]]; then
+        tmux set -s extended-keys "$previous_extended_keys" 2>/dev/null || true
+    fi
+}
+
 if [[ "$popup_mode" == true ]]; then
-    trap 'tmux set-option -gu @notes_popup_open 2>/dev/null || true' EXIT
+    trap restore_popup_state EXIT
+    # tmux 3.7c re-encodes a bracketed paste's LF as C-j (^[[106;5u) inside a popup
+    # once the app asks for extended keys, which Neovim does; a pane is unaffected.
+    # Multi-line pastes then arrive as one line of escape codes. Nothing in the
+    # notes workspace reads a modified key, so drop them for the popup's lifetime.
+    previous_extended_keys="$(tmux show -sv extended-keys 2>/dev/null || true)"
+    tmux set -s extended-keys off 2>/dev/null || true
 fi
 
 for required_command in tmux pbcopy "$notes_editor"; do
