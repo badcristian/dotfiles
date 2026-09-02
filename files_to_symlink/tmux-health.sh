@@ -915,7 +915,7 @@ render_report() {
     printf ' %s\n' "$(rule '─' $(( width - 3 )))"
     # No trailing newline: the footer is on the popup's last row, and ending it
     # with one would scroll the report up by a line.
-    printf ' %sr%s recheck   %sq / Esc%s close' "$accent_sgr" "$reset" "$accent_sgr" "$reset"
+    printf ' %sr%s recheck   %sd%s disk usage   %sq / Esc%s close' "$accent_sgr" "$reset" "$accent_sgr" "$reset" "$accent_sgr" "$reset"
 }
 
 overall_text() {
@@ -1006,11 +1006,48 @@ popup() {
                 rm -f "$cache_dir/partial.jsonl"
                 interactive_refresh
                 ;;
+            d|D)
+                show_disk_usage
+                render_report
+                ;;
             q|Q|$'\e')
                 break
                 ;;
         esac
     done
+}
+
+# The Disk row says how full, never of what, and that second question is the one
+# you actually act on. It is a keypress rather than a row because it cannot be
+# afforded on the schedule: `dust -d 1 ~` measured 29.6s against the whole
+# sweep's 3.7s, so putting it in the hourly run would make the monitor the
+# problem it exists to find.
+#
+# ~/Library and ~/dev separately rather than ~ once: those two are where it
+# always is - caches, simulators, node_modules - and one level of each answers it
+# in half the time of a single pass over home.
+show_disk_usage() {
+    printf '\033[2J\033[H'
+    printf ' %sDisk usage%s  %sthis takes a moment; nothing else is waiting on it%s\n\n' \
+        "$bold" "$reset" "$dim" "$reset"
+
+    if ! command -v dust >/dev/null 2>&1; then
+        printf ' dust is not installed: brew install dust\n\n Press any key.\n'
+        read -rsn1
+        return
+    fi
+
+    local target
+    for target in "$HOME/Library" "$HOME/dev" "$HOME/Downloads"; do
+        [[ -d $target ]] || continue
+        # ${target/#$HOME/~} is a zshism: bash leaves it unsubstituted.
+        printf ' %s~/%s%s\n' "$bold" "${target#$HOME/}" "$reset"
+        dust -d 1 -n 8 "$target" 2>/dev/null | sed 's/^/ /'
+        printf '\n'
+    done
+
+    printf ' Press any key to go back.\n'
+    read -rsn1
 }
 
 # ─── status bar ──────────────────────────────────────────────────────────────
