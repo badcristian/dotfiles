@@ -21,7 +21,7 @@ Review those assumptions before using the repository on another machine.
 | Area | Repository source | Purpose |
 | --- | --- | --- |
 | Shell | `files_to_symlink/zshrc`, `files_to_symlink/starship*.toml` | PATH setup, aliases, shell history, adaptive dark/light prompt, fzf, mise, SDKMAN, and language tooling |
-| Terminal | `files_to_symlink/ghostty.config`, `files_to_symlink/ghostty/backgrounds/`, `files_to_symlink/ghostty/shaders/`, `files_to_symlink/ghostty/themes/`, `files_to_symlink/muxy/ghostty.conf`, `files_to_symlink/tmux*.sh`, `files_to_symlink/tmux.conf` | Ghostty and Muxy appearance, configurable dark-mode star background, shaders, and tmux behavior |
+| Terminal | `files_to_symlink/ghostty.config`, `files_to_symlink/ghostty/backgrounds/`, `files_to_symlink/ghostty/shaders/`, `files_to_symlink/ghostty/themes/`, `files_to_symlink/muxy/ghostty.conf`, `files_to_symlink/tmux*.sh`, `files_to_symlink/tmux.conf` | Ghostty and Muxy appearance, ~520 selectable colour themes, configurable dark-mode star background, shaders, and tmux behavior |
 | Project sessions | `files_to_symlink/init_tmux_sessions.sh` | Personal tmux sessions and pane layouts for active projects |
 | Desktop automation | `files_to_symlink/init.lua` | Hammerspoon application shortcuts, IDE selection, and quitting VS Code once its last window closes |
 | Notes | `files_to_symlink/obsidian/snippets/` | Obsidian vault CSS snippets |
@@ -49,6 +49,7 @@ The root installer currently manages:
 | `files_to_symlink/ghostty/backgrounds/*.jpg` | `~/.config/ghostty/backgrounds/*.jpg` |
 | `files_to_symlink/ghostty/shaders/*.glsl` | `~/.config/ghostty/shaders/*.glsl` |
 | `files_to_symlink/ghostty/themes/*` | `~/.config/ghostty/themes/*` |
+| `files_to_symlink/ghostty/stars-overlay.conf` | `~/.config/ghostty/stars-overlay.conf` |
 | `files_to_symlink/muxy/ghostty.conf` | `~/Library/Application Support/Muxy/ghostty.conf` |
 | `files_to_symlink/obsidian/snippets/file-explorer-font.css` | `~/Documents/mac_obisidian_vault/.obsidian/snippets/file-explorer-font.css` |
 | `files_to_symlink/starship.toml` | `~/.config/starship.toml` |
@@ -66,6 +67,7 @@ The root installer currently manages:
 | `files_to_symlink/tmux-status.sh` | `~/tmux-status.sh` |
 | `files_to_symlink/tmux-agent-usage.sh` | `~/tmux-agent-usage.sh` |
 | `files_to_symlink/tmux-background.sh` | `~/tmux-background.sh` |
+| `files_to_symlink/tmux-theme.sh` | `~/tmux-theme.sh` |
 | `files_to_symlink/tmux-ui.sh` | `~/tmux-ui.sh` |
 | `files_to_symlink/tmux-open-url.sh` | `~/tmux-open-url.sh` |
 | `files_to_symlink/tmux-repo.sh` | `~/tmux-repo.sh` |

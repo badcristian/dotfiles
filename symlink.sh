@@ -85,6 +85,7 @@ ln -sf $DOTFILES/tmux-session-ui.sh ~/tmux-session-ui.sh
 ln -sf $DOTFILES/tmux-status.sh ~/tmux-status.sh
 ln -sf $DOTFILES/tmux-agent-usage.sh ~/tmux-agent-usage.sh
 ln -sf $DOTFILES/tmux-background.sh ~/tmux-background.sh
+ln -sf $DOTFILES/tmux-theme.sh ~/tmux-theme.sh
 ln -sf $DOTFILES/tmux-ui.sh ~/tmux-ui.sh
 ln -sf $DOTFILES/tmux-open-url.sh ~/tmux-open-url.sh
 ln -sf $DOTFILES/tmux-repo.sh ~/tmux-repo.sh
@@ -98,14 +99,27 @@ ln -sf $DOTFILES/ghostty/backgrounds/stars-black.jpg ~/.config/ghostty/backgroun
 ln -sf $DOTFILES/ghostty/backgrounds/stars-blue.jpg ~/.config/ghostty/backgrounds/stars-blue.jpg
 ln -sf $DOTFILES/ghostty/backgrounds/stars-cyan.jpg ~/.config/ghostty/backgrounds/stars-cyan.jpg
 ln -sf $DOTFILES/ghostty/backgrounds/stars-purple.jpg ~/.config/ghostty/backgrounds/stars-purple.jpg
-ln -sf "$DOTFILES/ghostty/themes/Catppuccin Macchiato Stars" ~/.config/ghostty/themes/'Catppuccin Macchiato Stars'
+ln -sf $DOTFILES/ghostty/stars-overlay.conf ~/.config/ghostty/stars-overlay.conf
+
+# The colour schemes Ghostty does not already bundle, pulled from
+# terminalcolors.com by ghostty/fetch-terminalcolors-themes.sh. Linked one by one
+# because Ghostty only looks one level deep in ~/.config/ghostty/themes.
+for ghostty_theme in "$DOTFILES"ghostty/themes/*; do
+    [ -f "$ghostty_theme" ] || continue
+    ln -sf "$ghostty_theme" ~/.config/ghostty/themes/"$(basename "$ghostty_theme")"
+done
+
+# Superseded by the generated `starfield-active`, which composes the stars onto
+# whichever theme is selected instead of onto Catppuccin alone.
+rm -f ~/.config/ghostty/themes/'Catppuccin Macchiato Stars' ~/.config/ghostty/background.ghostty
 ln -sf $DOTFILES/starship.toml ~/.config/starship.toml
 ln -sf $DOTFILES/starship-light.toml ~/.config/starship-light.toml
 ln -sf "$DOTFILES/muxy/ghostty.conf" "$MUXY_CONFIG_DIR/ghostty.conf"
 ln -sf "$DOTFILES/obsidian/snippets/file-explorer-font.css" "$OBSIDIAN_SNIPPETS_DIR/file-explorer-font.css"
 
-# Preserve the user's moving-background choices while ensuring the generated
-# Ghostty override and active shader exist on a new installation.
+# Preserve the user's theme and moving-background choices while ensuring the
+# generated Ghostty override and active shader exist on a new installation.
+# `ensure` chains into tmux-theme.sh, which writes theme.ghostty.
 bash "$DOTFILES/tmux-background.sh" ensure
 
 # VS Code settings, keybindings, and local extensions
