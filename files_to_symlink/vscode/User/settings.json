@@ -1,677 +1,890 @@
 {
-	"files.autoSave": "afterDelay",
-	"workbench.editorAssociations": {
-		"*.md": "vscode.markdown.preview.editor"
-	},
-	"workbench.colorTheme": "Monokai Pro",
-	"chat.commandCenter.enabled": false,
-	"powershell.promptToUpdatePowerShell": false,
-	"explorer.confirmPasteNative": false,
-	"editor.largeFileOptimizations": false,
-	"workbench.editor.tabSizing": "shrink",
-	"workbench.editor.wrapTabs": false,
-	"workbench.editor.tabHeight": "compact",
-	// "window.density.editorTabHeight": "compact",
-	"workbench.editor.tabActionCloseVisibility": false,
-	"workbench.editor.tabActionUnpinVisibility": true,
-	"workbench.editor.preventPinnedEditorClose": "never",
-	"workbench.editor.decorations.badges": false,
-	// Workbench CSS and JS, injected by be5invis.vscode-custom-css from the symlinked User folder.
-	// Editing a listed file requires "Reload Custom CSS and JS" and a restart; the loader inlines
-	// their contents into workbench.html rather than linking to them.
-	"vscode_custom_css.imports": [
-		"file:///Users/mac/Library/Application%20Support/Code/User/custom-workbench.css",
-		"file:///Users/mac/Library/Application%20Support/Code/User/custom-preserve-editor-horizontal-scroll.js",
-		"file:///Users/mac/Library/Application%20Support/Code/User/custom-anchor-quick-input-to-command-center.js",
-	],
-	"editor.fontFamily": "'JetBrains Mono', monospace",
-	"terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Mono', monospace",
-	"editor.fontSize": 13.2,
-	"editor.fontWeight": 550,
-	"editor.fontLigatures": true,
-	"editor.lineHeight": 1.4,
-	"editor.hover.delay": 1200,
-	"editor.definitionLinkOpensInPeek": false,
-	"editor.gotoLocation.multipleDefinitions": "goto",
-	"editor.gotoLocation.multipleTypeDefinitions": "goto",
-	"editor.gotoLocation.multipleDeclarations": "goto",
-	"editor.gotoLocation.multipleImplementations": "goto",
-	"editor.gotoLocation.multipleReferences": "goto",
-	"editor.lineNumbersMinChars": 3,
-	"editor.lineDecorationsWidth": 4,
-	"editor.stickyScroll.enabled": false,
-	"editor.scrollBeyondLastLine": false,
-	"editor.padding.bottom": 64,
-	"markdown.preview.scrollPreviewWithEditor": false,
-	"markdown.preview.scrollEditorWithPreview": false,
-	"workbench.tree.enableStickyScroll": false,
-	"workbench.list.horizontalScrolling": true,
-	"explorer.compactFolders": true,
-	"workbench.productIconTheme": "icons-kamekazi-dark",
-	"bookmarks.showCommandsInContextMenu": false,
-	"bookmarks.showNoMoreBookmarksWarning": false,
-	"intelephense.environment.includePaths": [],
-	"intelephense.environment.phpVersion": "8.4.0",
-	// Licence key intentionally NOT stored here (this file is version-controlled).
-	// Activate Premium via Command Palette → "Intelephense: Enter licence key",
-	// which persists it to the extension's global storage, outside the repo.
-	"php.suggest.basic": false,
-	// APCu is not one of Intelephense's default stubs, so every apcu_* call read as an undefined
-	// function — P1010 on `apcu_entry` in ribeit-api, which requires ext-apcu and runs on a PHP
-	// that has it loaded. The stub ships with Intelephense; it just is not switched on.
-	//
-	// This setting REPLACES the default list rather than extending it, so the 69 defaults have to
-	// be reproduced here or they are lost. They were copied out of Intelephense 1.18.5 itself, not
-	// typed. The cost of that is a pinned list: stubs added to a later Intelephense default — as
-	// `random` and `uri` were — will not appear until this is resynced. After an upgrade, diff it:
-	//
-	//   node -e 'const p=require(process.argv[1]+"/package.json");
-	//     const d=p.contributes.configuration.properties["intelephense.stubs"].default;
-	//     console.log(d.join(" "))' ~/.vscode/extensions/bmewburn.vscode-intelephense-client-<ver>
-	//
-	// `imagick` is the other stub these projects declare and do not get; add it here if Imagick is
-	// ever referenced from first-party code rather than only from inside a vendor package.
-	"intelephense.stubs": [
-		"apache", "bcmath", "bz2", "calendar", "com_dotnet", "Core", "ctype", "curl", "date",
-		"dba", "dom", "enchant", "exif", "FFI", "fileinfo", "filter", "fpm", "ftp", "gd", "gettext",
-		"gmp", "hash", "iconv", "imap", "intl", "json", "ldap", "libxml", "mbstring", "meta",
-		"mysqli", "oci8", "odbc", "openssl", "pcntl", "pcre", "PDO", "pgsql", "Phar", "posix",
-		"pspell", "random", "readline", "Reflection", "session", "shmop", "SimpleXML", "snmp",
-		"soap", "sockets", "sodium", "SPL", "sqlite3", "standard", "superglobals", "sysvmsg",
-		"sysvsem", "sysvshm", "tidy", "tokenizer", "uri", "xml", "xmlreader", "xmlrpc", "xmlwriter",
-		"xsl", "Zend OPcache", "zip", "zlib",
-		// Added beyond the defaults.
-		"apcu",
-	],
-	// "intelephense.diagnostics.undefinedMethods": false,
-	"files.exclude": {
-		// "**/vendor": true
-	},
-	"search.exclude": {
-		"**/dist": true,
-		"**/.output": true,
-		"**/target/**": true,
-		"**/vendor/**": true,
-		"**/*.map": true,
-		"**/package-lock.json": true,
-		"**/_ide_helper.php": true,
-	},
-	"search.maxResults": 200,
-	// Filesystem watching is its own consumer, separate from search and from
-	// Intelephense indexing. VS Code's defaults only cover node_modules and
-	// .git/objects, which leaves vendor/ and the generated storage trees fully
-	// watched: 178,810 unguarded files in spro-marketing and 25,157 in
-	// ribeit-api, measured with find. Excluding them here does not affect
-	// Intelephense, which still indexes vendor/ for completion; vendor only
-	// changes on composer install. storage/app stays watched because real
-	// source lives there, such as storage/app/scripts.
-	"files.watcherExclude": {
-		"**/vendor/**": true,
-		"**/node_modules/**": true,
-		"**/.git/**": true,
-		"**/storage/clockwork/**": true,
-		"**/storage/debugbar/**": true,
-		"**/storage/framework/**": true,
-		"**/storage/logs/**": true,
-		"**/bootstrap/cache/**": true,
-		"**/dist/**": true,
-		"**/.output/**": true,
-		"**/target/**": true,
-	},
-	"window.restoreWindows": "all",
-	"intelephense.files.exclude": [
-		"**/.git/**",
-		"**/.svn/**",
-		"**/.hg/**",
-		"**/CVS/**",
-		"**/.DS_Store/**",
-		"**/node_modules/**",
-		"**/bower_components/**",
-		"**/dist/**",
-		"**/vendor/**/{Tests,tests}/**",
-		"**/vendor/**/vendor/**",
-		// A Nova component is a Composer package living inside the app, and each one
-		// installs its OWN vendor tree: eleven of them in spro-marketing, 7,300–8,700 PHP
-		// files apiece, 78,522 in total against the 2–32 files of first-party code they
-		// exist for. Every one of those trees is another copy of Laravel, Nova and Symfony
-		// that the root vendor/ already provides, so indexing them buys nothing and costs
-		// most of the index: they were 57% of the 137,767 files Intelephense was loading,
-		// and the reason its language server sat at 1.8 GB.
-		// `**/vendor/**/vendor/**` above does not reach them — the outer directory is
-		// `nova-components`, not `vendor`.
-		// Duplicate symbols are the second cost: eleven Application classes make Cmd+B
-		// ambiguous where one would be exact.
-		"**/nova-components/*/vendor/**",
-		// google/apiclient-services ships one generated class tree per Google API: 327 of them,
-		// 35,734 PHP files, against the five services this codebase actually names. Excluding the
-		// package wholesale would break `Google\Service\SearchConsole` and friends, so the used
-		// five are held back by name and the other 322 — 35,355 files — go.
-		// The extglob negation is not a guess: Intelephense bundles micromatch, and this pattern
-		// was checked against it directly. If a service is added to the code, add it here too, or
-		// its classes will read as undefined.
-		"**/vendor/google/apiclient-services/src/!(BusinessProfilePerformance|MyBusinessAccountManagement|MyBusinessBusinessInformation|SearchConsole|YouTube)/**",
-		"**/vendor/_laravel_idea/**",
-		"**/_laravel_ide/**",
-		// NOTE: barryvdh's _ide_helper.php (facade/macro stubs) is intentionally NOT excluded —
-		// Intelephense must index it to resolve facade & concrete-adapter methods like
-		// Storage::disk('local')->buildTemporaryUrlsUsing(). It stays in references.exclude below
-		// so it never clutters Find References. Only the MODEL + phpstorm.meta stubs stay excluded:
-		// those duplicate Eloquent classes and reintroduce the P1119 "too many arguments" bug.
-		"**/_ide_helper_models.php",
-		"**/_ide_helper_models_*.php",
-		"**/.phpstorm.meta.php",
-		// Laravel runtime/generated artifacts — never real source. Excluding them stops Intelephense
-		// reporting P1008 "Undefined variable $__env/$slot" on compiled Blade views, etc.
-		"**/storage/framework/**",
-		"**/bootstrap/cache/**",
-	],
-	"workbench.settings.editor": "json",
-	"intelephense.codeLens.implementations.enable": true,
-	"intelephense.codeLens.overrides.enable": true,
-	"intelephense.codeLens.parent.enable": false,
-	"intelephense.codeLens.references.enable": false,
-	"intelephense.codeLens.usages.enable": true,
-	"intelephense.inlayHint.parameterNames": true,
-	"intelephense.inlayHint.parameterTypes": true,
-	"intelephense.inlayHint.returnTypes": true,
-	"smartReferences.referenceView": "quickPick",
-	"smartReferences.webviewPlacement": "active",
-	"references.preferredLocation": "view",
-	"intelephense.completion.fullyQualifyGlobalConstantsAndFunctions": true,
-	"intelephense.files.maxSize": 10000000,
-	"intelephense.references.exclude": [
-		"**/vendor/_laravel_idea/**",
-		"**/_laravel_ide/**",
-		"**/_ide_helper.php",
-		"**/_ide_helper_manual.php",
-		"**/_ide_helper_models.php",
-		"**/_ide_helper_models_*.php",
-	],
-	"intelephense.rename.exclude": [],
-	"files.associations": {
-		"*.css": "tailwindcss",
-		"*.module": "php",
-	},
-	"editor.quickSuggestions": {
-		"strings": true,
-	},
-	// PhpStorm live templates: `pubf` then Tab. Both keys are needed, because Tab means two
-	// different things depending on whether the suggest widget happens to be open.
-	//
-	// tabCompletion "onlySnippets" binds Tab to insertSnippet when the word before the cursor is a
-	// snippet prefix, which is the widget-closed case. When the widget IS open — the common case,
-	// since Intelephense proposes on every keystroke — VS Code's acceptSelectedSuggestion outranks
-	// it and Tab takes whatever is highlighted instead, so snippetSuggestions "top" is what makes
-	// that the snippet. "onlySnippets" rather than "on" so Tab never completes a word from the
-	// buffer; that is not a PhpStorm behaviour and it makes indenting unpredictable.
-	"editor.tabCompletion": "onlySnippets",
-	"editor.snippetSuggestions": "top",
-	"explorer.autoReveal": true,
-	"workbench.panel.opensMaximized": "never",
-	"security.workspace.trust.untrustedFiles": "open",
-	"js/ts.suggest.completeFunctionCalls": true,
-	"[javascript]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-		"prettier.tabWidth": 2,
-		"prettier.useTabs": false,
-	},
-	"[typescript]": {
-		"prettier.tabWidth": 2,
-		"prettier.useTabs": false,
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-	},
-	"editor.wordWrap": "wordWrapColumn",
-	"editor.wordWrapColumn": 450,
-	"prettier.printWidth": 500,
-	"diffEditor.wordWrap": "on",
-	"prettier.bracketSpacing": false,
-	"workbench.startupEditor": "none",
-	"explorer.confirmDelete": false,
-	"explorer.confirmDragAndDrop": false,
-	"yaml.schemas": {
-		"file:///Users/mac/.vscode/extensions/atlassian.atlascode-3.8.6/resources/schemas/pipelines-schema.json": "bitbucket-pipelines.yml",
-	},
-	"redhat.telemetry.enabled": true,
-	"[html]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-	},
-	"[vue]": {
-		"editor.defaultFormatter": "Vue.volar",
-	},
-	"workbench.editor.enablePreview": true,
-	"workbench.editor.enablePreviewFromQuickOpen": true,
-	"workbench.editor.enablePreviewFromCodeNavigation": true,
-	"editor.minimap.enabled": false,
-	"bookmarks.experimental.enableNewStickyEngine": false,
-	"bookmarks.navigateThroughAllFiles": false,
-	"workbench.preferredLightColorTheme": "GitHub Light",
-	"remote.SSH.useExecServer": false,
-	"git.openRepositoryInParentFolders": "never",
-	"workbench.preferredDarkColorTheme": "Catppuccin Noctis Frappé",
-	"[lua]": {
-		"editor.defaultFormatter": "Koihik.vscode-lua-format",
-	},
-	"window.autoDetectColorScheme": true,
-	"window.zoomLevel": 0,
-	// "editor.rulers": [
-	// 	140
-	// ],
-	"workbench.colorCustomizations": {
-		// "tab.activeBackground": "#2b2b2b",
-		"tab.activeBorderTop": "#d09010",
-		"tab.hoverBorder": "#00000000",
-		"tab.unfocusedHoverBorder": "#00000000",
-		// Error Lens: no line background tint (squiggles only)
-		"errorLens.errorBackground": "#00000000",
-		"errorLens.warningBackground": "#00000000",
-		"errorLens.infoBackground": "#00000000",
-		"errorLens.hintBackground": "#00000000",
-		"gitDecoration.addedResourceForeground": "#d97835",
-		"gitDecoration.modifiedResourceForeground": "#5aa7ff",
-		"gitDecoration.untrackedResourceForeground": "#d97835",
-		"gitDecoration.stageModifiedResourceForeground": "#5aa7ff",
-		"[Monokai Pro]": {
-			"foreground": "#f7f7f7",
-			"descriptionForeground": "#f7f7f7",
-			// Empty editor groups should continue the Explorer surface instead of falling back to the
-			// theme's darker product-watermark canvas.
-			"editorGroup.emptyBackground": "#221f22",
-			"sideBar.foreground": "#f7f7f7",
-			"sideBarTitle.foreground": "#f7f7f7",
-			"sideBarSectionHeader.foreground": "#f7f7f7",
-			"list.foreground": "#f7f7f7",
-			"list.activeSelectionForeground": "#f7f7f7",
-			"list.inactiveSelectionForeground": "#f7f7f7",
-			"list.inactiveSelectionBackground": "#46494d",
-			"list.activeSelectionBackground": "#55585d",
-			"list.focusBackground": "#55585d",
-			"list.focusForeground": "#f7f7f7",
-			"list.hoverBackground": "#3a3d40",
-			"list.hoverForeground": "#b8b7b7",
-			// The picker sits on #403e41, against which the theme's own focus colour is white at 5%
-			// alpha and its focus outline is undefined, so an arrowed-to row showed nothing at all.
-			// #6f6c71 is ~2.1:1 against the picker and still carries #f7f7f7 text at ~4.9:1.
-			"quickInputList.focusBackground": "#6f6c71",
-			"quickInputList.focusForeground": "#f7f7f7",
-			"tab.activeForeground": "#ffffff",
-			"tab.inactiveForeground": "#b8b8b8",
-			"tab.unfocusedInactiveForeground": "#9a9a9a",
-			// Monokai Pro paints every tab background #2d2a2e — bar, active, inactive and hover all
-			// identical to the editor — so the active tab had no fill and hover was the only thing
-			// that ever painted. The ladder below is measured against the bar: hover 1.10:1,
-			// unfocused active 1.14:1, active 1.20:1. Inactive stays at the bar colour so only the
-			// active tab carries a shape.
-			//
-			// `tab.selectedBackground` has to be set alongside `tab.activeBackground`: the active tab
-			// is also the selected one, and that key wins. It does NOT inherit from
-			// `tab.activeBackground` — VS Code defaults it to `list.inactiveSelectionBackground`,
-			// which is set below, so leaving it out let a list colour paint the tab.
-			"tab.activeBackground": "#39373a",
-			"tab.selectedBackground": "#39373a",
-			"tab.selectedForeground": "#ffffff",
-			"tab.inactiveBackground": "#2d2a2e",
-			"tab.unfocusedActiveBackground": "#363337",
-			"tab.unfocusedInactiveBackground": "#2d2a2e",
-			"tab.hoverBackground": "#333134",
-			"tab.unfocusedHoverBackground": "#302e31",
-			// Rounded tabs with a gap between them need no vertical rule as well.
-			"tab.border": "#00000000",
-			"editor.lineHighlightBackground": "#ffffff12",
-			"editor.lineHighlightBorder": "#00000000",
-		},
-		"[Catppuccin Noctis Frappé]": {
-			"foreground": "#f7f7f7",
-			"descriptionForeground": "#f7f7f7",
-			"editorGroup.emptyBackground": "#292c3c",
-			"sideBar.foreground": "#f7f7f7",
-			"sideBarTitle.foreground": "#f7f7f7",
-			"sideBarSectionHeader.foreground": "#f7f7f7",
-			"list.foreground": "#f7f7f7",
-			"list.activeSelectionForeground": "#f7f7f7",
-			"list.inactiveSelectionForeground": "#f7f7f7",
-			"list.inactiveSelectionBackground": "#46494d",
-			"list.activeSelectionBackground": "#55585d",
-			"list.focusBackground": "#55585d",
-			"list.focusForeground": "#f7f7f7",
-			"list.hoverBackground": "#3a3d40",
-			"list.hoverForeground": "#b8b7b7",
-			// Same fix as Monokai Pro, in this theme's palette: the picker sits on #303446, the
-			// theme's focus fill is 12% alpha and its focus outline is literally #00000000. Surface2
-			// (#626880) is ~2.2:1 against the picker and carries #f7f7f7 text at ~5.1:1.
-			"quickInputList.focusBackground": "#626880",
-			"quickInputList.focusForeground": "#f7f7f7",
-			"tab.activeForeground": "#ffffff",
-			"tab.inactiveForeground": "#b8b8b8",
-			"tab.unfocusedInactiveForeground": "#9a9a9a",
-			// Same defect as Monokai Pro, same fix and the same measured ladder in this palette:
-			// every tab was #303446, the editor colour. See the Monokai block above for why
-			// `tab.selectedBackground` is set too.
-			"tab.activeBackground": "#3c4053",
-			"tab.selectedBackground": "#3c4053",
-			"tab.selectedForeground": "#ffffff",
-			"tab.inactiveBackground": "#303446",
-			"tab.unfocusedActiveBackground": "#393d50",
-			"tab.unfocusedInactiveBackground": "#303446",
-			"tab.hoverBackground": "#363a4d",
-			"tab.unfocusedHoverBackground": "#333749",
-			"tab.border": "#00000000",
-			"editor.lineHighlightBackground": "#ffffff12",
-			"editor.lineHighlightBorder": "#00000000",
-		},
-		"[GitHub Light]": {
-			"foreground": "#000000",
-			"descriptionForeground": "#000000",
-			"editorGroup.emptyBackground": "#f6f8fa",
-			"sideBar.foreground": "#000000",
-			"sideBarTitle.foreground": "#000000",
-			"sideBarSectionHeader.foreground": "#000000",
-			"list.foreground": "#000000",
-			"editorGroupHeader.tabsBackground": "#ffffff",
-			"editorGroupHeader.tabsBorder": "#d0d7de",
-			"tab.activeBackground": "#dbeafe",
-			"tab.activeForeground": "#1f2328",
-			"tab.activeBorder": "#8bb8ff",
-			"tab.activeBorderTop": "#8bb8ff",
-			"tab.unfocusedActiveBackground": "#eaf3ff",
-			"tab.unfocusedActiveForeground": "#1f2328",
-			"tab.inactiveBackground": "#ffffff",
-			"tab.inactiveForeground": "#57606a",
-			"tab.hoverBackground": "#dbeafe",
-			"tab.unfocusedHoverBackground": "#eaf3ff",
-			"tab.hoverForeground": "#1f2328",
-			"tab.unfocusedHoverForeground": "#1f2328",
-			"tab.border": "#d0d7de",
-			"tab.unfocusedInactiveForeground": "#6e7781",
-			"toolbar.hoverBackground": "#00000000",
-			"toolbar.activeBackground": "#00000000",
-			"toolbar.hoverOutline": "#00000000",
-			"list.activeSelectionForeground": "#000000",
-			"list.inactiveSelectionForeground": "#000000",
-			"list.focusForeground": "#000000",
-			"list.hoverBackground": "#dfe7f0",
-			"list.hoverForeground": "#000000",
-			"list.activeSelectionIconForeground": "#000000",
-			"list.inactiveSelectionIconForeground": "#000000",
-			"list.activeSelectionBackground": "#dbeafe",
-			"list.inactiveSelectionBackground": "#dbeafe",
-			"list.focusBackground": "#dbeafe",
-			"list.focusOutline": "#8bb8ff",
-			"list.deemphasizedForeground": "#000000",
-			"quickInput.foreground": "#000000",
-			"quickInputList.focusBackground": "#dbeafe",
-			"quickInputList.focusForeground": "#000000",
-			"quickInputList.focusIconForeground": "#000000",
-			"quickInputList.focusHighlightForeground": "#0969da",
-			"pickerGroup.foreground": "#57606a",
-			// Darker than the dark themes' #d97835, which measures 2.95:1 on this sidebar and was
-			// unreadable the moment these colours reached the filename instead of only the badge.
-			// #9a4f00 is the same orange at 5.66:1. Every other colour here already passes.
-			"gitDecoration.addedResourceForeground": "#9a4f00",
-			"gitDecoration.modifiedResourceForeground": "#0042c7",
-			"gitDecoration.deletedResourceForeground": "#616161",
-			"gitDecoration.renamedResourceForeground": "#007C7C",
-			"gitDecoration.untrackedResourceForeground": "#9a4f00",
-			"gitDecoration.ignoredResourceForeground": "#727238",
-			"gitDecoration.stageModifiedResourceForeground": "#0042c7",
-			"gitDecoration.stageDeletedResourceForeground": "#616161",
-			"gitDecoration.conflictingResourceForeground": "#FF0000",
-			"gitDecoration.submoduleResourceForeground": "#7503DC",
-			"editor.lineHighlightBackground": "#00000008",
-			"editor.lineHighlightBorder": "#00000000",
-		},
-		"[GitHub Light Default]": {
-			"foreground": "#000000",
-			"descriptionForeground": "#000000",
-			"editorGroup.emptyBackground": "#f6f8fa",
-			"sideBar.foreground": "#000000",
-			"sideBarTitle.foreground": "#000000",
-			"sideBarSectionHeader.foreground": "#000000",
-			"list.foreground": "#000000",
-			"editorGroupHeader.tabsBackground": "#ffffff",
-			"editorGroupHeader.tabsBorder": "#d0d7de",
-			"tab.activeBackground": "#dbeafe",
-			"tab.activeForeground": "#1f2328",
-			"tab.activeBorder": "#8bb8ff",
-			"tab.activeBorderTop": "#8bb8ff",
-			"tab.unfocusedActiveBackground": "#eaf3ff",
-			"tab.unfocusedActiveForeground": "#1f2328",
-			"tab.inactiveBackground": "#ffffff",
-			"tab.inactiveForeground": "#57606a",
-			"tab.hoverBackground": "#dbeafe",
-			"tab.unfocusedHoverBackground": "#eaf3ff",
-			"tab.hoverForeground": "#1f2328",
-			"tab.unfocusedHoverForeground": "#1f2328",
-			"tab.border": "#d0d7de",
-			"tab.unfocusedInactiveForeground": "#6e7781",
-			"toolbar.hoverBackground": "#00000000",
-			"toolbar.activeBackground": "#00000000",
-			"toolbar.hoverOutline": "#00000000",
-			"list.activeSelectionForeground": "#000000",
-			"list.inactiveSelectionForeground": "#000000",
-			"list.focusForeground": "#000000",
-			"list.hoverBackground": "#dfe7f0",
-			"list.hoverForeground": "#000000",
-			"list.activeSelectionIconForeground": "#000000",
-			"list.inactiveSelectionIconForeground": "#000000",
-			"list.activeSelectionBackground": "#dbeafe",
-			"list.inactiveSelectionBackground": "#dbeafe",
-			"list.focusBackground": "#dbeafe",
-			"list.focusOutline": "#8bb8ff",
-			"list.deemphasizedForeground": "#000000",
-			"quickInput.foreground": "#000000",
-			"quickInputList.focusBackground": "#dbeafe",
-			"quickInputList.focusForeground": "#000000",
-			"quickInputList.focusIconForeground": "#000000",
-			"quickInputList.focusHighlightForeground": "#0969da",
-			"pickerGroup.foreground": "#57606a",
-			// Darker than the dark themes' #d97835, which measures 2.95:1 on this sidebar and was
-			// unreadable the moment these colours reached the filename instead of only the badge.
-			// #9a4f00 is the same orange at 5.66:1. Every other colour here already passes.
-			"gitDecoration.addedResourceForeground": "#9a4f00",
-			"gitDecoration.modifiedResourceForeground": "#0042c7",
-			"gitDecoration.deletedResourceForeground": "#616161",
-			"gitDecoration.renamedResourceForeground": "#007C7C",
-			"gitDecoration.untrackedResourceForeground": "#9a4f00",
-			"gitDecoration.ignoredResourceForeground": "#727238",
-			"gitDecoration.stageModifiedResourceForeground": "#0042c7",
-			"gitDecoration.stageDeletedResourceForeground": "#616161",
-			"gitDecoration.conflictingResourceForeground": "#FF0000",
-			"gitDecoration.submoduleResourceForeground": "#7503DC",
-		},
-	},
-	"explorer.decorations.colors": true,
-	"problems.decorations.enabled": false,
-	"[jsonc]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-	},
-	"folder-color.useGlobalSettings": false,
-	"workbench.iconTheme": "phpstorm-icon",
-	// "[php]": {
-	// 	// "editor.defaultFormatter": "bmewburn.vscode-intelephense-client",
-	// 	"editor.defaultFormatter": "open-southeners.laravel-pint",
-	// },
-	// global settings.json
-	"[php]": {
-		"editor.defaultFormatter": "open-southeners.laravel-pint",
-		"editor.inlayHints.enabled": "off",
-	},
-	"[hack]": {
-		"editor.inlayHints.enabled": "off",
-	},
-	// // per-project .vscode/settings.json in Laravel repos
-	// "[php]": {
-	// 	"editor.defaultFormatter": "open-southeners.laravel-pint",
-	// },
-	// "Laravel.pint.runOnSave": true,
-	"laravel-pint.enable": true,
-	// "editor.formatOnSave": true,
-	"editor.tokenColorCustomizations": {
-		"textMateRules": [
-			{
-				"scope": [
-					"comment",
-					"punctuation.definition.comment",
-					"markup.italic",
-					"keyword",
-					"keyword.control",
-					"keyword.operator",
-					"storage.type",
-					"storage.modifier",
-					"variable.language",
-					"variable.parameter",
-					"entity.other.attribute-name",
-					"entity.name.tag",
-					"support.type.primitive",
-				],
-				"settings": {
-					"fontStyle": "",
-				},
-			},
-			{
-				// The theme's italic on PHPDoc keywords survives the rule above, because
-				// it is written as the descendant selector
-				// `comment.block.documentation.phpdoc.php keyword` and TextMate resolves
-				// by selector specificity, not by who was applied last. A single-segment
-				// `keyword` override can never win against it. Repeating the theme's
-				// selector verbatim ties on specificity, and the customization is applied
-				// second, so it takes the tie.
-				"scope": [
-					"comment.block.documentation.phpdoc.php keyword",
-				],
-				"settings": {
-					"fontStyle": "",
-				},
-			},
-		],
-		// Docblocks were a flat wall of #737994 on #303446 — 2.9:1, below every
-		// legibility floor, with every reference, tag and code span the same grey.
-		// Prose is lifted to Subtext0 (5.6:1) and the three things that name code get
-		// their own colour, so a docblock can be skimmed for structure:
-		//   prose      #a5adce   5.6:1
-		//   @tag       #ca9ee6   theme mauve, unchanged
-		//   reference  #8caaee   5.4:1   {@see Foo}, {@see Foo::bar()}
-		//   code span  #a6d189   7.1:1   `$e->response`
-		// The reference and code-span scopes come from the local PHPDoc injection in
-		// `local.smart-references`; see the change-history entry for why they exist.
-		"[Catppuccin Noctis Frappé]": {
-			"comments": "#a5adce",
-			"textMateRules": [
-				{
-					"scope": [
-						"markup.inline.raw.phpdoc.php",
-					],
-					"settings": {
-						"foreground": "#a6d189",
-					},
-				},
-				{
-					"scope": [
-						"meta.tag.inline.phpdoc.php entity.name.type.class.php",
-						"meta.tag.inline.phpdoc.php entity.name.function.php",
-						"meta.tag.inline.phpdoc.php variable.other.property.php",
-					],
-					"settings": {
-						"foreground": "#8caaee",
-					},
-				},
-				{
-					// Braces, backticks and `::` are scaffolding: readable, but kept
-					// below the words they wrap so they do not compete with them.
-					"scope": [
-						"punctuation.definition.raw.phpdoc.php",
-						"punctuation.definition.tag.begin.phpdoc.php",
-						"punctuation.definition.tag.end.phpdoc.php",
-						"punctuation.definition.arguments.phpdoc.php",
-						"meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
-					],
-					"settings": {
-						"foreground": "#838ba7",
-					},
-				},
-			],
-		},
-		// Same three roles in the light theme, which is already legible at 4.9:1 and
-		// therefore only needs the structure, not the contrast lift.
-		"[GitHub Light]": {
-			"textMateRules": [
-				{
-					"scope": [
-						"markup.inline.raw.phpdoc.php",
-					],
-					"settings": {
-						"foreground": "#0a7b45",
-					},
-				},
-				{
-					"scope": [
-						"meta.tag.inline.phpdoc.php entity.name.type.class.php",
-						"meta.tag.inline.phpdoc.php entity.name.function.php",
-						"meta.tag.inline.phpdoc.php variable.other.property.php",
-					],
-					"settings": {
-						"foreground": "#0550ae",
-					},
-				},
-				{
-					"scope": [
-						"punctuation.definition.raw.phpdoc.php",
-						"punctuation.definition.tag.begin.phpdoc.php",
-						"punctuation.definition.tag.end.phpdoc.php",
-						"punctuation.definition.arguments.phpdoc.php",
-						"meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
-					],
-					"settings": {
-						"foreground": "#8c959f",
-					},
-				},
-			],
-		},
-	},
-	"bookmarks.wrapNavigation": false,
-	"bookmarks.sideBar.expanded": true,
-	"bookmarks.sideBar.hideWelcome": true,
-	"workbench.activityBar.compact": true,
-	// Turn on the cap
-	"workbench.editor.limit.enabled": true,
-	// Max number of open tabs
-	"workbench.editor.limit.value": 8,
-	// Apply the limit per editor group (split pane) instead of globally
-	"workbench.editor.limit.perEditorGroup": true,
-	// Don't auto-close tabs with unsaved changes
-	"workbench.editor.limit.excludeDirty": true,
-	// Error Lens: keep native squiggles only — no inline message text
-	"errorLens.messageEnabled": false,
-	"errorLens.gutterIconsEnabled": false,
-	"git.blame.editorDecoration.enabled": true,
-	"git.blame.statusBarItem.enabled": true,
-	"yaml.disableSchemaDetection": [
-		"**/docker-compose.yml",
-		"**/docker-compose.yaml",
-		"**/docker-compose.*.yml",
-		"**/docker-compose.*.yaml",
-		"**/compose.yml",
-		"**/compose.yaml",
-		"**/compose.*.yml",
-		"**/compose.*.yaml",
-		"**/.github/workflows/*.yml",
-		"**/.github/workflows/*.yaml",
-		"**/.gitea/workflows/*.yml",
-		"**/.gitea/workflows/*.yaml",
-		"**/.forgejo/workflows/*.yml",
-		"**/.forgejo/workflows/*.yaml",
-	],
-	"[json]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-	},
-	"js/ts.updateImportsOnFileMove.enabled": "always",
-	// Ceiling for the TS server heap, not a reservation. The default is 3072, and V8
-	// only collects seriously as it nears the ceiling -- so the default lets a Nuxt
-	// project idle around a gigabyte. 2048 makes it collect sooner while leaving
-	// roughly 2x headroom over what those projects actually use. If the server starts
-	// dying with "terminated unexpectedly", it needs more than this, not less.
-	"typescript.tsserver.maxTsServerMemory": 2048,
-	"workbench.statusBar.visible": false,
-	"extensions.supportAgentsWindow": {
-		"monokai.theme-monokai-pro-vscode": true
-	},
+  "files.autoSave": "afterDelay",
+  "workbench.editorAssociations": {
+    "*.md": "vscode.markdown.preview.editor"
+  },
+  "workbench.colorTheme": "Monokai Pro",
+  "chat.commandCenter.enabled": false,
+  "powershell.promptToUpdatePowerShell": false,
+  "explorer.confirmPasteNative": false,
+  "editor.largeFileOptimizations": false,
+  // "fit" keeps every tab wide enough for its whole label and lets the bar scroll horizontally
+  // once they overflow, instead of "shrink", which compresses them all until the filenames are
+  // unreadable. `wrapTabs` stays false: wrapping is the alternative to scrolling, not a companion
+  // to it — with it on, an overflowing bar grows onto a second row and the scroll never happens.
+  "workbench.editor.tabSizing": "fit",
+  "workbench.editor.wrapTabs": false,
+  "workbench.editor.tabHeight": "compact",
+  // Wheel and trackpad still scroll the strip; only the slider under it goes. Also takes the
+  // breadcrumbs' scrollbar, which the setting covers in the same title area.
+  "workbench.editor.titleScrollbarVisibility": "hidden",
+  // "window.density.editorTabHeight": "compact",
+  "workbench.editor.tabActionCloseVisibility": false,
+  "workbench.editor.tabActionUnpinVisibility": true,
+  "workbench.editor.preventPinnedEditorClose": "never",
+  "workbench.editor.decorations.badges": false,
+  // Workbench CSS and JS, injected by be5invis.vscode-custom-css from the symlinked User folder.
+  // Editing a listed file requires "Reload Custom CSS and JS" and a restart; the loader inlines
+  // their contents into workbench.html rather than linking to them.
+  "vscode_custom_css.imports": [
+    "file:///Users/mac/Library/Application%20Support/Code/User/custom-workbench.css",
+    "file:///Users/mac/Library/Application%20Support/Code/User/custom-preserve-editor-horizontal-scroll.js",
+    "file:///Users/mac/Library/Application%20Support/Code/User/custom-anchor-quick-input-to-command-center.js",
+  ],
+  "editor.fontFamily": "'JetBrains Mono', monospace",
+  "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font Mono', monospace",
+  // Code font only — the workbench UI font is separate and unchanged, so trees, tabs and the
+  // status bar keep their current size. 13.2 -> 14 is one step; `editor.lineHeight` below is the
+  // other lever and does something different: it adds room between rows without growing glyphs.
+  "editor.fontSize": 13.5,
+  "editor.fontWeight": 500,
+  "editor.fontLigatures": true,
+  "editor.lineHeight": 1.5,
+  // The 1px box Volar draws around every `{{ }}` expression in a Vue template. It cannot be toned
+  // down, only switched off: the extension builds the decoration with a hardcoded
+  // `borderColor: rgba(128, 128, 128, 0.5)` and contributes no theme colour id, so there is nothing
+  // for `workbench.colorCustomizations` to reach. "Inspect Editor Tokens and Scopes" confirmed the
+  // theme was never involved — under the box it reported the plain editor background #303446 and a
+  // matched rule setting foreground only. `vue.editor.reactivityVisualization` is left on: it dims
+  // by opacity rather than drawing a border, and was not what stood out.
+  "vue.editor.templateInterpolationDecorators": false,
+  "editor.hover.delay": 1200,
+  "editor.definitionLinkOpensInPeek": false,
+  "editor.gotoLocation.multipleDefinitions": "goto",
+  "editor.gotoLocation.multipleTypeDefinitions": "goto",
+  "editor.gotoLocation.multipleDeclarations": "goto",
+  "editor.gotoLocation.multipleImplementations": "goto",
+  "editor.gotoLocation.multipleReferences": "goto",
+  // The gutter, measured off a screenshot rather than eyeballed: 31 CSS px sat to the left of the
+  // digits with nothing drawn in it down the whole capture. That band is the glyph margin, and it
+  // only exists to hold breakpoint and bookmark icons.
+  //
+  // The cost is real and worth knowing before flipping it back: Bookmarks draws its marker as a
+  // gutter icon, so with the margin gone a bookmarked line no longer shows one. The bookmarks
+  // themselves survive — the sidebar still lists them and the jump commands still work — and so do
+  // breakpoints, which keep working while becoming invisible in the editor. Set this back to true
+  // if that trade turns out to be the wrong way round.
+  "editor.glyphMargin": false,
+  "editor.lineDecorationsWidth": 8,
+  "editor.stickyScroll.enabled": false,
+  "editor.scrollBeyondLastLine": false,
+  // The scrollbar and overview ruler share one column, measured at 23 retina pixels — 11.5 CSS px.
+  // 8 keeps the slider grabbable while giving the width back to the code.
+  "editor.scrollbar.verticalScrollbarSize": 8,
+  "editor.padding.bottom": 64,
+  "markdown.preview.scrollPreviewWithEditor": false,
+  "markdown.preview.scrollEditorWithPreview": false,
+  "workbench.tree.enableStickyScroll": false,
+  "workbench.list.horizontalScrolling": true,
+  "explorer.compactFolders": true,
+  "workbench.productIconTheme": "icons-kamekazi-dark",
+  "bookmarks.showCommandsInContextMenu": false,
+  "bookmarks.showNoMoreBookmarksWarning": false,
+  "intelephense.environment.includePaths": [],
+  "intelephense.environment.phpVersion": "8.4.0",
+  // Licence key intentionally NOT stored here (this file is version-controlled).
+  // Activate Premium via Command Palette → "Intelephense: Enter licence key",
+  // which persists it to the extension's global storage, outside the repo.
+  "php.suggest.basic": false,
+  // APCu is not one of Intelephense's default stubs, so every apcu_* call read as an undefined
+  // function — P1010 on `apcu_entry` in ribeit-api, which requires ext-apcu and runs on a PHP
+  // that has it loaded. The stub ships with Intelephense; it just is not switched on.
+  //
+  // This setting REPLACES the default list rather than extending it, so the 69 defaults have to
+  // be reproduced here or they are lost. They were copied out of Intelephense 1.18.5 itself, not
+  // typed. The cost of that is a pinned list: stubs added to a later Intelephense default — as
+  // `random` and `uri` were — will not appear until this is resynced. After an upgrade, diff it:
+  //
+  //   node -e 'const p=require(process.argv[1]+"/package.json");
+  //     const d=p.contributes.configuration.properties["intelephense.stubs"].default;
+  //     console.log(d.join(" "))' ~/.vscode/extensions/bmewburn.vscode-intelephense-client-<ver>
+  //
+  // `imagick` is the other stub these projects declare and do not get; add it here if Imagick is
+  // ever referenced from first-party code rather than only from inside a vendor package.
+  "intelephense.stubs": [
+    "apache",
+    "bcmath",
+    "bz2",
+    "calendar",
+    "com_dotnet",
+    "Core",
+    "ctype",
+    "curl",
+    "date",
+    "dba",
+    "dom",
+    "enchant",
+    "exif",
+    "FFI",
+    "fileinfo",
+    "filter",
+    "fpm",
+    "ftp",
+    "gd",
+    "gettext",
+    "gmp",
+    "hash",
+    "iconv",
+    "imap",
+    "intl",
+    "json",
+    "ldap",
+    "libxml",
+    "mbstring",
+    "meta",
+    "mysqli",
+    "oci8",
+    "odbc",
+    "openssl",
+    "pcntl",
+    "pcre",
+    "PDO",
+    "pgsql",
+    "Phar",
+    "posix",
+    "pspell",
+    "random",
+    "readline",
+    "Reflection",
+    "session",
+    "shmop",
+    "SimpleXML",
+    "snmp",
+    "soap",
+    "sockets",
+    "sodium",
+    "SPL",
+    "sqlite3",
+    "standard",
+    "superglobals",
+    "sysvmsg",
+    "sysvsem",
+    "sysvshm",
+    "tidy",
+    "tokenizer",
+    "uri",
+    "xml",
+    "xmlreader",
+    "xmlrpc",
+    "xmlwriter",
+    "xsl",
+    "Zend OPcache",
+    "zip",
+    "zlib",
+    // Added beyond the defaults.
+    "apcu",
+  ],
+  // "intelephense.diagnostics.undefinedMethods": false,
+  "files.exclude": {
+    // "**/vendor": true
+  },
+  "search.exclude": {
+    "**/dist": true,
+    "**/.output": true,
+    "**/target/**": true,
+    "**/vendor/**": true,
+    "**/*.map": true,
+    "**/package-lock.json": true,
+    "**/_ide_helper.php": true,
+  },
+  "search.maxResults": 200,
+  // Filesystem watching is its own consumer, separate from search and from
+  // Intelephense indexing. VS Code's defaults only cover node_modules and
+  // .git/objects, which leaves vendor/ and the generated storage trees fully
+  // watched: 178,810 unguarded files in spro-marketing and 25,157 in
+  // ribeit-api, measured with find. Excluding them here does not affect
+  // Intelephense, which still indexes vendor/ for completion; vendor only
+  // changes on composer install. storage/app stays watched because real
+  // source lives there, such as storage/app/scripts.
+  "files.watcherExclude": {
+    "**/vendor/**": true,
+    "**/node_modules/**": true,
+    "**/.git/**": true,
+    "**/storage/clockwork/**": true,
+    "**/storage/debugbar/**": true,
+    "**/storage/framework/**": true,
+    "**/storage/logs/**": true,
+    "**/bootstrap/cache/**": true,
+    "**/dist/**": true,
+    "**/.output/**": true,
+    "**/target/**": true,
+  },
+  "window.restoreWindows": "all",
+  // A new window copies the last active one's bounds exactly. Without it main.js runs
+  // ensureNoOverlap(), nudging +30,+30 until neither x nor y collides with an open window - the
+  // "slightly right, slightly small" placement. "maximized" would lose the 8px gap Swish leaves;
+  // inherit keeps whatever the last window had, which is that gap.
+  "window.newWindowDimensions": "inherit",
+  "intelephense.files.exclude": [
+    "**/.git/**",
+    "**/.svn/**",
+    "**/.hg/**",
+    "**/CVS/**",
+    "**/.DS_Store/**",
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/dist/**",
+    "**/vendor/**/{Tests,tests}/**",
+    "**/vendor/**/vendor/**",
+    // A Nova component is a Composer package living inside the app, and each one
+    // installs its OWN vendor tree: eleven of them in spro-marketing, 7,300–8,700 PHP
+    // files apiece, 78,522 in total against the 2–32 files of first-party code they
+    // exist for. Every one of those trees is another copy of Laravel, Nova and Symfony
+    // that the root vendor/ already provides, so indexing them buys nothing and costs
+    // most of the index: they were 57% of the 137,767 files Intelephense was loading,
+    // and the reason its language server sat at 1.8 GB.
+    // `**/vendor/**/vendor/**` above does not reach them — the outer directory is
+    // `nova-components`, not `vendor`.
+    // Duplicate symbols are the second cost: eleven Application classes make Cmd+B
+    // ambiguous where one would be exact.
+    "**/nova-components/*/vendor/**",
+    // google/apiclient-services ships one generated class tree per Google API: 327 of them,
+    // 35,734 PHP files, against the five services this codebase actually names. Excluding the
+    // package wholesale would break `Google\Service\SearchConsole` and friends, so the used
+    // five are held back by name and the other 322 — 35,355 files — go.
+    // The extglob negation is not a guess: Intelephense bundles micromatch, and this pattern
+    // was checked against it directly. If a service is added to the code, add it here too, or
+    // its classes will read as undefined.
+    "**/vendor/google/apiclient-services/src/!(BusinessProfilePerformance|MyBusinessAccountManagement|MyBusinessBusinessInformation|SearchConsole|YouTube)/**",
+    "**/vendor/_laravel_idea/**",
+    "**/_laravel_ide/**",
+    // NOTE: barryvdh's _ide_helper.php (facade/macro stubs) is intentionally NOT excluded —
+    // Intelephense must index it to resolve facade & concrete-adapter methods like
+    // Storage::disk('local')->buildTemporaryUrlsUsing(). It stays in references.exclude below
+    // so it never clutters Find References. Only the MODEL + phpstorm.meta stubs stay excluded:
+    // those duplicate Eloquent classes and reintroduce the P1119 "too many arguments" bug.
+    "**/_ide_helper_models.php",
+    "**/_ide_helper_models_*.php",
+    "**/.phpstorm.meta.php",
+    // Laravel runtime/generated artifacts — never real source. Excluding them stops Intelephense
+    // reporting P1008 "Undefined variable $__env/$slot" on compiled Blade views, etc.
+    "**/storage/framework/**",
+    "**/bootstrap/cache/**",
+  ],
+  "workbench.settings.editor": "json",
+  "intelephense.codeLens.implementations.enable": true,
+  "intelephense.codeLens.overrides.enable": true,
+  "intelephense.codeLens.parent.enable": false,
+  "intelephense.codeLens.references.enable": false,
+  "intelephense.codeLens.usages.enable": true,
+  "intelephense.inlayHint.parameterNames": true,
+  "intelephense.inlayHint.parameterTypes": true,
+  "intelephense.inlayHint.returnTypes": true,
+  "smartReferences.referenceView": "quickPick",
+  "smartReferences.webviewPlacement": "active",
+  "references.preferredLocation": "view",
+  "intelephense.completion.fullyQualifyGlobalConstantsAndFunctions": true,
+  "intelephense.files.maxSize": 10000000,
+  "intelephense.references.exclude": [
+    "**/vendor/_laravel_idea/**",
+    "**/_laravel_ide/**",
+    "**/_ide_helper.php",
+    "**/_ide_helper_manual.php",
+    "**/_ide_helper_models.php",
+    "**/_ide_helper_models_*.php",
+  ],
+  "intelephense.rename.exclude": [],
+  "files.associations": {
+    "*.css": "tailwindcss",
+    "*.module": "php",
+  },
+  "editor.quickSuggestions": {
+    "strings": true,
+  },
+  // PhpStorm live templates: `pubf` then Tab. Both keys are needed, because Tab means two
+  // different things depending on whether the suggest widget happens to be open.
+  //
+  // tabCompletion "onlySnippets" binds Tab to insertSnippet when the word before the cursor is a
+  // snippet prefix, which is the widget-closed case. When the widget IS open — the common case,
+  // since Intelephense proposes on every keystroke — VS Code's acceptSelectedSuggestion outranks
+  // it and Tab takes whatever is highlighted instead, so snippetSuggestions "top" is what makes
+  // that the snippet. "onlySnippets" rather than "on" so Tab never completes a word from the
+  // buffer; that is not a PhpStorm behaviour and it makes indenting unpredictable.
+  "editor.tabCompletion": "onlySnippets",
+  "editor.snippetSuggestions": "top",
+  "explorer.autoReveal": true,
+  "workbench.panel.opensMaximized": "never",
+  "security.workspace.trust.untrustedFiles": "open",
+  "js/ts.suggest.completeFunctionCalls": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "prettier.tabWidth": 2,
+    "prettier.useTabs": false,
+  },
+  "[typescript]": {
+    "prettier.tabWidth": 2,
+    "prettier.useTabs": false,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+  },
+  "editor.wordWrap": "wordWrapColumn",
+  "editor.wordWrapColumn": 450,
+  "prettier.printWidth": 500,
+  "diffEditor.wordWrap": "on",
+  "prettier.bracketSpacing": false,
+  "workbench.startupEditor": "none",
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "yaml.schemas": {
+    "file:///Users/mac/.vscode/extensions/atlassian.atlascode-3.8.6/resources/schemas/pipelines-schema.json": "bitbucket-pipelines.yml",
+  },
+  "redhat.telemetry.enabled": true,
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+  },
+  "[vue]": {
+    "editor.defaultFormatter": "Vue.volar",
+  },
+  "workbench.editor.enablePreviewFromQuickOpen": true,
+  "workbench.editor.enablePreviewFromCodeNavigation": true,
+  "editor.minimap.enabled": false,
+  "bookmarks.experimental.enableNewStickyEngine": false,
+  "bookmarks.navigateThroughAllFiles": false,
+  "workbench.preferredLightColorTheme": "GitHub Light Default",
+  "remote.SSH.useExecServer": false,
+  "git.openRepositoryInParentFolders": "never",
+  "workbench.preferredDarkColorTheme": "Catppuccin Noctis Macchiato",
+  "[lua]": {
+    "editor.defaultFormatter": "Koihik.vscode-lua-format",
+  },
+  "window.autoDetectColorScheme": true,
+  "window.zoomLevel": 0,
+  // "editor.rulers": [
+  // 	140
+  // ],
+  "workbench.colorCustomizations": {
+    // "tab.activeBackground": "#2b2b2b",
+    "tab.activeBorderTop": "#d09010",
+    "tab.hoverBorder": "#00000000",
+    "tab.unfocusedHoverBorder": "#00000000",
+    // Drawn once, after the LAST pinned tab, to divide pinned from unpinned — not a per-tab
+    // border. With two files pinned only the second one carried it, which reads as one tab
+    // being styled differently rather than as a group divider. `tab.border` is already
+    // transparent per theme for the same reason (rounded tabs with a gap need no vertical
+    // rule), so this matches it. Set here rather than per theme: it is the same decision in
+    // every theme, and the per-theme blocks only carry colours that actually differ.
+    "tab.lastPinnedBorder": "#00000000",
+    // Error Lens: no line background tint (squiggles only)
+    "errorLens.errorBackground": "#00000000",
+    "errorLens.warningBackground": "#00000000",
+    "errorLens.infoBackground": "#00000000",
+    "errorLens.hintBackground": "#00000000",
+    "gitDecoration.addedResourceForeground": "#d97835",
+    "gitDecoration.modifiedResourceForeground": "#5aa7ff",
+    "gitDecoration.untrackedResourceForeground": "#d97835",
+    "gitDecoration.stageModifiedResourceForeground": "#5aa7ff",
+    // The overview ruler, identified by sampling a screenshot against the theme rather than by
+    // reading token names and hoping. Every measured colour came back one channel off from the
+    // theme's value in the same direction — a display-profile shift, not a different colour — so
+    // the mapping is certain:
+    //   #2a2c3b track  = editorOverviewRuler.background        #292c3c
+    //   #92a9e9 dots   = editorOverviewRuler.modifiedForeground #8caaee
+    //   #48524e dots   = editorOverviewRuler.addedForeground    #a6d1893a over the track
+    //
+    // The blue dots are git modified-line markers. Cleared. Added and deleted lines are the olive
+    // and red ones and are left alone, as are errors, warnings and find matches — killing the
+    // ruler wholesale with overviewRulerLanes: 0 would have taken those with it.
+    "editorOverviewRuler.modifiedForeground": "#00000000",
+    // The track reads as a dark stripe because the theme paints it #292c3c against a #303446
+    // editor. Transparent lets it disappear into the editor instead. VS Code documents this key
+    // as minimap-only; the minimap is off here and the band was measured anyway, so the doc is
+    // wrong for this build and the pixels win.
+    "editorOverviewRuler.background": "#00000000",
+    "editorOverviewRuler.border": "#00000000",
+    // Drawn against the editor once the pane scrolls, which re-darkens the edge the line above
+    // just cleaned up.
+    "scrollbar.shadow": "#00000000",
+    "[Monokai Pro]": {
+      "foreground": "#f7f7f7",
+      "descriptionForeground": "#f7f7f7",
+      // Empty editor groups should continue the Explorer surface instead of falling back to the
+      // theme's darker product-watermark canvas.
+      "editorGroup.emptyBackground": "#221f22",
+      "sideBar.foreground": "#f7f7f7",
+      "sideBarTitle.foreground": "#f7f7f7",
+      "sideBarSectionHeader.foreground": "#f7f7f7",
+      "list.foreground": "#f7f7f7",
+      "list.activeSelectionForeground": "#f7f7f7",
+      "list.inactiveSelectionForeground": "#f7f7f7",
+      "list.inactiveSelectionBackground": "#46494d",
+      "list.activeSelectionBackground": "#55585d",
+      "list.focusBackground": "#55585d",
+      "list.focusForeground": "#f7f7f7",
+      "list.hoverBackground": "#3a3d40",
+      "list.hoverForeground": "#b8b7b7",
+      // The picker sits on #403e41, against which the theme's own focus colour is white at 5%
+      // alpha and its focus outline is undefined, so an arrowed-to row showed nothing at all.
+      // #6f6c71 is ~2.1:1 against the picker and still carries #f7f7f7 text at ~4.9:1.
+      "quickInputList.focusBackground": "#6f6c71",
+      "quickInputList.focusForeground": "#f7f7f7",
+      "tab.activeForeground": "#ffffff",
+      "tab.inactiveForeground": "#b8b8b8",
+      "tab.unfocusedInactiveForeground": "#9a9a9a",
+      // Monokai Pro paints every tab background #2d2a2e — bar, active, inactive and hover all
+      // identical to the editor — so the active tab had no fill and hover was the only thing
+      // that ever painted. The ladder below is measured against the bar: hover 1.10:1,
+      // unfocused active 1.14:1, active 1.20:1. Inactive stays at the bar colour so only the
+      // active tab carries a shape.
+      //
+      // `tab.selectedBackground` has to be set alongside `tab.activeBackground`: the active tab
+      // is also the selected one, and that key wins. It does NOT inherit from
+      // `tab.activeBackground` — VS Code defaults it to `list.inactiveSelectionBackground`,
+      // which is set below, so leaving it out let a list colour paint the tab.
+      "tab.activeBackground": "#39373a",
+      "tab.selectedBackground": "#39373a",
+      "tab.selectedForeground": "#ffffff",
+      "tab.inactiveBackground": "#2d2a2e",
+      "tab.unfocusedActiveBackground": "#363337",
+      "tab.unfocusedInactiveBackground": "#2d2a2e",
+      "tab.hoverBackground": "#333134",
+      "tab.unfocusedHoverBackground": "#302e31",
+      // Rounded tabs with a gap between them need no vertical rule as well.
+      "tab.border": "#00000000",
+      "editor.lineHighlightBackground": "#ffffff12",
+      "editor.lineHighlightBorder": "#00000000",
+    },
+    "[Catppuccin Noctis Frappé]": {
+      "foreground": "#f7f7f7",
+      "descriptionForeground": "#f7f7f7",
+      // Continue the theme's Explorer/Codex surface through populated editors and their gutter.
+      "editor.background": "#292c3c",
+      "editorGutter.background": "#292c3c",
+      "editorGroup.emptyBackground": "#292c3c",
+      "sideBar.foreground": "#f7f7f7",
+      "sideBarTitle.foreground": "#f7f7f7",
+      "sideBarSectionHeader.foreground": "#f7f7f7",
+      "list.foreground": "#f7f7f7",
+      "list.activeSelectionForeground": "#f7f7f7",
+      "list.inactiveSelectionForeground": "#f7f7f7",
+      "list.inactiveSelectionBackground": "#46494d",
+      "list.activeSelectionBackground": "#55585d",
+      "list.focusBackground": "#55585d",
+      "list.focusForeground": "#f7f7f7",
+      "list.hoverBackground": "#3a3d40",
+      "list.hoverForeground": "#b8b7b7",
+      // Same fix as Monokai Pro, in this theme's palette: the picker sits on #303446, the
+      // theme's focus fill is 12% alpha and its focus outline is literally #00000000. Surface2
+      // (#626880) is ~2.2:1 against the picker and carries #f7f7f7 text at ~5.1:1.
+      "quickInputList.focusBackground": "#626880",
+      "quickInputList.focusForeground": "#f7f7f7",
+      "tab.activeForeground": "#ffffff",
+      "tab.inactiveForeground": "#b8b8b8",
+      "tab.unfocusedInactiveForeground": "#9a9a9a",
+      // Same defect as Monokai Pro, same fix and the same measured ladder in this palette:
+      // every tab was #303446, the editor colour. See the Monokai block above for why
+      // `tab.selectedBackground` is set too.
+      "tab.activeBackground": "#3c4053",
+      "tab.selectedBackground": "#3c4053",
+      "tab.selectedForeground": "#ffffff",
+      "tab.inactiveBackground": "#303446",
+      "tab.unfocusedActiveBackground": "#393d50",
+      "tab.unfocusedInactiveBackground": "#303446",
+      "tab.hoverBackground": "#363a4d",
+      "tab.unfocusedHoverBackground": "#333749",
+      "tab.border": "#00000000",
+      "editor.lineHighlightBackground": "#ffffff12",
+      "editor.lineHighlightBorder": "#00000000",
+    },
+    // The theme actually in force in dark mode: `window.autoDetectColorScheme` is on, so
+    // `workbench.preferredDarkColorTheme` decides, and it is Macchiato. The `[Monokai Pro]` and
+    // `[Catppuccin Noctis Frappé]` blocks above are inert until one of those is picked by hand.
+    "[Catppuccin Noctis Macchiato]": {
+      // `explorer.autoReveal` does select the active editor's file, but the theme paints
+      // `list.inactiveSelectionBackground` Mantle `#1e2030` — byte-identical to its own
+      // `sideBar.background` — so the selected row is invisible the moment focus leaves the
+      // Explorer, which is always, since focus is in the editor. Same for
+      // `list.inactiveFocusBackground`. Surface1 is 1.94:1 against the sidebar, where the
+      // Surface0 this first used managed 1.44:1.
+      "list.inactiveSelectionBackground": "#494d64",
+      "list.inactiveFocusBackground": "#494d64",
+      // Surface2 keeps the focused Explorer distinguishable from the merely revealed file.
+      "list.activeSelectionBackground": "#5b6078",
+      // Surface2 puts the theme's `list.*SelectionForeground` `#b7bdf8` at 3.44:1, under AA, so
+      // the selected label is written out instead: 5.78:1 on Surface2 and 7.75:1 on Surface1.
+      // The same value and the same reason as the two dark blocks above.
+      "list.inactiveSelectionForeground": "#f7f7f7",
+      "list.activeSelectionForeground": "#f7f7f7",
+      // `list.hoverBackground` is deliberately NOT set. It is the dimmest rung of this ladder at
+      // the theme's own Surface0 `#363a4f`, and it is not only a hover: this build paints the
+      // focused row of the **code action widget** with it, `!important`:
+      //
+      //   .action-widget .monaco-list .monaco-list-row.action.focused:not(.option-disabled) {
+      //     background-color: var(--vscode-list-hoverBackground) !important;
+      //     outline: 1px solid var(--vscode-menu-selectionBorder, transparent) }
+      //
+      // That widget sits on `menu.background`, which this theme sets to Base `#24273a`. Stepping
+      // hover down to Base — which an earlier version of this block did, purely to keep the
+      // Explorer ladder monotonic — painted the selected Option+Enter action in the widget's own
+      // colour and left it invisible, with no outline to fall back on either, since the theme
+      // sets `menu.selectionBorder` to `#00000000`. Surface0 is 1.32:1 against that widget.
+      // This build defaults `tab.selectedBackground` to `list.inactiveSelectionBackground`, so
+      // the line above would have repainted the active tab Surface0. Pinned to the Mantle the
+      // tab renders today. See the 2026-08-05 correction in CUSTOMIZATION_HISTORY.md.
+      "tab.selectedBackground": "#1e2030",
+    },
+    "[GitHub Light]": {
+      "foreground": "#000000",
+      "descriptionForeground": "#000000",
+      "editorGroup.emptyBackground": "#f6f8fa",
+      "sideBar.foreground": "#000000",
+      "sideBarTitle.foreground": "#000000",
+      "sideBarSectionHeader.foreground": "#000000",
+      "list.foreground": "#000000",
+      "editorGroupHeader.tabsBackground": "#ffffff",
+      "editorGroupHeader.tabsBorder": "#d0d7de",
+      "tab.activeBackground": "#dbeafe",
+      "tab.activeForeground": "#1f2328",
+      "tab.activeBorder": "#8bb8ff",
+      "tab.activeBorderTop": "#8bb8ff",
+      "tab.unfocusedActiveBackground": "#eaf3ff",
+      "tab.unfocusedActiveForeground": "#1f2328",
+      "tab.inactiveBackground": "#ffffff",
+      "tab.inactiveForeground": "#57606a",
+      "tab.hoverBackground": "#dbeafe",
+      "tab.unfocusedHoverBackground": "#eaf3ff",
+      "tab.hoverForeground": "#1f2328",
+      "tab.unfocusedHoverForeground": "#1f2328",
+      // Transparent to match both dark blocks and the rule stated beside
+      // `tab.lastPinnedBorder` above. An inactive tab here is #ffffff on a #ffffff bar,
+      // exactly as Monokai Pro is #2d2a2e on #2d2a2e and Frappe #303446 on #303446 - all
+      // three separate tabs by the active fill alone, so a vertical rule in light only was
+      // the odd one out rather than a needed divider.
+      "tab.border": "#00000000",
+      "tab.unfocusedInactiveForeground": "#6e7781",
+      "toolbar.hoverBackground": "#00000000",
+      "toolbar.activeBackground": "#00000000",
+      "toolbar.hoverOutline": "#00000000",
+      "list.activeSelectionForeground": "#000000",
+      "list.inactiveSelectionForeground": "#000000",
+      "list.focusForeground": "#000000",
+      "list.hoverBackground": "#dfe7f0",
+      "list.hoverForeground": "#000000",
+      "list.activeSelectionIconForeground": "#000000",
+      "list.inactiveSelectionIconForeground": "#000000",
+      "list.activeSelectionBackground": "#dbeafe",
+      "list.inactiveSelectionBackground": "#dbeafe",
+      "list.focusBackground": "#dbeafe",
+      "list.focusOutline": "#8bb8ff",
+      "list.deemphasizedForeground": "#000000",
+      "quickInput.foreground": "#000000",
+      "quickInputList.focusBackground": "#dbeafe",
+      "quickInputList.focusForeground": "#000000",
+      "quickInputList.focusIconForeground": "#000000",
+      "quickInputList.focusHighlightForeground": "#0969da",
+      "pickerGroup.foreground": "#57606a",
+      // Darker than the dark themes' #d97835, which measures 2.95:1 on this sidebar and was
+      // unreadable the moment these colours reached the filename instead of only the badge.
+      // #9a4f00 is the same orange at 5.66:1. Every other colour here already passes.
+      "gitDecoration.addedResourceForeground": "#9a4f00",
+      "gitDecoration.modifiedResourceForeground": "#0042c7",
+      "gitDecoration.deletedResourceForeground": "#616161",
+      "gitDecoration.renamedResourceForeground": "#007C7C",
+      "gitDecoration.untrackedResourceForeground": "#9a4f00",
+      "gitDecoration.ignoredResourceForeground": "#727238",
+      "gitDecoration.stageModifiedResourceForeground": "#0042c7",
+      "gitDecoration.stageDeletedResourceForeground": "#616161",
+      "gitDecoration.conflictingResourceForeground": "#FF0000",
+      "gitDecoration.submoduleResourceForeground": "#7503DC",
+      "editor.lineHighlightBackground": "#00000008",
+      "editor.lineHighlightBorder": "#00000000",
+    },
+    "[GitHub Light Default]": {
+      "foreground": "#000000",
+      "descriptionForeground": "#000000",
+      "editorGroup.emptyBackground": "#f6f8fa",
+      "sideBar.foreground": "#000000",
+      "sideBarTitle.foreground": "#000000",
+      "sideBarSectionHeader.foreground": "#000000",
+      "list.foreground": "#000000",
+      "editorGroupHeader.tabsBackground": "#ffffff",
+      "editorGroupHeader.tabsBorder": "#d0d7de",
+      "tab.activeBackground": "#dbeafe",
+      "tab.activeForeground": "#1f2328",
+      "tab.activeBorder": "#8bb8ff",
+      "tab.activeBorderTop": "#8bb8ff",
+      "tab.unfocusedActiveBackground": "#eaf3ff",
+      "tab.unfocusedActiveForeground": "#1f2328",
+      "tab.inactiveBackground": "#ffffff",
+      "tab.inactiveForeground": "#57606a",
+      "tab.hoverBackground": "#dbeafe",
+      "tab.unfocusedHoverBackground": "#eaf3ff",
+      "tab.hoverForeground": "#1f2328",
+      "tab.unfocusedHoverForeground": "#1f2328",
+      // Transparent to match both dark blocks and the rule stated beside
+      // `tab.lastPinnedBorder` above. An inactive tab here is #ffffff on a #ffffff bar,
+      // exactly as Monokai Pro is #2d2a2e on #2d2a2e and Frappe #303446 on #303446 - all
+      // three separate tabs by the active fill alone, so a vertical rule in light only was
+      // the odd one out rather than a needed divider.
+      "tab.border": "#00000000",
+      "tab.unfocusedInactiveForeground": "#6e7781",
+      "toolbar.hoverBackground": "#00000000",
+      "toolbar.activeBackground": "#00000000",
+      "toolbar.hoverOutline": "#00000000",
+      "list.activeSelectionForeground": "#000000",
+      "list.inactiveSelectionForeground": "#000000",
+      "list.focusForeground": "#000000",
+      "list.hoverBackground": "#dfe7f0",
+      "list.hoverForeground": "#000000",
+      "list.activeSelectionIconForeground": "#000000",
+      "list.inactiveSelectionIconForeground": "#000000",
+      "list.activeSelectionBackground": "#dbeafe",
+      "list.inactiveSelectionBackground": "#dbeafe",
+      "list.focusBackground": "#dbeafe",
+      "list.focusOutline": "#8bb8ff",
+      "list.deemphasizedForeground": "#000000",
+      "quickInput.foreground": "#000000",
+      "quickInputList.focusBackground": "#dbeafe",
+      "quickInputList.focusForeground": "#000000",
+      "quickInputList.focusIconForeground": "#000000",
+      "quickInputList.focusHighlightForeground": "#0969da",
+      "pickerGroup.foreground": "#57606a",
+      // Darker than the dark themes' #d97835, which measures 2.95:1 on this sidebar and was
+      // unreadable the moment these colours reached the filename instead of only the badge.
+      // #9a4f00 is the same orange at 5.66:1. Every other colour here already passes.
+      "gitDecoration.addedResourceForeground": "#9a4f00",
+      "gitDecoration.modifiedResourceForeground": "#0042c7",
+      "gitDecoration.deletedResourceForeground": "#616161",
+      "gitDecoration.renamedResourceForeground": "#007C7C",
+      "gitDecoration.untrackedResourceForeground": "#9a4f00",
+      "gitDecoration.ignoredResourceForeground": "#727238",
+      "gitDecoration.stageModifiedResourceForeground": "#0042c7",
+      "gitDecoration.stageDeletedResourceForeground": "#616161",
+      "gitDecoration.conflictingResourceForeground": "#FF0000",
+      "gitDecoration.submoduleResourceForeground": "#7503DC",
+    },
+  },
+  "explorer.decorations.colors": true,
+  "problems.decorations.enabled": false,
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+  },
+  "folder-color.useGlobalSettings": false,
+  "workbench.iconTheme": "phpstorm-icon",
+  // "[php]": {
+  // 	// "editor.defaultFormatter": "bmewburn.vscode-intelephense-client",
+  // 	"editor.defaultFormatter": "open-southeners.laravel-pint",
+  // },
+  // global settings.json
+  "[php]": {
+    "editor.defaultFormatter": "open-southeners.laravel-pint",
+    "editor.inlayHints.enabled": "off",
+  },
+  "[hack]": {
+    "editor.inlayHints.enabled": "off",
+  },
+  // // per-project .vscode/settings.json in Laravel repos
+  // "[php]": {
+  // 	"editor.defaultFormatter": "open-southeners.laravel-pint",
+  // },
+  // "Laravel.pint.runOnSave": true,
+  "laravel-pint.enable": true,
+  // "editor.formatOnSave": true,
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": [
+          "comment",
+          "punctuation.definition.comment",
+          "markup.italic",
+          "keyword",
+          "keyword.control",
+          "keyword.operator",
+          "storage.type",
+          "storage.modifier",
+          "variable.language",
+          "variable.parameter",
+          "entity.other.attribute-name",
+          "entity.name.tag",
+          "support.type.primitive",
+        ],
+        "settings": {
+          "fontStyle": "",
+        },
+      },
+      {
+        // The theme's italic on PHPDoc keywords survives the rule above, because
+        // it is written as the descendant selector
+        // `comment.block.documentation.phpdoc.php keyword` and TextMate resolves
+        // by selector specificity, not by who was applied last. A single-segment
+        // `keyword` override can never win against it. Repeating the theme's
+        // selector verbatim ties on specificity, and the customization is applied
+        // second, so it takes the tie.
+        "scope": ["comment.block.documentation.phpdoc.php keyword"],
+        "settings": {
+          "fontStyle": "",
+        },
+      },
+    ],
+    // Docblocks were a flat wall of #737994 on #303446 — 2.9:1, below every
+    // legibility floor, with every reference, tag and code span the same grey.
+    // Prose is lifted to Subtext0 (5.6:1) and the three things that name code get
+    // their own colour, so a docblock can be skimmed for structure:
+    //   prose      #a5adce   5.6:1
+    //   @tag       #ca9ee6   theme mauve, unchanged
+    //   reference  #8caaee   5.4:1   {@see Foo}, {@see Foo::bar()}
+    //   code span  #a6d189   7.1:1   `$e->response`
+    // The reference and code-span scopes come from the local PHPDoc injection in
+    // `local.smart-references`; see the change-history entry for why they exist.
+    "[Catppuccin Noctis Frappé]": {
+      "comments": "#a5adce",
+      "textMateRules": [
+        {
+          "scope": ["markup.inline.raw.phpdoc.php"],
+          "settings": {
+            "foreground": "#a6d189",
+          },
+        },
+        {
+          "scope": [
+            "meta.tag.inline.phpdoc.php entity.name.type.class.php",
+            "meta.tag.inline.phpdoc.php entity.name.function.php",
+            "meta.tag.inline.phpdoc.php variable.other.property.php",
+          ],
+          "settings": {
+            "foreground": "#8caaee",
+          },
+        },
+        {
+          // Braces, backticks and `::` are scaffolding: readable, but kept
+          // below the words they wrap so they do not compete with them.
+          "scope": [
+            "punctuation.definition.raw.phpdoc.php",
+            "punctuation.definition.tag.begin.phpdoc.php",
+            "punctuation.definition.tag.end.phpdoc.php",
+            "punctuation.definition.arguments.phpdoc.php",
+            "meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
+          ],
+          "settings": {
+            "foreground": "#838ba7",
+          },
+        },
+      ],
+    },
+    // Same three roles in the light theme, which is already legible at 4.9:1 and
+    // therefore only needs the structure, not the contrast lift.
+    "[GitHub Light]": {
+      "textMateRules": [
+        {
+          "scope": ["markup.inline.raw.phpdoc.php"],
+          "settings": {
+            "foreground": "#0a7b45",
+          },
+        },
+        {
+          "scope": [
+            "meta.tag.inline.phpdoc.php entity.name.type.class.php",
+            "meta.tag.inline.phpdoc.php entity.name.function.php",
+            "meta.tag.inline.phpdoc.php variable.other.property.php",
+          ],
+          "settings": {
+            "foreground": "#0550ae",
+          },
+        },
+        {
+          "scope": [
+            "punctuation.definition.raw.phpdoc.php",
+            "punctuation.definition.tag.begin.phpdoc.php",
+            "punctuation.definition.tag.end.phpdoc.php",
+            "punctuation.definition.arguments.phpdoc.php",
+            "meta.tag.inline.phpdoc.php punctuation.separator.inheritance.php",
+          ],
+          "settings": {
+            "foreground": "#8c959f",
+          },
+        },
+      ],
+    },
+  },
+  "bookmarks.wrapNavigation": false,
+  "bookmarks.sideBar.expanded": true,
+  "bookmarks.sideBar.hideWelcome": true,
+  // The left icon column is gone: the Explorer/Search/SCM/Extensions icons move into the title bar
+  // row, beside the command center, so they cost no horizontal or vertical space and stay one click
+  // away. Hover-to-reveal was what was actually wanted and is not available — the part sits in a
+  // `.monaco-grid-view` leaf whose size is computed in JS, so CSS can shrink the bar but not
+  // reclaim its cell, and the built-in toggle command persists this very key, which would rewrite
+  // a settings.json that is a symlink into this repository.
+  // "hidden", not "top": the top strip still costs a ~35px band of its own above the sidebar, and
+  // the icons in it were not being used. Removing the part lifts the Explorer by that band. The
+  // views that lost their icons are reachable by key instead — Shift+Cmd+1 Explorer, Shift+Cmd+X
+  // Extensions/Remote toggle — which is the trade this option was previously refused over.
+  "workbench.activityBar.location": "hidden",
+  // Only read when location is "default"; kept so switching back stays a one-line change.
+  "workbench.activityBar.compact": true,
+  // Tailwind's @apply / @tailwind / @screen are not CSS at-rules, and VS Code's built-in style
+  // validator only knows the standard ones — so every @apply reports "Unknown at rule". Tailwind
+  // CSS IntelliSense is installed and supplies completions for them, but it does not silence this
+  // validator; the lint rule is the documented fix. Scoped to this one rule rather than turning
+  // style validation off, so genuine CSS mistakes are still reported.
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  // Turn on the cap
+  "workbench.editor.limit.enabled": true,
+  // Max number of open tabs
+  "workbench.editor.limit.value": 8,
+  // Apply the limit per editor group (split pane) instead of globally
+  "workbench.editor.limit.perEditorGroup": true,
+  // Don't auto-close tabs with unsaved changes
+  "workbench.editor.limit.excludeDirty": true,
+  // Error Lens: keep native squiggles only — no inline message text
+  "errorLens.messageEnabled": false,
+  "errorLens.gutterIconsEnabled": false,
+  // The built-in Git decoration only annotates the active line. GitLens File Blame renders the
+  // PhpStorm-like per-line author column and is deliberately toggled from the editor toolbar.
+  "git.blame.editorDecoration.enabled": false,
+  "git.blame.statusBarItem.enabled": true,
+  "gitlens.fileAnnotations.command": "blame",
+  "gitlens.currentLine.enabled": false,
+  "gitlens.defaultCurrentUserNameStyle": "name",
+  // Pad the author to a fixed 14 columns so every annotation row is exactly 14 + 1 + 10
+  // characters wide. Without the width GitLens sizes each row to its own text, and the
+  // per-row background ends at a different column on every line. Longer names truncate
+  // with an ellipsis; raise the number to fit them.
+  "gitlens.blame.format": "${author|14} ${date}",
+  "gitlens.blame.dateFormat": "YYYY-MM-DD",
+  "gitlens.blame.compact": false,
+  "gitlens.blame.heatmap.enabled": false,
+  "gitlens.blame.highlight.enabled": false,
+  "yaml.disableSchemaDetection": [
+    "**/docker-compose.yml",
+    "**/docker-compose.yaml",
+    "**/docker-compose.*.yml",
+    "**/docker-compose.*.yaml",
+    "**/compose.yml",
+    "**/compose.yaml",
+    "**/compose.*.yml",
+    "**/compose.*.yaml",
+    "**/.github/workflows/*.yml",
+    "**/.github/workflows/*.yaml",
+    "**/.gitea/workflows/*.yml",
+    "**/.gitea/workflows/*.yaml",
+    "**/.forgejo/workflows/*.yml",
+    "**/.forgejo/workflows/*.yaml",
+  ],
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+  },
+  "js/ts.updateImportsOnFileMove.enabled": "always",
+  // Ceiling for the TS server heap, not a reservation. The default is 3072, and V8
+  // only collects seriously as it nears the ceiling -- so the default lets a Nuxt
+  // project idle around a gigabyte. 2048 makes it collect sooner while leaving
+  // roughly 2x headroom over what those projects actually use. If the server starts
+  // dying with "terminated unexpectedly", it needs more than this, not less.
+  "typescript.tsserver.maxTsServerMemory": 2048,
+  "extensions.supportAgentsWindow": {
+    "monokai.theme-monokai-pro-vscode": true,
+  },
+  "claudeCode.preferredLocation": "panel",
+  "chat.unifiedAgentsBar.enabled": true,
+  "chat.titleBar.openInAgentsWindow.enabled": false,
+  "workbench.browser.showInTitleBar": false,
+  "window.commandCenter": false,
+  "workbench.editor.enablePreview": false,
+  "workbench.statusBar.visible": false,
+  "github.copilot.enable": {
+    "*": true,
+    "plaintext": false,
+    "markdown": false,
+    "scminput": false
+  },
 }
