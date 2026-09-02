@@ -54,6 +54,8 @@ read_only = " 🔒"
 format = " [$symbol](fg:branch_icon)[$branch]($style)"
 style = "bold fg:text"
 symbol = " "
+truncation_length = 28
+truncation_symbol = "…"
 
 [git_state]
 format = '[ \($state( $progress_current/$progress_total)\)]($style)'
