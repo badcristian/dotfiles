@@ -320,6 +320,21 @@ popup_width() {
     printf '%s' "$width"
 }
 
+# The popup is opened at a fixed height and the providers rarely fill it, so the
+# height is read for the same reason the width is: to put the footer on the last
+# row rather than directly under the final bar.
+popup_height() {
+    local size
+    local height=""
+
+    size="$(stty size 2>/dev/null || printf '')"
+    height="${size%% *}"
+    if [[ ! $height =~ ^[0-9]+$ ]] || (( height < 8 )); then
+        height=13
+    fi
+    printf '%s' "$height"
+}
+
 rule() {
     local character="$1"
     local width="$2"
@@ -442,8 +457,13 @@ render_usage() {
     local footer_left="r refresh   q / Esc close"
     local footer_right="cached for 5 min"
     local gap
+    local height
+    local body
+    local body_rows
+    local padding
 
     width="$(popup_width)"
+    height="$(popup_height)"
     # One column of left margin, two on the right, so nothing sits on the frame.
     inner=$((width - 3))
     fetched_at="$(jq -r '.fetched_at // 0' "$usage_cache_file")"
@@ -454,24 +474,42 @@ render_usage() {
     # The popup frame already reads " AI Usage ", so the title is not repeated
     # here. The header carries when the reading was taken; the footer carries how
     # long it is kept, which keeps the two facts apart.
-    header_right="updated $fetched_text"
-    gap=$((inner - ${#header_right}))
-    (( gap < 1 )) && gap=1
-    printf ' %*s\033[2m%s\033[0m\n' "$gap" '' "$header_right"
-    printf ' %s\n' "$(rule '═' "$inner")"
+    # Collected instead of printed as it goes, because how far down the footer
+    # belongs cannot be known until the last provider has been drawn.
+    body="$(
+        header_right="updated $fetched_text"
+        gap=$((inner - ${#header_right}))
+        (( gap < 1 )) && gap=1
+        printf ' %*s\033[2m%s\033[0m\n\n' "$gap" '' "$header_right"
 
-    # A blank line before each provider after the first. The name line alone read
-    # too tight against the metric above it, so providers get a clear break while
-    # a provider's own metrics stay one row apart.
-    while IFS= read -r provider; do
-        (( first == 0 )) && printf '\n'
-        first=0
-        render_provider "$provider" "$width"
-    done < <(jq -c '.providers[]' "$usage_cache_file")
+        # A blank line before each provider after the first. The name line alone read
+        # too tight against the metric above it, so providers get a clear break while
+        # a provider's own metrics stay one row apart.
+        while IFS= read -r provider; do
+            (( first == 0 )) && printf '\n'
+            first=0
+            render_provider "$provider" "$width"
+        done < <(jq -c '.providers[]' "$usage_cache_file")
+    )"
+
+    printf '%s\n' "$body"
+
+    # Two rows for the rule and the keys, and at least one blank row above them.
+    # Printing to a pipe has no bottom to sit on, so that mode keeps the single
+    # blank line it always had.
+    padding=1
+    if (( print_only == 0 )); then
+        body_rows="$(grep -c '' <<< "$body")"
+        padding=$((height - body_rows - 2))
+        (( padding < 1 )) && padding=1
+    fi
+    rule $'\n' "$padding"
 
     printf ' %s\n' "$(rule '─' "$inner")"
     gap=$((inner - ${#footer_left} - ${#footer_right}))
     (( gap < 1 )) && gap=1
+    # No trailing newline: the footer is on the popup's last row, and ending it
+    # with one would scroll the report up by a line.
     printf ' %sr\033[0m refresh   %sq / Esc\033[0m close%*s\033[2m%s\033[0m' \
         "$ui_accent_sgr" "$ui_accent_sgr" "$gap" '' "$footer_right"
 }

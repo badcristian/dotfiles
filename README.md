@@ -242,22 +242,47 @@ bar to reorder them, or use `Option-Up` / `Option-Down` on a running project in
 the picker. Click a status-bar session name to switch to it. In the picker,
 `Ctrl-X` deletes the selected running session; deleting the current session
 first switches the client to the next session in the manual order.
-Each clickable button carries a short lowercase label — `vi`, `col`, `git`, `bg`,
-and the health state — because five bare icons in a row said nothing about what
-they opened. Read-only groups need none: their value is the label.
+When the names outgrow the bar, a window slides over the list instead of its
+tail being dropped: `󰅁` and `󰅂` at each end scroll it one session at a time,
+each carrying the number of sessions it still hides. That count is set in plain
+text: every enclosed numeral the font offers — `󰲢`, `󰎧` and their outlined
+variants — draws its digit at around half the height of a text digit, because
+the ring or box around it is what gets drawn at icon size. A dash joins the
+count to the chevron as the shaft of an arrow, and both dash and chevron are
+dimmed while the count is not, so the pair reads as one mark pointing at what is
+out of sight. A chevron with nothing left to reach simply shows no count, and
+both are drawn at the same weight: which way there is more to see is the count's
+job to say, not something to infer from one chevron being brighter than the
+other. They wear no brackets, because brackets are what separate one session
+from the next and a chevron is not a session. Switching to a session outside the
+window pulls it into view by the least the window can move, so it arrives as the
+first or last name shown and the one at the far end drops out. A window scrolled
+by hand is otherwise left where it was put, so the active project can be
+scrolled off the bar, and each client scrolls its own.
+Each clickable button carries a short lowercase label — `vi`, `col`, `git`, `bg`
+— because five bare icons in a row said nothing about what they opened.
+Read-only groups need none: their value is the label. Health is the exception
+in both directions: its icon and colour already say the state, so the label is
+cut to that state's initial — `o`, `w`, `c`, or `s` while a check runs or before
+the first report — rather than spending four columns to repeat the icon.
 The `git` link follows the active pane's current repository, so a pane opened in
 a different checkout goes to that remote. If the pane has no repository with a
 browser URL, it falls back to the tmux session's project repository.
 
-The bar is balanced five groups a side: tmux, battery, the Vim reference, the
-color picker and the pane counter on the left; usage, the repository link, the
-moving background and the window name on the right. The running command joins
+The bar is balanced four groups a side: battery, the health state, the Vim
+reference, the color picker and the pane counter on the left; usage, the
+repository link and the moving background on the right. A `󰆍 tmux` label and the
+window name used to close each end and were dropped together: both were
+constants — every window here is named `shell` — and because the centered
+session block is budgeted against whichever side is wider, neither could buy the
+session list any room on its own. Removing both freed twenty columns, which is
+one more project name on the bar. The running command joins
 them only when something is actually running: a pane sitting at a shell prompt
 adds nothing by saying so, and Claude Code's binary is named by version, which
 reads as a meaningless "2.1.222", so it is shown by name. The
 two clickable pickers sit together at each edge rather than bunching on one
-side. It uses single-cell Nerd Font glyphs for tmux, battery, usage,
-window, pane, and command metadata, drawn from the Material Design range through
+side. It uses single-cell Nerd Font glyphs for battery, usage,
+pane, and command metadata, drawn from the Material Design range through
 Ghostty's bundled symbol fallback. Drawing every icon from one family keeps them
 at a consistent size and optical centre, which mixed Unicode blocks do not:
 JetBrains Mono renders `󱂬` and `󰸉` at the same weight as the rest,
@@ -275,13 +300,16 @@ runs along the bottom of the screen, using `╩` where vertical pane borders joi
 it.
 
 HTTP and HTTPS addresses shown inside a pane open in the default macOS browser
-with one click, including dotless development hosts such as `localhost`. Tmux
-also advertises OSC 8 hyperlink support to Ghostty for applications that emit
-real terminal hyperlinks. Mouse selections made while viewing scrollback are
-copied without leaving copy mode, so the selected text and scroll position stay
-visible. Click once inside the pane to clear the highlight, leave copy mode, and
-forward the click to the terminal application; `q` or `Escape` also returns to
-the live bottom.
+on Option-click, including dotless development hosts such as `localhost`. A
+plain click only selects the pane. Command cannot gate this: mouse reporting
+encodes just Shift, Alt and Ctrl, so tmux never learns that Command was down,
+and Ghostty's own Command-click link handling is disabled while tmux grabs the
+mouse. Tmux also advertises OSC 8 hyperlink support to Ghostty for applications
+that emit real terminal hyperlinks. Mouse selections made while viewing
+scrollback are copied without leaving copy mode, so the selected text and scroll
+position stay visible. Click once inside the pane to clear the highlight, leave
+copy mode, and forward the click to the terminal application; `q` or `Escape`
+also returns to the live bottom.
 
 The `󰚩` item in the right side of the status bar shows the highest current
 Codex or Claude usage window. Click it, press `Option-U`, or
@@ -300,17 +328,21 @@ The menu remains open after the launching mouse button is released, so a
 separate click selects the desired color.
 
 The `󰗠 ok` button on the left runs periodic system health checks. It reports disk
-space, memory pressure, swap use, CPU load, thermal throttling, the highest
-sustained power draw, and orphaned development processes. The icon is the
-status, and the label follows it: `󰗠 ok` when everything passes, `󰀨 warn` in amber
+space, memory pressure, the largest memory user, swap activity, CPU load,
+temperature, the highest sustained power draw (with its PID), and orphaned
+development processes. The icon is the status, and the label follows it: `󰗠 ok`
+when everything passes, `󰀨 warn` in amber
 when something needs attention, `󰅙 crit` in red when a threshold is breached,
 and `󰓦 scan` while a check runs. Click it, press `Ctrl-A` then `h`, or `Option-H`, to open the report;
-`r` re-runs the checks with per-check progress, `q` or `Esc` closes.
+`r` re-runs the checks with per-check progress, `q` or `Esc` closes. That key row
+and the rule above it are pinned to the bottom of the popup rather than trailing
+the last check, so they stay in the same place whether or not a check has advice
+to add. The AI usage popup does the same with its own key row.
 
 The checks exist because every one of them caught something that had gone
 unnoticed: a disk that reached 95% full, six orphaned Neovim processes holding
 190 MB for five days, and a terminal shader repainting every frame. The whole
-sweep costs about two seconds, of which `top -l 2` is 1.7, and runs at most
+sweep costs about four seconds, mostly interval sampling, and runs at most
 hourly, so it cannot become the problem it looks for. The status bar itself
 reads only a one-line state file, so a redraw stays fork-free; a refresh is
 spawned in the background only once the report is genuinely stale. Results are
@@ -335,7 +367,62 @@ on/off, speed, density, or brightness and applies the change immediately while
 leaving the popup open. The choice persists under
 `~/.local/state/tmux-ui/moving-background`. The generated Ghostty override and
 active shader live under `~/.config/ghostty`; the image and animation remain
-dark-mode-only, and disabling them restores plain Catppuccin Macchiato.
+dark-mode-only, and disabling them leaves the selected theme untouched.
+
+### Colour themes
+
+Press `Ctrl-A` then `t`, or `Option-T`, to open the theme picker.
+It lists every theme Ghostty can resolve: the ~463 bundled inside the app plus
+the 59 in `files_to_symlink/ghostty/themes/` that Ghostty does not ship. The
+preview pane renders each one's sixteen palette colours over a sample of shell
+output, so a theme can be judged before it is applied.
+
+`Enter` applies the highlighted theme without closing the popup, so comparing
+two of them is `Enter`, arrow, `Enter` rather than reopening the picker each
+time — the real terminal recolours underneath while the list stays put. `Esc`
+closes and leaves whichever theme was applied last, which is the one already on
+screen; there is no separate confirm step and nothing to revert.
+
+There are two themes, not one. The config uses Ghostty's
+`theme = dark:…,light:…` form, so a dark slot and a light slot are stored
+separately under `~/.local/state/tmux-ui/ghostty-theme` and Ghostty draws
+whichever one matches the current macOS appearance. The picker opens on the slot
+that is on screen and `Tab` switches to the other; the prompt names the slot
+being edited and the header names both, with an arrow on the live one:
+
+```text
+dark theme ›
+  Enter apply · Tab switch slot · Esc close
+  → dark:  Aizen Light
+    light: Catppuccin Latte
+```
+
+That arrow is worth reading before concluding the picker is stuck. Ghostty
+chooses the slot from the macOS appearance, not from how dark the palette looks,
+so a pale theme parked in the dark slot leaves the window white while macOS is
+still in dark mode — and edits then land on the dark slot even though the screen
+looks light. `~/tmux-theme.sh show` prints the same summary without opening the
+popup, and `~/tmux-theme.sh picker light` opens straight onto a given slot.
+
+The choice is written out to the generated `~/.config/ghostty/theme.ghostty`,
+which the main config includes last. Ghostty has no runtime theme command, so the
+switch works by rewriting that file and driving the app's own Reload
+Configuration through Hammerspoon.
+
+The moving background composes with whichever dark theme is selected rather than
+being baked into one: when it is on, `tmux-theme.sh` writes a generated
+`starfield-active` theme — the selected palette followed by
+`ghostty/stars-overlay.conf` — and points the dark slot at that instead.
+
+The extra themes come from [terminalcolors.com](https://terminalcolors.com).
+`files_to_symlink/ghostty/fetch-terminalcolors-themes.sh` re-downloads them,
+skipping any scheme Ghostty already bundles so `Gruvbox Dark` keeps meaning
+Ghostty's own. The downloaded files are committed, so a fresh install needs no
+network:
+
+```sh
+bash files_to_symlink/ghostty/fetch-terminalcolors-themes.sh
+```
 
 Press `Ctrl-A`, then `n` to open the two-pane notes workspace for the current
 project. Project notes are shown alongside global notes that are available from

@@ -5,6 +5,7 @@ set -euo pipefail
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/tmux-session-ui"
 order_file="$state_root/order"
 drag_root="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/tmux-session-ui-$UID"
+scroll_root="$drag_root/scroll"
 
 live_names() {
     tmux list-sessions -F '#{session_name}' 2>/dev/null | LC_ALL=C sort -f || true
@@ -296,6 +297,51 @@ delete_session() {
     refresh_status_lines
 }
 
+scroll_sessions() {
+    local direction="$1"
+    local client_pid="$2"
+    local client_tty="$3"
+    local scroll_file="$scroll_root/$client_pid"
+    local offset=0
+    local scrolled_session=""
+    local last_index
+
+    # The remembered session is carried through untouched: rewriting it here
+    # would read back as a switch and yank the window to the active session.
+    if [[ -f "$scroll_file" ]]; then
+        { read -r offset && read -r scrolled_session; } < "$scroll_file" 2>/dev/null || true
+    fi
+    if [[ ! "$offset" =~ ^[0-9]+$ ]]; then
+        offset=0
+    fi
+
+    case "$direction" in
+        left)
+            offset=$((offset - 1))
+            ;;
+        right)
+            offset=$((offset + 1))
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+
+    # The bar clamps the window to what it can actually draw and writes the
+    # result back, so only the obviously out-of-range ends are held here.
+    last_index=$(($(ordered_names | grep -c '') - 1))
+    if (( offset > last_index )); then
+        offset=$last_index
+    fi
+    if (( offset < 0 )); then
+        offset=0
+    fi
+
+    mkdir -p "$scroll_root"
+    printf '%s\n%s\n' "$offset" "$scrolled_session" > "$scroll_file"
+    tmux refresh-client -S -t "$client_tty" 2>/dev/null || true
+}
+
 mouse_down() {
     local mouse_range="$1"
     local client_pid="$2"
@@ -391,6 +437,9 @@ case "${1:-}" in
     switch)
         switch_ordered "${2:-}" "${3:-}"
         ;;
+    scroll)
+        scroll_sessions "${2:-}" "${3:-0}" "${4:-}"
+        ;;
     delete)
         delete_session "${2:-}" "${3:-}"
         ;;
@@ -404,7 +453,7 @@ case "${1:-}" in
         mouse_drag_end "${2:-}" "${3:-0}"
         ;;
     *)
-        printf 'Usage: %s {list|list-status-records|list-project-records|reorder|move|switch|delete|mouse-down|mouse-up|mouse-drag-end}\n' "$0" >&2
+        printf 'Usage: %s {list|list-status-records|list-project-records|reorder|move|switch|scroll|delete|mouse-down|mouse-up|mouse-drag-end}\n' "$0" >&2
         exit 2
         ;;
 esac

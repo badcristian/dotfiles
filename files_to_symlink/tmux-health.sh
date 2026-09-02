@@ -509,25 +509,40 @@ check_thermal() {
 }
 
 check_energy() {
-    local line name power state fix=''
+    local line pid power full_cmd name state fix=''
     # A single `top` sample reports averages since boot, which cannot reflect
     # anything recent. Two samples make the second one an interval measurement.
     # The field must be matched as a literal number, not coerced with $1+0:
     # top's own timestamp line ("2026/08/05 11:35:14") is also two fields and
     # coerces to 2026, which then wins any numeric sort.
     line="$(
-        top -l 2 -s 1 -n 12 -stats power,command 2>/dev/null |
-            awk '/^Processes/ {n++} n==2 && NF==2 && $1 ~ /^[0-9]+(\.[0-9]+)?$/ {print $1, $2}' |
-            sort -rn | head -1
+        top -l 2 -s 1 -n 12 -stats pid,power 2>/dev/null |
+            awk '/^Processes/ {n++} n==2 && NF==2 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+(\.[0-9]+)?$/ {print $1, $2}' |
+            sort -k2,2rn | head -1
     )"
-    power="${line%% *}"
-    name="${line#* }"
-    [[ $power =~ ^[0-9.]+$ ]] || { emit energy "Energy" ok "idle" "no process drawing power" ""; return; }
+    pid="${line%% *}"
+    power="${line#* }"
+    [[ $pid =~ ^[0-9]+$ && $power =~ ^[0-9.]+$ ]] || { emit energy "Energy" ok "idle" "no process drawing power" ""; return; }
+
+    full_cmd="$(ps -p "$pid" -o command= 2>/dev/null)"
+    name="$(hog_name "${full_cmd:-process $pid}")"
     state=ok
     awk -v p="$power" 'BEGIN {exit !(p >= 80)}' && state=warn
     awk -v p="$power" 'BEGIN {exit !(p >= 150)}' && state=crit
-    [[ $state != ok ]] && fix="$name is drawing sustained power. If it is WindowServer, suspect a continuously animating shader or wallpaper."
-    emit energy "Energy" "$state" "$name at $power" "highest sustained power draw" "$fix"
+    if [[ $state != ok ]]; then
+        case "$full_cmd" in
+            *'Code Helper (Plugin)'*)
+                fix='A VS Code extension host is continuously busy. Developer: Show Running Extensions identifies the extension; Developer: Restart Extension Host stops the current process.'
+                ;;
+            *WindowServer*)
+                fix='WindowServer is drawing sustained power. Suspect a continuously animating shader or wallpaper.'
+                ;;
+            *)
+                fix="$name is drawing sustained power. Check Activity Monitor for PID $pid before stopping it."
+                ;;
+        esac
+    fi
+    emit energy "Energy" "$state" "$name at $power" "PID $pid · highest sustained power draw" "$fix"
 }
 
 # What a process is, said in the words its owner would use. Matching is on the
@@ -536,6 +551,8 @@ check_energy() {
 # `Code Helper (Plugin)`, and so is every other VS Code extension host.
 hog_name() {
     case "$1" in
+        *node_modules/.bin/vite*' build '*) printf 'Vite build' ;;
+        *node_modules/.bin/vite*) printf 'Vite dev server' ;;
         *intelephense*) printf 'Intelephense' ;;
         *'Code Helper (Plugin)'*) printf 'VS Code extensions' ;;
         *'Code Helper (Renderer)'*) printf 'VS Code window' ;;
@@ -779,6 +796,17 @@ popup_width() {
     printf '%s' "$width"
 }
 
+# The popup is opened at a fixed height, so the report almost never fills it.
+# Reading the height is what lets the footer sit on the last row instead of
+# floating directly under whatever the checks happened to print.
+popup_height() {
+    local size height=''
+    size="$(stty size 2>/dev/null || printf '')"
+    height="${size%% *}"
+    [[ $height =~ ^[0-9]+$ ]] && (( height >= 10 )) || height=26
+    printf '%s' "$height"
+}
+
 rule() {
     local line
     printf -v line '%*s' "$2" ''
@@ -799,21 +827,22 @@ render_row() {
         pending) printf '  %s%s %-11s %s%s\n' "$dim" '·' "$label" "waiting" "$reset"; return ;;
     esac
 
-    # The value column is clipped to its 24; the detail has to be clipped too, to
+    # The value column is clipped to its 26; the detail has to be clipped too, to
     # whatever is left. A row that overruns does not simply look untidy — it wraps,
     # every wrapped row costs a line, and the footer slides off the bottom of a
-    # popup sized for one line per check. 41 is the fixed prefix: two spaces, the
-    # icon, a space, the label column, a space, the value column, a space.
-    room=$(( width - 42 ))
+    # popup sized for one line per check. 43 is the fixed prefix: two spaces, the
+    # icon, a space, the label column, a space, the value column, a space. The
+    # extra subtracted column keeps the row off the right frame.
+    room=$(( width - 44 ))
     (( room < 12 )) && room=12
 
-    # `printf %-24s` pads to a width counted in BYTES. "30.8 °C battery" is fifteen
+    # A fixed-width `printf` pads to a width counted in BYTES. "30.8 °C battery" is fifteen
     # columns on screen and sixteen bytes in memory, so the temperature row was
     # padded one short and its detail stopped lining up with every other row.
     # `${#var}` counts characters in a UTF-8 locale, so the padding is measured
     # rather than declared — and the same substring form already clips both fields.
-    shown="${value:0:24}"
-    pad=$(( 24 - ${#shown} ))
+    shown="${value:0:26}"
+    pad=$(( 26 - ${#shown} ))
     (( pad < 0 )) && pad=0
 
     printf '  %s%s%s %-11s %s%*s %s%s%s\n' \
@@ -821,8 +850,9 @@ render_row() {
 }
 
 render_report() {
-    local width overall checked_at when
+    local width height body body_rows padding overall checked_at when title right gap
     width="$(popup_width)"
+    height="$(popup_height)"
 
     printf '\033[2J\033[H'
 
@@ -836,42 +866,56 @@ render_report() {
     checked_at="$(jq -r '.checked_at' "$report_file")"
     when="$(date -r "$checked_at" '+%H:%M' 2>/dev/null || printf '?')"
 
-    local title right gap
-    title="$(overall_text "$overall")"
-    right="checked $when"
-    # 4 = leading space, icon, two spaces. Right margin of 2 keeps it off the frame.
-    gap=$(( width - 4 - ${#title} - ${#right} - 2 ))
-    (( gap < 1 )) && gap=1
-    printf ' %s%s%s  %s%s%s%*s%s%s%s\n' \
-        "$(state_colour "$overall")" "$(state_icon "$overall")" "$reset" \
-        "$bold" "$title" "$reset" "$gap" '' "$dim" "$right" "$reset"
-    printf ' %s\n\n' "$(rule '═' $(( width - 3 )))"
+    # Collected instead of printed as it goes, because how far down the footer
+    # belongs cannot be known until the last check has had its say.
+    body="$(
+        title="$(overall_text "$overall")"
+        right="checked $when"
+        # 4 = leading space, icon, two spaces. Right margin of 2 keeps it off the frame.
+        gap=$(( width - 4 - ${#title} - ${#right} - 2 ))
+        (( gap < 1 )) && gap=1
+        printf ' %s%s%s  %s%s%s%*s%s%s%s\n' \
+            "$(state_colour "$overall")" "$(state_icon "$overall")" "$reset" \
+            "$bold" "$title" "$reset" "$gap" '' "$dim" "$right" "$reset"
+        printf ' %s\n\n' "$(rule '═' $(( width - 3 )))"
 
-    while IFS=$'\t' read -r label state value detail; do
-        render_row "$label" "$state" "$value" "$detail" "$width"
-    done < <(jq -r '.checks[] | [.label, .state, .value, .detail] | @tsv' "$report_file")
+        while IFS=$'\t' read -r label state value detail; do
+            render_row "$label" "$state" "$value" "$detail" "$width"
+        done < <(jq -r '.checks[] | [.label, .state, .value, .detail] | @tsv' "$report_file")
 
-    # Only failing checks carry advice, so the list stays short when all is well.
-    if jq -e '[.checks[] | select(.state != "ok")] | length > 0' "$report_file" >/dev/null; then
-        printf '\n %s\n' "$(rule '─' $(( width - 3 )))"
-        while IFS=$'\t' read -r label fix; do
-            # Wrap to the popup, indenting continuation lines under the text so
-            # the label stays scannable down the left edge.
-            printf '%s\n' "$fix" | fold -s -w $(( width - ${#label} - 5 )) |
-                while IFS= read -r part; do
-                    if [[ -z ${shown:-} ]]; then
-                        printf ' %s%s:%s %s%s%s\n' "$bold" "$label" "$reset" "$dim" "$part" "$reset"
-                        shown=1
-                    else
-                        printf ' %*s %s%s%s\n' $(( ${#label} + 1 )) '' "$dim" "$part" "$reset"
-                    fi
-                done
-            unset shown
-        done < <(jq -r '.checks[] | select(.state != "ok" and .fix != "") | [.label, .fix] | @tsv' "$report_file")
-    fi
+        # Only failing checks carry advice, so the list stays short when all is well.
+        if jq -e '[.checks[] | select(.state != "ok")] | length > 0' "$report_file" >/dev/null; then
+            printf '\n %s\n' "$(rule '─' $(( width - 3 )))"
+            while IFS=$'\t' read -r label fix; do
+                # Wrap to the popup, indenting continuation lines under the text so
+                # the label stays scannable down the left edge.
+                printf '%s\n' "$fix" | fold -s -w $(( width - ${#label} - 5 )) |
+                    while IFS= read -r part; do
+                        if [[ -z ${shown:-} ]]; then
+                            printf ' %s%s:%s %s%s%s\n' "$bold" "$label" "$reset" "$dim" "$part" "$reset"
+                            shown=1
+                        else
+                            printf ' %*s %s%s%s\n' $(( ${#label} + 1 )) '' "$dim" "$part" "$reset"
+                        fi
+                    done
+                unset shown
+            done < <(jq -r '.checks[] | select(.state != "ok" and .fix != "") | [.label, .fix] | @tsv' "$report_file")
+        fi
+    )"
 
-    printf '\n %s\n' "$(rule '─' $(( width - 3 )))"
-    printf ' %sr%s recheck   %sq / Esc%s close\n' "$accent_sgr" "$reset" "$accent_sgr" "$reset"
+    printf '%s\n' "$body"
+
+    # Two rows for the rule and the keys, and at least one blank row above them
+    # so a report that does fill the popup still reads as having a footer.
+    body_rows="$(grep -c '' <<< "$body")"
+    padding=$(( height - body_rows - 2 ))
+    (( padding < 1 )) && padding=1
+    rule $'\n' "$padding"
+
+    printf ' %s\n' "$(rule '─' $(( width - 3 )))"
+    # No trailing newline: the footer is on the popup's last row, and ending it
+    # with one would scroll the report up by a line.
+    printf ' %sr%s recheck   %sq / Esc%s close' "$accent_sgr" "$reset" "$accent_sgr" "$reset"
 }
 
 overall_text() {
