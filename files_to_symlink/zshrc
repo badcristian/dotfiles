@@ -274,12 +274,34 @@ source <(fzf --zsh)
 # compinit first, or zoxide silently skips its completion: its init ends with
 # `[[ ${+functions[compdef]} -ne 0 ]] && compdef __zoxide_z_complete cd`, and the
 # only compinit in this setup comes from sdkman-init.sh, which has to stay at the
-# very end of the file. Without this, `cd foo<TAB>` gets zsh's plain directory
-# completer and the frecency list is never offered. -C reuses the cached dump
-# rather than restatting every completion directory; sdkman's later call is then
-# the redundant one.
+# very end of the file. Without this there is no frecency completion at all. -C
+# reuses the cached dump rather than restatting every completion directory;
+# sdkman's later call is then the redundant one.
 autoload -Uz compinit && compinit -C
 eval "$(zoxide init zsh --cmd cd)"
+
+# `cd` then Tab with nothing typed opens the frecency picker over the whole
+# database. Upstream reaches its picker only once a keyword is there - it sends
+# both `cd <Tab>` and `cd fo<Tab>` to `_cd -/`, because both are two words - so
+# the empty case is the one worth taking over. `cd fo<Tab>` still completes
+# local directories, and everything past the first word stays upstream's.
+#
+# Its picker protocol, reused verbatim: run fzf, park the answer in the global
+# __zoxide_result, then ask the terminal for a device status report and let the
+# `\e[0n` reply fire the widget that rewrites the line. compadd of one empty
+# match stops zsh re-running the completer.
+__cd_complete() {
+    if [[ ${#words[@]} -eq 2 && -z ${words[2]} ]]; then
+        __zoxide_result="$(command zoxide query --exclude "$(__zoxide_pwd || true)" --interactive 2>/dev/null)" || __zoxide_result=''
+        compadd -Q -S "" -- ""
+        bindkey '\e[0n' '__zoxide_z_complete_helper'
+        printf '\e[5n'
+        return 0
+    fi
+
+    __zoxide_z_complete
+}
+compdef __cd_complete cd
 
 # ─── VI MODE ─────────────────────────────────────────── added 2026-08-05 ────
 # Vi keybindings on the command line. Press Esc to leave typing and get Vim
