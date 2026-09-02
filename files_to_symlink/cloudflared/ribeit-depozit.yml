@@ -1,0 +1,14 @@
+tunnel: ribeit-depozit
+credentials-file: /Users/mac/.cloudflared/b3b223e0-da88-493f-84a1-46268f5ecf98.json
+
+# http, unlike the other tunnels here: this site is isolated to php@8.5 but not
+# secured, so Valet only gives it a :80 block. Its :443 falls through to Valet's
+# catch-all on the default 8.4 pool, which fails composer's platform check.
+# Cloudflare terminates TLS at the edge anyway, so the loopback hop needs none —
+# and with no self-signed cert in the way, noTLSVerify goes too.
+ingress:
+  - hostname: ribeit-depozit.cerdac.org
+    service: http://ribeit-depozit.test
+    originRequest:
+      httpHostHeader: ribeit-depozit.test
+  - service: http_status:404
