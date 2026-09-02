@@ -179,14 +179,14 @@ local function doubleTap(modifiers, key, action, hotkeyRef)
 end
 
 DOUBLE_TAPS = {
-    {
-        key = ",",
-        modifiers = {"cmd", "shift"}, -- cmd+shift+. (double tap)
-        action = function()
-            -- Open the dotfiles folder in VS Code
-            hs.execute("open -a 'Visual Studio Code' /Users/mac/dev/dotfiles")
-        end
-    }
+    -- {
+    --     key = ",",
+    --     modifiers = {"cmd", "shift"}, -- cmd+shift+. (double tap)
+    --     action = function()
+    --         -- Open the dotfiles folder in VS Code
+    --         hs.execute("open -a 'Visual Studio Code' /Users/mac/dev/dotfiles")
+    --     end
+    -- }
 	-- {
     --     key = "w",
     --     modifiers = {"cmd", "shift"}, -- cmd+shift+. (double tap)
@@ -217,6 +217,40 @@ VSCODE_BUNDLE_ID = "com.microsoft.VSCode"
 VSCODE_APP_NAME = "Code"
 VSCODE_QUIT_DELAY = 1.2
 
+-- The accessibility APIs behind hs.application:allWindows() and hs.window.filter
+-- only see windows on the current Mission Control space. Measured with five
+-- windows open across two spaces, allWindows() returned three and the filter
+-- returned four. Reading zero from either one therefore means "none on this
+-- space", not "none at all", and quitting on that reading closed every window on
+-- every space. CoreGraphics lists windows regardless of space, so the actual quit
+-- decision is taken from it.
+--
+-- Its list also carries VS Code's own helper windows -- a hidden 500x500 one and
+-- several 1512x33 title bars -- which is why it is narrowed to editor-sized
+-- windows. 16 is kCGWindowListExcludeDesktopElements; layer 0 is the ordinary
+-- window layer.
+VSCODE_WINDOW_COUNT_JS = [[
+    ObjC.import('CoreGraphics');
+
+    (function () {
+        const windows = ObjC.castRefToObject($.CGWindowListCopyWindowInfo(16, 0));
+        let count = 0;
+
+        for (let index = 0; index < windows.count; index++) {
+            const window = windows.objectAtIndex(index);
+
+            if (ObjC.unwrap(window.objectForKey('kCGWindowOwnerName')) !== 'Code') continue;
+            if (ObjC.unwrap(window.objectForKey('kCGWindowLayer')) !== 0) continue;
+
+            const bounds = ObjC.deepUnwrap(window.objectForKey('kCGWindowBounds'));
+
+            if (bounds.Width >= 600 && bounds.Height >= 400) count++;
+        }
+
+        return String(count);
+    })();
+]]
+
 local vscodeQuitTimer = nil
 
 local function quitVSCodeWhenWindowless()
@@ -230,9 +264,31 @@ local function quitVSCodeWhenWindowless()
     vscodeQuitTimer = hs.timer.doAfter(VSCODE_QUIT_DELAY, function()
         local app = hs.application.get(VSCODE_BUNDLE_ID)
 
-        if app and #app:allWindows() == 0 then
-            app:kill()
+        if not app then
+            return
         end
+
+        -- Both of these are cheap and both undercount, so they only rule the quit
+        -- out. The close that might really be the last one falls through to the
+        -- CoreGraphics count below.
+        if #app:allWindows() > 0 or #VSCODE_WINDOW_FILTER:getWindows() > 0 then
+            return
+        end
+
+        hs.task.new("/usr/bin/osascript", function(exitCode, stdout)
+            -- Anything unreadable counts as "windows remain". Leaving VS Code
+            -- running costs a Dock icon; quitting with a window open costs the
+            -- window.
+            if exitCode ~= 0 or tonumber(stdout) ~= 0 then
+                return
+            end
+
+            local windowless = hs.application.get(VSCODE_BUNDLE_ID)
+
+            if windowless then
+                windowless:kill()
+            end
+        end, { "-l", "JavaScript", "-e", VSCODE_WINDOW_COUNT_JS }):start()
     end)
 end
 
