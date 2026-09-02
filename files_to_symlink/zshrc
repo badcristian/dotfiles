@@ -395,6 +395,69 @@ setopt EXTENDED_HISTORY
 setopt HIST_IGNORE_ALL_DUPS
 # Do not remember commands that start with a whitespace
 setopt HIST_IGNORE_SPACE
+
+# ─── PER-WINDOW HISTORY ──────────────────────────────── added 2026-09-02 ────
+# Up-arrow reached commands typed in other tmux windows. Nothing was being shared
+# live - SHARE_HISTORY is off - it was inherited at startup: INC_APPEND_HISTORY
+# writes every line to one file immediately, and every new shell then loads that
+# whole file. A window opened at lunchtime carried the morning's other windows.
+#
+# The recalled list is now per tmux window, keyed session:window. tmux.conf sets
+# renumber-windows off, so that index does not shift when a neighbour closes and
+# the file keeps matching the window across a detach. Outside tmux nothing
+# changes: HISTFILE stays the shared file, as it was.
+ZSH_GLOBAL_HISTFILE=~/.zhistory
+
+if [[ -n ${TMUX:-} ]]; then
+    # -t "$TMUX_PANE" is load-bearing: without a target, display-message reports
+    # the session's *active* window, so every shell in the session resolves to
+    # whichever window happened to be focused and they all share one file again.
+    _window_history_key="$(tmux display-message -p -t "${TMUX_PANE:-}" '#S:#I' 2>/dev/null)"
+
+    if [[ -n $_window_history_key ]]; then
+        mkdir -p ~/.zsh_history.d
+        # ':' out of the filename too - it is legal, but Finder and a few tools
+        # read it as a path separator.
+        HISTFILE=~/.zsh_history.d/${${_window_history_key//:/-}//[^A-Za-z0-9_.-]/_}
+
+        # Everything still lands in the shared file, so no command is lost and
+        # Ctrl-R below can still reach across windows. Registered only on the
+        # per-window path: a non-tmux shell already writes there via
+        # INC_APPEND_HISTORY, and the hook would duplicate every line.
+        _append_global_history() {
+            # HIST_IGNORE_SPACE applies to the local file only, so honour it here
+            # too rather than leaking a deliberately unrecorded command.
+            [[ $1 == ' '* ]] && return 0
+            print -r -- "${1%%$'\n'}" >> "$ZSH_GLOBAL_HISTFILE"
+            return 0
+        }
+
+        autoload -Uz add-zsh-hook
+        add-zsh-hook zshaddhistory _append_global_history
+    fi
+
+    unset _window_history_key
+fi
+
+# Ctrl-R keeps searching everything. Without this it would follow the per-window
+# list too, and "which window did I run that in" is exactly the question it is
+# for. Deduplicated newest-first; the `: <epoch>:<elapsed>;` prefix is stripped
+# because EXTENDED_HISTORY writes it and the hook above does not.
+_fzf_global_history_widget() {
+    local selected
+    selected="$(
+        tail -r "$ZSH_GLOBAL_HISTFILE" 2>/dev/null |
+            sed 's/^: [0-9]*:[0-9]*;//' |
+            awk '!seen[$0]++' |
+            fzf --height 40% --reverse --prompt='history> ' --query="$LBUFFER"
+    )" || return 0
+
+    [[ -n $selected ]] && LBUFFER="$selected"
+    zle reset-prompt
+}
+
+zle -N _fzf_global_history_widget
+bindkey '^R' _fzf_global_history_widget
 # Correct spelling of all arguments in the command line
 #setopt CORRECT_ALL
 # Enable autocompletion
