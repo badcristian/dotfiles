@@ -375,12 +375,12 @@
 	},
 	{
 		"key": "shift+cmd+x",
-		"command": "workbench.view.remote",
-		"when": "activeViewlet == 'workbench.view.extensions'"
+		"command": "workbench.view.extensions",
+		"when": "activeViewlet == 'workbench.view.remote'"
 	},
 	{
 		"key": "shift+cmd+x",
-		"command": "workbench.view.extensions",
-		"when": "activeViewlet != 'workbench.view.extensions'"
+		"command": "workbench.view.remote",
+		"when": "activeViewlet != 'workbench.view.remote'"
 	}
 ]

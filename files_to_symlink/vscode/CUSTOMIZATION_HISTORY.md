@@ -6403,3 +6403,39 @@ Verification:
   all three windows through Hammerspoon. The new one came up at `8,41 1496x933`,
   identical to the two already open, with no +30 offset;
 - settings of this kind apply live, so no reload was needed and none was done.
+
+### 2026-09-02 — Shift+Cmd+X leads with Remote Explorer
+
+Intent: the SSH remotes are the destination worth one keystroke; Extensions is
+rarely opened. The 2026-08-11 pair had it the other way round — first press
+Extensions, second press Remote — so the common case cost two presses.
+
+Implementation: the pair keeps its shape and swaps which view each clause is
+keyed to. `keybindings.json` now ends with `activeViewlet == 'workbench.view.remote'`
+→ `workbench.view.extensions`, then `activeViewlet != 'workbench.view.remote'`
+→ `workbench.view.remote`.
+
+Decisions and lessons:
+
+- **the `!=` rule names the first destination and has to stay last.** VS Code
+  resolves a chord to the last matching entry, and `!=` also matches a hidden
+  sidebar, so that rule is what makes the first press land somewhere definite
+  from anywhere. Writing the pair in the other order silently gives one view both
+  presses;
+- **this reverses 2026-08-11's cycle direction, not its shape.** That entry
+  stands as written: its reasoning about `!=` covering a hidden sidebar is what
+  this change reuses, only pointed at the other view. Pressing from Extensions
+  now reaches Remote rather than returning, which is the same two-view cycle
+  read from the other end;
+- no third view was added. Explorer keeps its own binding; a three-way cycle
+  would need a `when` clause per hop and would make the second press ambiguous.
+
+Verification:
+
+- `keybindings.json` parses as JSONC at 80 entries, and the last two read as
+  written above;
+- `~/Library/Application Support/Code/User/keybindings.json` is a symlink to the
+  repository copy, and VS Code reloads that file live, so no window reload is
+  needed;
+- **not verified: the presses themselves.** Expect Remote Explorer from the
+  Explorer or a hidden sidebar, and Extensions only from Remote Explorer.
