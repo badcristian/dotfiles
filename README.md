@@ -245,6 +245,11 @@ first switches the client to the next session in the manual order.
 A running session opened through "Find any folder" is listed too, under the
 folder's name, so a session outside `~/dev` is still one `Enter` or one
 `Ctrl-X` away rather than being reachable only by browsing back to its folder.
+`Option-W` and `Ctrl-A` `X` close the current session without opening the
+picker at all, after a confirmation prompt — closing it takes every pane in it,
+and the picker is a long way to go to close the session you are sitting in. The
+last running session cannot be closed, since there would be nothing to switch
+the client to.
 When the names outgrow the bar, a window slides over the list instead of its
 tail being dropped: `󰅁` and `󰅂` at each end scroll it one session at a time,
 each carrying the number of sessions it still hides. That count is set in plain
