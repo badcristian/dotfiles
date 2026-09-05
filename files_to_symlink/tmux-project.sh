@@ -63,7 +63,9 @@ project_records() {
     local window_label
     local running_session
     local running_windows
+    local running_path
     local running_rank
+    local matched_sessions=""
     local rank
 
     while IFS= read -r project_path; do
@@ -85,7 +87,7 @@ project_records() {
         window_count=""
         running_rank=""
         rank=0
-        while IFS='|' read -r running_session running_windows; do
+        while IFS='|' read -r running_session running_windows running_path; do
             if [[ "$running_session" == "$session_name" ]]; then
                 window_count="$running_windows"
                 running_rank="$rank"
@@ -95,6 +97,7 @@ project_records() {
         done <<< "$running_sessions"
 
         if [[ -n "$window_count" ]]; then
+            matched_sessions+="${matched_sessions:+$'\n'}$session_name"
             if [[ "$window_count" == "1" ]]; then
                 window_label="1 window"
             else
@@ -110,6 +113,36 @@ project_records() {
                 "$status_width" "stopped" "$session_name" "$project_path"
         fi
     done < <(project_paths)
+
+    # A session opened through "Find any folder…" has no project row, and a row
+    # is the only thing Ctrl-X and Enter can reach.
+    rank=0
+    while IFS='|' read -r running_session running_windows running_path; do
+        if [[ -n "$running_session" ]] &&
+            [[ $'\n'"$matched_sessions"$'\n' != *$'\n'"$running_session"$'\n'* ]]; then
+            if [[ -d "$running_path" ]]; then
+                project_name="$(basename "$running_path")"
+            else
+                project_name="$running_session"
+            fi
+
+            display_name="$project_name"
+            if (( ${#display_name} > name_width )); then
+                display_name="${display_name:0:name_width-1}…"
+            fi
+
+            if [[ "$running_windows" == "1" ]]; then
+                window_label="1 window"
+            else
+                window_label="$running_windows windows"
+            fi
+
+            printf '0\t%08d\t%s\t\033[32m●\033[0m %-*s %*s\topen\t%s\t%s\n' \
+                "$rank" "$project_name" "$name_width" "$display_name" \
+                "$status_width" "$window_label" "$running_session" "$running_path"
+        fi
+        rank=$((rank + 1))
+    done <<< "$running_sessions"
 }
 
 project_rows() {

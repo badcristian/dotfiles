@@ -242,6 +242,9 @@ bar to reorder them, or use `Option-Up` / `Option-Down` on a running project in
 the picker. Click a status-bar session name to switch to it. In the picker,
 `Ctrl-X` deletes the selected running session; deleting the current session
 first switches the client to the next session in the manual order.
+A running session opened through "Find any folder" is listed too, under the
+folder's name, so a session outside `~/dev` is still one `Enter` or one
+`Ctrl-X` away rather than being reachable only by browsing back to its folder.
 When the names outgrow the bar, a window slides over the list instead of its
 tail being dropped: `󰅁` and `󰅂` at each end scroll it one session at a time,
 each carrying the number of sessions it still hides. That count is set in plain

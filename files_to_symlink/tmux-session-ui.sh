@@ -420,12 +420,12 @@ case "${1:-}" in
         ;;
     list-project-records)
         while IFS= read -r session_name; do
-            while IFS=$'\t' read -r candidate_name window_count; do
+            while IFS=$'\t' read -r candidate_name window_count session_path; do
                 if [[ "$candidate_name" == "$session_name" ]]; then
-                    printf '%s|%s\n' "$session_name" "$window_count"
+                    printf '%s|%s|%s\n' "$session_name" "$window_count" "$session_path"
                     break
                 fi
-            done < <(tmux list-sessions -F $'#{session_name}\t#{session_windows}' 2>/dev/null || true)
+            done < <(tmux list-sessions -F $'#{session_name}\t#{session_windows}\t#{session_path}' 2>/dev/null || true)
         done < <(ordered_names)
         ;;
     reorder)
