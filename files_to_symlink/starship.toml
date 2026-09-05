@@ -1,6 +1,9 @@
 "$schema" = "https://starship.rs/config-schema.json"
 
 add_newline = false
+# Cushion for the node spawn behind the version segment: 20ms warm, but a cold
+# start blew past the 500ms default and dropped both node-backed segments.
+command_timeout = 1000
 palette = "catppuccin_frappe"
 
 format = """
@@ -80,7 +83,9 @@ version_format = "v${major}"
 
 [custom.js_framework]
 # Higher-level frameworks win so Nuxt/Next/Astro do not also display Vue/React.
-command = '''node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("package.json", "utf8")); const d={...(p.devDependencies||{}), ...(p.dependencies||{})}; const name=d.nuxt?"Nuxt":d.next?"Next":d.astro?"Astro":d.vue?"Vue":d.react?"React":""; if(name) process.stdout.write(name)' '''
+# jq rather than node: 2ms against 70ms, and the prompt 30ms against 80ms. node
+# still spawns once for the version; the second spawn tripped the 500ms default.
+command = '''jq -r '(.dependencies // {}) + (.devDependencies // {}) | if has("nuxt") then "Nuxt" elif has("next") then "Next" elif has("astro") then "Astro" elif has("vue") then "Vue" elif has("react") then "React" else empty end' package.json 2>/dev/null'''
 description = "JavaScript framework declared in package.json"
 detect_files = ["package.json"]
 format = "([ $output]($style))"
