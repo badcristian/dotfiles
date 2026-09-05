@@ -323,8 +323,11 @@ The `󰚩` item in the right side of the status bar shows the highest current
 Codex or Claude usage window. Click it, press `Option-U`, or
 press `Ctrl-A`, then `u` to open the detailed usage popup. The popup reads the
 providers' existing local OAuth credentials, refreshes on demand, and caches
-only normalized percentages and reset times for five minutes under
-`~/.cache/tmux-agent-usage/`; it does not run a background process.
+only normalized percentages, reset times, and the Codex credit balance for five
+minutes under `~/.cache/tmux-agent-usage/`; it does not run a background
+process. When the Codex account holds credits, that balance is shown at the
+right of its name row, since a window sitting at 100% is not the end of the
+session while there are credits left to spend.
 When the current session directory belongs to a Git repository with a web
 remote, a `󰖟` button appears beside usage. Click it to open that repository in
 the default browser; SSH-style Git remotes are converted to their HTTPS page.

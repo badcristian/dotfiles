@@ -127,6 +127,12 @@ fetch_codex() {
             elif ($value | ascii_downcase) == "pro" then "Pro 20x"
             else ($value[0:1] | ascii_upcase) + $value[1:]
             end;
+        # Credits carry work past a 100% window; the balance says how far.
+        def credits_label($credits):
+            if $credits == null or ($credits.has_credits != true) then ""
+            elif $credits.unlimited == true then "unlimited credits"
+            else ((($credits.balance // 0) | tonumber | (. * 10 | round) / 10 | tostring) + " credits")
+            end;
         def usage_row($window; $fallback):
             if $window == null then empty
             else {
@@ -146,6 +152,7 @@ fetch_codex() {
             id: "codex",
             name: "Codex",
             plan: title(($payload.plan_type // $payload.plan // "") | tostring),
+            detail: credits_label($payload.credits),
             state: "available",
             message: "",
             rows: [
@@ -396,6 +403,10 @@ render_provider() {
     local bar_width
     local name
     local plan
+    local detail
+    local name_line
+    local name_width
+    local gap
     local state
     local message
     local row
@@ -407,13 +418,25 @@ render_provider() {
 
     name="$(jq -r '.name' <<< "$provider")"
     plan="$(jq -r '.plan // empty' <<< "$provider")"
+    detail="$(jq -r '.detail // empty' <<< "$provider")"
     state="$(jq -r '.state' <<< "$provider")"
 
+    printf -v name_line ' \033[1m%s\033[0m' "$name"
+    name_width=$((1 + ${#name}))
+
     if [[ -n "$plan" ]]; then
-        printf ' \033[1m%s\033[0m  \033[2m%s\033[0m\n' "$name" "$plan"
-    else
-        printf ' \033[1m%s\033[0m\n' "$name"
+        printf -v name_line '%s  \033[2m%s\033[0m' "$name_line" "$plan"
+        name_width=$((name_width + 2 + ${#plan}))
     fi
+
+    # Right edge matches the header and footer: two columns clear of the frame.
+    if [[ -n "$detail" ]]; then
+        gap=$((width - 2 - name_width - ${#detail}))
+        (( gap < 1 )) && gap=1
+        printf -v name_line '%s%*s\033[2m%s\033[0m' "$name_line" "$gap" '' "$detail"
+    fi
+
+    printf '%s\n' "$name_line"
 
     if [[ "$state" != "available" ]]; then
         message="$(jq -r '.message // "No usage data"' <<< "$provider")"
