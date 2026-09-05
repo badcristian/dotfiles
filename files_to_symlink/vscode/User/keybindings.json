@@ -110,7 +110,7 @@
 	{
 		"key": "backspace",
 		"command": "smartReferences.smartBackspace",
-		"when": "editorTextFocus && !editorReadonly && editorLangId == php"
+		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == vue || editorLangId == typescript || editorLangId == javascript)"
 	},
 	{
 		"key": "enter",

@@ -181,7 +181,8 @@ meanings without leaking into unrelated editors:
 | `Option+Enter` | Quick fixes, including local PHP refactors and DocBlocks |
 | `Cmd+Enter` | PHP smart navigation or Markdown source/preview toggle |
 | `Cmd+C` / `Cmd+V` | PHP-aware copy/paste, native behavior elsewhere |
-| `Backspace`, `Enter`, `=` | PHP-aware editing helpers |
+| `Backspace` | Joins a wrapped line upward, in PHP, Vue, TypeScript and JavaScript |
+| `Enter`, `=` | PHP-aware editing helpers |
 | `Shift+Cmd+.` | Regenerate the passive Laravel IDE helper |
 | `Cmd+P` | Command Palette, matching the desired PhpStorm muscle memory |
 | `Cmd+O` | PhpStorm-style project picker instead of the macOS folder dialog |
@@ -251,7 +252,9 @@ framework-specific bridges:
   an orange current-file marker, and test usages tinted and sorted last;
 - PHP-aware copy/paste that can copy a variable token or replace a target
   variable with a copied expression;
-- smart Backspace, Enter, equals insertion, and chain splitting;
+- smart Backspace, bound for PHP, Vue, TypeScript and JavaScript because the
+  rule it applies is a text shape rather than a language; smart Enter, equals
+  insertion, and chain splitting;
 - JSON/JSONC smart Enter that inserts a missing comma before starting the next
   item while preserving native indentation;
 - parent and trait method navigation and custom reference CodeLens counts;
@@ -6439,3 +6442,59 @@ Verification:
   needed;
 - **not verified: the presses themselves.** Expect Remote Explorer from the
   Explorer or a hidden sidebar, and Extensions only from Remote Explorer.
+
+### 2026-09-04 — Backspace joins upward in Vue, TypeScript and JavaScript too
+
+Intent:
+
+- reported against `resources/js/pages/InterfacePage.vue`, on a `t(…)` argument
+  wrapped onto its own line: with the caret left of the opening quote, Backspace
+  ate the indentation one stop at a time instead of moving the string up to the
+  `t(`. The same caret in a PHP file already joined.
+
+Root cause:
+
+- nothing in `smartBackspace`. The keybinding was `editorLangId == php`, so in a
+  `.vue` file the key was never routed to the command and VS Code ran its own
+  `deleteLeft`.
+
+Implementation:
+
+- the `when` clause is now
+  `(editorLangId == php || editorLangId == vue || editorLangId == typescript || editorLangId == javascript)`;
+- no extension change, and no version bump: the command already does the right
+  thing for these files.
+
+Decisions and lessons:
+
+- **the helpers were never PHP.** `getPhpContinuationTokenInfo` and the three
+  predicates read line text and match `=>`, `&&`/`||` and `?`/`:` — all shapes
+  JavaScript writes the same way. The `Php` in their names records where the
+  behaviour was first wanted, not what it inspects, which is why widening it
+  cost one clause;
+- **TypeScript and JavaScript came along with Vue**, which is wider than the bug
+  reported. A `.ts` file next to the `.vue` one would otherwise answer the same
+  keystroke differently, and the rule is not Vue-specific;
+- the whole `.vue` file is one `editorLangId`, so this covers the template as
+  well as the script block — and the reported case is in the template;
+- `hack` was left out, as it was on the old clause.
+
+Verification:
+
+- the shipped `smartBackspace` branch order was transcribed into a scratch
+  simulation that refuses to run unless six landmarks still match `extension.js`,
+  then run against the real file at line 263. It takes the plain `join` branch
+  and produces exactly the requested result:
+
+  ```
+                  {{
+                      t("The column picker is the table's, but it draws in the page head — look for it above, beside the page's own buttons.",
+                      )
+                  }}
+  ```
+
+- `keybindings.json` parses, and `~/Library/Application Support/Code/User/keybindings.json`
+  is a symlink to the repository copy, which VS Code reloads live — no window
+  reload needed;
+- **not verified: the keystroke in a live editor.** As with 2026-08-06, this is
+  covered by simulation rather than by a test that drives the editor.
