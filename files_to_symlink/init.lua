@@ -11,8 +11,8 @@ MODIFIERS = {"cmd"}
 -- Uses MODIFIERS by default, or a custom `modifiers` field if specified.
 -- =============================================================================
 APPS = {
-    {shortcut = "0", name = "Obsidian"},
-    {shortcut = "0", name = "Obsidian", modifiers = {"cmd", "shift"}},
+    {shortcut = "o", name = "Obsidian"},
+    -- {shortcut = "0", name = "Obsidian", modifiers = {"cmd", "shift"}},
     {shortcut = "1", name = "Ghostty"},
     -- {shortcut = "1", name = "Solo"},
     -- {shortcut = "1", name = "Muxy"},
@@ -26,7 +26,7 @@ APPS = {
     -- {shortcut = "§", name = "TablePlus"},
 	{shortcut = "§", name = "TablePlus"},
 	-- {shortcut = "t", name = "TablePlus"},
-	-- {shortcut = "9", name = "Postman"},
+	{shortcut = "0", name = "Postman"},
     {shortcut = "l", name = "Slack"},
 	-- {shortcut = "e", name = "Tinkerwell", modifiers = {"cmd", "shift"}},
     -- {shortcut = "p", name = "Spotify"},
