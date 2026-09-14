@@ -107,6 +107,38 @@ ln -sf $DOTFILES/tmux-repo.sh ~/tmux-repo.sh
 ln -sf $DOTFILES/tmux-vim-cheatsheet.sh ~/tmux-vim-cheatsheet.sh
 ln -sf $DOTFILES/tmux-health.sh ~/tmux-health.sh
 ln -sf $DOTFILES/switch_php_ver.sh ~/switch_php_ver.sh
+ln -sf $DOTFILES/codex-warmup.sh ~/codex-warmup.sh
+
+# Plist cannot say ~ or $HOME, so it is written resolved rather than linked.
+# bootout first -> rerunning the installer reloads instead of failing.
+CODEX_WARMUP_LABEL=local.dotfiles.codex-warmup
+CODEX_WARMUP_PLIST="$HOME/Library/LaunchAgents/$CODEX_WARMUP_LABEL.plist"
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.cache/codex-warmup"
+cat > "$CODEX_WARMUP_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$CODEX_WARMUP_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>$HOME/codex-warmup.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/.cache/codex-warmup/launchd.err</string>
+</dict>
+</plist>
+PLIST
+launchctl bootout "gui/$(id -u)/$CODEX_WARMUP_LABEL" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$CODEX_WARMUP_PLIST"
 ln -sf $DOTFILES/ghostty.config ~/.config/ghostty/config
 ln -sf $DOTFILES/ghostty/shaders/cursor_warp.glsl ~/.config/ghostty/shaders/cursor_warp.glsl
 ln -sf $DOTFILES/ghostty/shaders/moving_stars.glsl ~/.config/ghostty/shaders/moving_stars.glsl

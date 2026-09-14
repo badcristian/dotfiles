@@ -72,6 +72,7 @@ The root installer currently manages:
 | `files_to_symlink/tmux-open-url.sh` | `~/tmux-open-url.sh` |
 | `files_to_symlink/tmux-repo.sh` | `~/tmux-repo.sh` |
 | `files_to_symlink/switch_php_ver.sh` | `~/switch_php_ver.sh` |
+| `files_to_symlink/codex-warmup.sh` | `~/codex-warmup.sh`, run by the generated `~/Library/LaunchAgents/local.dotfiles.codex-warmup.plist` |
 | `files_to_symlink/vscode/User/*` | `~/Library/Application Support/Code/User/` |
 | `files_to_symlink/vscode/extensions/local.*` | `~/.vscode/extensions/` |
 
@@ -328,6 +329,16 @@ minutes under `~/.cache/tmux-agent-usage/`; it does not run a background
 process. When the Codex account holds credits, that balance is shown at the
 right of its name row, since a window sitting at 100% is not the end of the
 session while there are credits left to spend.
+
+Codex's five-hour window only starts counting at the first request after it
+lapses, so an idle afternoon pushes every later reset back. `codex-warmup.sh`
+keeps the windows back to back instead: launchd runs it every thirty minutes, it
+reads the same usage endpoint (no tokens spent), and once the window has lapsed
+it sends a single ephemeral prompt through `codex exec` on `gpt-5.6-luna` at low
+effort, about 7k tokens. Sitting down to work then finds a window already
+running, with its reset less than five hours out. Nothing runs while the Mac
+sleeps; the first check after waking catches up. Pings are logged to
+`~/.cache/codex-warmup/log`, and `bash ~/codex-warmup.sh --force` sends one now.
 When the current session directory belongs to a Git repository with a web
 remote, a `󰖟` button appears beside usage. Click it to open that repository in
 the default browser; SSH-style Git remotes are converted to their HTTPS page.
