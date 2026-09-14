@@ -17,6 +17,8 @@ const {
 const phpMove = require('./phpMove');
 const { shouldInsertJsonComma } = require('./jsonSmartEnter');
 const { getPhpSignatureSplit } = require('./phpSignatureSplit');
+const { getPhpArraySplit } = require('./phpArraySplit');
+const { getPhpTernarySplit } = require('./phpTernarySplit');
 const {
 	findLaravelConfigKeyRange,
 	findLaravelConfigKeyReadRanges,
@@ -4171,6 +4173,64 @@ async function splitPhpSignatureAtSelection() {
 	});
 }
 
+function getSplitPhpArrayEdit(document, lineNumber) {
+	const line = document.lineAt(lineNumber);
+	const replacement = getPhpArraySplit(line.text);
+
+	if (!replacement) {
+		return undefined;
+	}
+
+	return { range: line.range, replacement };
+}
+
+async function splitPhpArrayAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getSplitPhpArrayEdit(editor.document, editor.selection.active.line);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
+function getSplitPhpTernaryEdit(document, lineNumber) {
+	const line = document.lineAt(lineNumber);
+	const replacement = getPhpTernarySplit(line.text);
+
+	if (!replacement) {
+		return undefined;
+	}
+
+	return { range: line.range, replacement };
+}
+
+async function splitPhpTernaryAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getSplitPhpTernaryEdit(editor.document, editor.selection.active.line);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getInlayHintLabelText(label) {
 	if (Array.isArray(label)) {
 		return label.map((part) => typeof part === 'string' ? part : part.value).join('');
@@ -4547,6 +4607,36 @@ function createSplitPhpSignatureAction(document, range) {
 	}
 
 	const action = new vscode.CodeAction('Split parameters onto separate lines', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
+function createSplitPhpArrayAction(document, range) {
+	const edit = getSplitPhpArrayEdit(document, range.start.line);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Split array elements onto separate lines', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
+function createSplitPhpTernaryAction(document, range) {
+	const edit = getSplitPhpTernaryEdit(document, range.start.line);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Split ternary onto separate lines', vscode.CodeActionKind.QuickFix);
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 	action.isPreferred = true;
@@ -5289,6 +5379,18 @@ function createPhpCodeActionProvider() {
 				actions.push(splitSignatureAction);
 			}
 
+			const splitArrayAction = createSplitPhpArrayAction(document, range);
+
+			if (splitArrayAction) {
+				actions.push(splitArrayAction);
+			}
+
+			const splitTernaryAction = createSplitPhpTernaryAction(document, range);
+
+			if (splitTernaryAction) {
+				actions.push(splitTernaryAction);
+			}
+
 			const inlayHintsAction = await createApplyPhpInlayHintsAction(document, range);
 
 			if (inlayHintsAction) {
@@ -5671,6 +5773,8 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.smartCursorUp', smartCursorUp));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpChain', splitPhpChainAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpSignature', splitPhpSignatureAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpArray', splitPhpArrayAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.toggleFileMarker', async (resourceUri, selectedResourceUris) => {

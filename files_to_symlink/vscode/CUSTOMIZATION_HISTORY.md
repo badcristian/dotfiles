@@ -279,9 +279,10 @@ framework-specific bridges:
 - adding a more precise Laravel builder type to applicable callbacks;
 - fixing one-argument Laravel Collection PHPDoc types by adding their missing
   integer key type through Option+Enter;
-- splitting a one-line PHP function or method signature onto separate parameter
-  lines through Option+Enter, PSR-12 style, with the body brace pulled up beside
-  the closing parenthesis;
+- splitting a one-line PHP construct onto separate lines through Option+Enter —
+  a signature's parameters (PSR-12 style, with the body brace pulled up beside
+  the closing parenthesis), an array's elements, a `->` chain, and a ternary's
+  two branches;
 - extending PHPDoc syntax highlighting so spaced generic arguments, annotation
   variables, and nullable markers keep meaningful type/variable scopes;
 - Explorer deletion while temporarily preventing auto-reveal from moving the
@@ -6582,3 +6583,136 @@ Verification:
 - **not verified: the rendered pixels.** The window running when this was
   deployed predates the registration, so one **Developer: Reload Window** is
   still required.
+
+### 2026-09-07 — Option+Enter splits a one-line array onto separate lines
+
+Intent:
+
+- the third of PhpStorm's split intentions, beside the chain and signature ones
+  that already exist. On
+
+  ```php
+  return ['company_id' => 'integer', 'start_date' => 'date:Y-m-d', 'end_date' => 'date:Y-m-d'];
+  ```
+
+  Option+Enter now offers **Split array elements onto separate lines**, which
+  produces one element per line at `+4`, the closing bracket back at the
+  statement's own indent, and a trailing comma on the last element.
+
+Implementation:
+
+- `phpArraySplit.js`, `getPhpArraySplit(lineText)`. Pure text in, pure text out,
+  the same shape as `phpSignatureSplit.js`, so the transformation is tested
+  without a VS Code host;
+- `extension.js` gained `getSplitPhpArrayEdit`, `splitPhpArrayAtSelection`, the
+  `createSplitPhpArrayAction` code action, and the
+  `smartReferences.splitPhpArray` command beside its two siblings;
+- bumped to `0.0.38` and deployed through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- **the hard part is finding the `[`, not splitting it.** `$row['first']`,
+  `foo()[0]` and `$a[0][1]` are subscripts on what precedes them, so the scan
+  takes the first `[` whose preceding non-whitespace character is not an
+  identifier, `$`, `)`, `]` or `}` — with a keyword exception, because `return`
+  and `yield` end in identifier characters and still introduce a value;
+- `#` stops the scan rather than counting: PHP 8 writes `#[Foo, Bar]`, which is
+  a list of attributes and not an array;
+- commas are collected at depth 1 only, with quotes tracked, so a nested array,
+  a call's arguments and a closure body keep theirs — the same scanner the
+  signature split uses;
+- a trailing comma goes on the last element too. PHP allows it, `casts()` in the
+  reported file already has it, and it makes adding the next element a one-line
+  diff;
+- **a single element still splits.** The signature split refuses one parameter,
+  because PSR-12 keeps a short signature on one line; arrays have no such
+  convention and are the thing that grows, so the rule does not carry over;
+- the action is offered per line and ignores the cursor column, like both
+  siblings. Nested one-line arrays are left to a second invocation.
+
+Verification:
+
+- the array already in
+  `ribeit-depozit/app/Domains/Nomenclators/Models/Nomenclator.php` was joined
+  back onto one line and re-split: the output is byte-identical to the four
+  lines in the file, indentation and trailing comma included;
+- 7 new tests in `test/phpArraySplit.test.js` cover nested arrays and closures,
+  commas inside strings, trailing content after `]`, subscripts, comments,
+  attributes, `[]`, an already-split array, and a trailing comma in the source;
+  all 188 Smart References tests pass and both JSON files parse;
+- the installer completed and the registry records `local.smart-references` at
+  `0.0.38`;
+- **not verified: the keystroke in a live editor.** The window running when this
+  was deployed predates the registration, so one **Developer: Reload Window** is
+  still required.
+
+### 2026-09-10 — Option+Enter splits a one-line ternary
+
+Intent:
+
+- the fourth of PhpStorm's split intentions, beside the chain, signature and
+  array ones. On
+
+  ```php
+  return $this->has($column) ? filter_var($this->get($column), FILTER_VALIDATE_BOOL) : $this->contract->exists;
+  ```
+
+  Option+Enter now offers **Split ternary onto separate lines**, which puts the
+  condition on the statement's own line and `?` and `:` each on their own at
+  `+4`;
+- the layout could not come from the formatter. Pint is what `[php]` formats
+  through, and it has no opinion here at all.
+
+Implementation:
+
+- `phpTernarySplit.js`, `getPhpTernarySplit(lineText)`. Pure text in, pure text
+  out, the same shape as `phpArraySplit.js`, so the transformation is tested
+  without a VS Code host;
+- `extension.js` gained `getSplitPhpTernaryEdit`, `splitPhpTernaryAtSelection`,
+  the `createSplitPhpTernaryAction` code action, and the
+  `smartReferences.splitPhpTernary` command beside its three siblings;
+- bumped to `0.0.40` and deployed through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- **Pint cannot be made to do this, and that was measured, not assumed.**
+  `pint --test` passes on both the flat and the indented form, so it neither
+  produces the layout nor destroys it. `statement_indentation: true` — the only
+  statement-level indentation fixer — leaves the flat form untouched: it indents
+  statements inside blocks, not the continuation lines of one expression. Of the
+  303 fixers in Pint 1.30.5 the indentation ones are `array_indentation`,
+  `heredoc_indentation`, `method_chaining_indentation`, `statement_indentation`
+  and `doctrine_annotation_indentation`; the three ternary fixers are about
+  spacing and rewrites. The intention is the only route — and because Pint has no
+  opinion, what it writes survives the next format;
+- **the hard part is deciding which `?` is the operator.** `??` and `??=` are
+  consumed whole, or the second mark reads as a ternary opening on the space
+  after it; `?->` likewise; `?:` has no branch to split. A nullable type is the
+  interesting one: `?string`, `?\Foo` put a name hard against the mark, which an
+  operator never does. That single rule is what lets
+  `private ?string $mode = self::STRICT ? 'strict' : 'loose';` split at the
+  second mark rather than the first;
+- the pair is the first top-level `:` after the mark, skipping `::`. That is
+  safe only because PHP 8 made an unparenthesised nested ternary a fatal error,
+  so there is no second top-level `?` competing for it;
+- depth 0 only, like the array split: a ternary written as an argument —
+  `$fail($strict ? 'a' : 'b');` — is left alone, because splitting it would
+  scatter the enclosing call rather than tidy the statement.
+
+Verification:
+
+- 8 new tests (196 across the extension, 0 failures) over the returned form, a
+  trailing `,` on the false branch, `??`/`??=`/`?->`/`?:`, nullable types beside
+  a real ternary, a `:` inside a string and a `::` in a branch, an arrow
+  function's return-type colon, and the lines that must offer nothing;
+- byte-for-byte against the file that prompted it: joining the ternary in
+  `ribeit-depozit`'s `ContractTermsRule::isTrue()` onto one line and re-splitting
+  it reproduces the three hand-written lines exactly;
+- corpus run over that project's `app/`, `tests/` and `database/` — 253 files, 33
+  lines offered, 16 files rewritten. Every rewritten file passes `php -l`, and
+  `vendor/bin/pint --test` passes on all 16 under the project's own `pint.json`,
+  which is the claim that matters: the output is what the formatter already
+  wants;
+- `install_vscode.sh` run; the registry reports `local.smart-references@0.0.40`;
+- **not verified: the live editor.** The running window predates the bump, so
+  **Developer: Reload Window** first, then Option+Enter on a one-line ternary.

@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.37",
+	"version": "0.0.40",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -32,6 +32,8 @@
 		"onCommand:smartReferences.smartCursorUp",
 		"onCommand:smartReferences.splitPhpChain",
 		"onCommand:smartReferences.splitPhpSignature",
+		"onCommand:smartReferences.splitPhpArray",
+		"onCommand:smartReferences.splitPhpTernary",
 		"onCommand:smartReferences.applyPhpInlayHints",
 		"onCommand:smartReferences.deleteFileWithoutAutoReveal",
 		"onCommand:smartReferences.toggleFileMarker",
@@ -113,6 +115,14 @@
 				"title": "Smart References: Split PHP Signature"
 			},
 			{
+				"command": "smartReferences.splitPhpArray",
+				"title": "Smart References: Split PHP Array"
+			},
+			{
+				"command": "smartReferences.splitPhpTernary",
+				"title": "Smart References: Split PHP Ternary"
+			},
+			{
 				"command": "smartReferences.applyPhpInlayHints",
 				"title": "Smart References: Add PHP Inlay Hints To Line"
 			},
@@ -130,7 +140,7 @@
 			},
 			{
 				"command": "smartReferences.movePhpClassFile",
-				"title": "PHP: Move Class File…"
+				"title": "PHP: Move Class File\u2026"
 			},
 			{
 				"command": "smartReferences.refreshLaravelHelpers",
