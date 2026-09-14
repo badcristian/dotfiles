@@ -21,6 +21,11 @@
 //      resolves `static::` in a trait by looking at the classes that USE the trait; Intelephense
 //      analyses a trait standalone, so the same code is a false positive there. The tag belongs in
 //      this generated file rather than in app/ source, which is what PhpStorm needs no edit for.
+//   5. @method user() on Illuminate\Http\Request, typed with the model behind the default guard
+//      in config/auth.php — so $request->user()?->getKey() resolves. Vendor says `@return mixed`;
+//      Larastan overrides that with RequestUserExtension, Intelephense has nothing.
+//   6. Facade accessor return types: Storage::disk() is documented as the Filesystem CONTRACT, so
+//      ->download() reads as undefined. Larastan patches this with a return-type extension.
 // Then it also refreshes the PhpStorm file icons (combining the two dev-helper commands).
 
 const vscode = require('vscode');
@@ -402,6 +407,66 @@ function groupMacroMethods(methods) {
 	return [...byClass.values()];
 }
 
+// config/auth.php, walked the way Larastan's RequestUserExtension walks it:
+// defaults.guard -> guards[guard].provider -> providers[provider].model. Intelephense has no
+// equivalent and reads Request::user()'s vendor `@return mixed`, so every chain off it dies.
+
+// Body of the balanced `[...]` that `'key' =>` opens, or undefined. Comment-free source only.
+function readPhpArrayBlock(source, key) {
+	const opener = new RegExp(`'${key}'\\s*=>\\s*\\[`).exec(String(source));
+
+	if (!opener) {
+		return undefined;
+	}
+
+	const start = opener.index + opener[0].length;
+	let depth = 1;
+
+	for (let i = start; i < source.length; i++) {
+		if (source[i] === '[') {
+			depth++;
+		} else if (source[i] === ']' && --depth === 0) {
+			return source.slice(start, i);
+		}
+	}
+
+	return undefined;
+}
+
+// A config string, written plainly or wrapped in env(): 'guard' => env('AUTH_GUARD', 'web').
+function readPhpConfigString(block, key) {
+	const match = new RegExp(`'${key}'\\s*=>\\s*(?:env\\([^,)]*,\\s*)?'([^']+)'`).exec(String(block));
+
+	return match ? match[1] : undefined;
+}
+
+// Fully qualified model behind the default guard. undefined when the chain does not reach one —
+// a token-only or non-Eloquent guard has no model to name, and a wrong one poisons every
+// $request->user() in the project.
+function extractAuthModel(configSource) {
+	const source = String(configSource)
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/(^|\s)(?:\/\/|#)[^\n]*/g, '$1');
+
+	const guard = readPhpConfigString(readPhpArrayBlock(source, 'defaults') || '', 'guard') || 'web';
+	const guards = readPhpArrayBlock(source, 'guards') || '';
+	const provider = readPhpConfigString(readPhpArrayBlock(guards, guard) || '', 'provider');
+
+	if (!provider) {
+		return undefined;
+	}
+
+	const providers = readPhpArrayBlock(source, 'providers') || '';
+	const block = readPhpArrayBlock(providers, provider) || '';
+	const model = /'model'\s*=>\s*(?:env\([^,)]*,\s*)?\\?([A-Za-z_\\][\w\\]*)::class/.exec(block);
+
+	if (!model) {
+		return undefined;
+	}
+
+	return resolvePhpClassName(model[1], getPhpImports(configSource), getPhpNamespace(configSource));
+}
+
 // Curated Restify overrides: redeclare the fluent methods that vendor types as ` : self` (or
 // @return self) with ` : static`, so the concrete filter/field type survives the chain. Partial
 // classes/traits are merged with vendor per intelephense.com/docs; user decls win on clash.
@@ -424,6 +489,19 @@ namespace Binaryk\\LaravelRestify\\Fields {
     class Field {
         public function description(string|callable|\\Closure $callback): static { return $this; }
         public function toolSchema(callable|\\Closure $callback): static { return $this; }
+        public function rules($rules): static { return $this; }
+        public function storingRules($rules): static { return $this; }
+        public function updatingRules($rules): static { return $this; }
+        public function setRepository(\\Binaryk\\LaravelRestify\\Repositories\\Repository $repository): static { return $this; }
+        public function setParentRepository(\\Binaryk\\LaravelRestify\\Repositories\\Repository $repository): static { return $this; }
+    }
+}
+
+namespace Binaryk\\LaravelRestify\\Fields\\Concerns {
+    trait Deletable {
+        public function delete(callable $deleteCallback): static { return $this; }
+        public function deletable($deletable = true): static { return $this; }
+        public function prunable($prunable = true): static { return $this; }
     }
 }
 
@@ -433,7 +511,23 @@ namespace Binaryk\\LaravelRestify\\Traits {
     }
 }`;
 
-function buildStubContent(models, macroMethods = [], traits = []) {
+// Facade accessors: the docblock types Storage::disk() as the CONTRACT, but the manager only ever
+// builds FilesystemAdapter - and download(), url(), tags(), lock() live there, not on the interface.
+// Abstract so the merged declaration needs no body, which is what keeps the stub itself clean.
+const FACADE_OVERRIDES = `namespace Illuminate\\Support\\Facades {
+    abstract class Storage {
+        abstract public static function disk(\\UnitEnum|string|null $name = null): \\Illuminate\\Filesystem\\FilesystemAdapter;
+        abstract public static function build(string|array $config): \\Illuminate\\Filesystem\\FilesystemAdapter;
+        abstract public static function cloud(): \\Illuminate\\Filesystem\\FilesystemAdapter;
+    }
+
+    abstract class Cache {
+        abstract public static function store(\\UnitEnum|string|null $name = null): \\Illuminate\\Cache\\Repository;
+        abstract public static function driver(\\UnitEnum|string|null $driver = null): \\Illuminate\\Cache\\Repository;
+    }
+}`;
+
+function buildStubContent(models, macroMethods = [], traits = [], authModel = undefined, facadeOverrides = true) {
 	const header = `<?php
 
 /**
@@ -441,9 +535,10 @@ function buildStubContent(models, macroMethods = [], traits = []) {
  *
  * Written by the "Laravel: Refresh IDE Helpers & Icons" command (local.smart-references).
  * IDE-ONLY: this file is never autoloaded or executed. It declares Eloquent accessor
- * magic-properties, Macroable macro signatures, and Restify fluent-builder return-type overrides so
- * Intelephense resolves them without editing your models or vendor code. Re-run the command after
- * adding an accessor or a macro.
+ * magic-properties, Macroable macro signatures, the model behind Request::user(), Restify
+ * fluent-builder return-type overrides and the facade accessors whose docblock names a contract
+ * instead of the class it always builds, so Intelephense resolves them without editing your models
+ * or vendor code. Re-run the command after adding an accessor or a macro.
  * Safe to delete: it only affects the editor. See https://intelephense.com/docs (symbol overrides).
  */`;
 
@@ -456,7 +551,19 @@ function buildStubContent(models, macroMethods = [], traits = []) {
 
 	const traitBlocks = traits.map((trait) => renderTraitMixinBlock(trait.namespace, trait.traitName));
 
-	return [header, ...modelBlocks, ...macroBlocks, ...traitBlocks, RESTIFY_OVERRIDES].join('\n\n') + '\n';
+	const requestUserBlock = authModel
+		? `namespace Illuminate\\Http {
+    /**
+     * @method ${authModel}|null user(string|null $guard = null)
+     */
+    class Request {}
+}`
+		: undefined;
+
+	return [header, ...modelBlocks, ...macroBlocks, ...traitBlocks, requestUserBlock, RESTIFY_OVERRIDES,
+		facadeOverrides ? FACADE_OVERRIDES : undefined]
+		.filter(Boolean)
+		.join('\n\n') + '\n';
 }
 
 // --------------------------------------------------------------------------------------
@@ -470,6 +577,29 @@ async function readFileText(uri) {
 	} catch (error) {
 		return undefined;
 	}
+}
+
+// Skipped when the project ships its own Illuminate\Http\Request stub: two @method user()
+// declarations merge into a doubled hover and go-to-definition offers both.
+async function readAuthModel(folder) {
+	const ownStub = await readFileText(vscode.Uri.joinPath(folder.uri, '_ide_stubs.php'));
+
+	if (ownStub && ownStub.includes('namespace Illuminate\\Http')) {
+		return undefined;
+	}
+
+	const config = await readFileText(vscode.Uri.joinPath(folder.uri, 'config', 'auth.php'));
+
+	return config ? extractAuthModel(config) : undefined;
+}
+
+// Skipped when barryvdh/laravel-ide-helper already declares the facades: it generates them from
+// the container, so its disk() is the adapter the project actually builds — and two declarations
+// merge into a doubled hover with go-to-definition offering both.
+async function shouldOverrideFacades(folder) {
+	const generated = await readFileText(vscode.Uri.joinPath(folder.uri, '_ide_helper.php'));
+
+	return !(generated && generated.includes('namespace Illuminate\\Support\\Facades'));
 }
 
 // Scan app/ for Eloquent models exposing accessors. Returns [{namespace, className, properties}].
@@ -572,7 +702,10 @@ async function generateHelperStub(progress) {
 	const macroMethods = await scanMacroRegistrations(progress);
 	progress?.report({ message: 'scanning for Eloquent model concerns…' });
 	const traits = await scanTraitsForModelApi(progress);
-	const content = buildStubContent(models, macroMethods, traits);
+	progress?.report({ message: 'reading config/auth.php…' });
+	const authModel = await readAuthModel(folder);
+	const facadeOverrides = await shouldOverrideFacades(folder);
+	const content = buildStubContent(models, macroMethods, traits, authModel, facadeOverrides);
 	const stubUri = vscode.Uri.joinPath(folder.uri, STUB_FILENAME);
 	await vscode.workspace.fs.writeFile(stubUri, Buffer.from(content, 'utf8'));
 
@@ -580,7 +713,15 @@ async function generateHelperStub(progress) {
 	const macroCount = groupMacroMethods(macroMethods)
 		.reduce((total, group) => total + group.methods.length, 0);
 
-	return { stubUri, modelCount: models.length, propertyCount, macroCount, traitCount: traits.length };
+	return {
+		stubUri,
+		modelCount: models.length,
+		propertyCount,
+		macroCount,
+		traitCount: traits.length,
+		authModel,
+		facadeOverrides,
+	};
 }
 
 // --------------------------------------------------------------------------------------
@@ -607,7 +748,7 @@ async function refreshLaravelHelpers() {
 		);
 
 		const choice = await vscode.window.showInformationMessage(
-			`IDE helpers refreshed: ${result.propertyCount} accessor propert${result.propertyCount === 1 ? 'y' : 'ies'} across ${result.modelCount} model(s), ${result.macroCount} macro(s), ${result.traitCount} model concern(s) + Restify type overrides → ${STUB_FILENAME}. Reload if types don't update.`,
+			`IDE helpers refreshed: ${result.propertyCount} accessor propert${result.propertyCount === 1 ? 'y' : 'ies'} across ${result.modelCount} model(s), ${result.macroCount} macro(s), ${result.traitCount} model concern(s)${result.authModel ? `, Request::user(): ${result.authModel.split('\\').pop()}` : ''} + Restify${result.facadeOverrides ? ' and facade' : ''} type overrides → ${STUB_FILENAME}. Reload if types don't update.`,
 			'Reload Window',
 			'Open stub',
 		);
@@ -654,6 +795,10 @@ module.exports = {
 		extractMacroMethods,
 		groupMacroMethods,
 		renderMacroBlock,
+		readPhpArrayBlock,
+		readPhpConfigString,
+		extractAuthModel,
 		RESTIFY_OVERRIDES,
+		FACADE_OVERRIDES,
 	},
 };

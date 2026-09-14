@@ -127,6 +127,63 @@ test('RESTIFY_OVERRIDES covers the known : self downcasters as : static', () => 
 	assert.ok(o.includes('function canSeeWhen(string $ability, ?array $arguments = []): static'));
 });
 
+test('RESTIFY_OVERRIDES keeps a File field a File across the whole chain', () => {
+	const o = h.RESTIFY_OVERRIDES;
+	// Vendor types these ` : Field` / `@return Field`, which loses storeOriginalName() and every
+	// other File method for anything chained after them.
+	for (const method of ['rules', 'storingRules', 'updatingRules', 'setRepository', 'setParentRepository']) {
+		assert.ok(new RegExp(`function ${method}\\(.*\\): static`).test(o), `${method} → static`);
+	}
+
+	// Deletable is a trait, and its three are typed ` : DeletableContract` — an interface with none
+	// of the field API on it.
+	assert.ok(o.includes('trait Deletable {'));
+	for (const method of ['delete', 'deletable', 'prunable']) {
+		assert.ok(new RegExp(`function ${method}\\(.*\\): static`).test(o), `${method} → static`);
+	}
+});
+
+test('FACADE_OVERRIDES types each accessor as the class its manager actually builds', () => {
+	const o = h.FACADE_OVERRIDES;
+	for (const method of ['disk', 'build', 'cloud']) {
+		assert.ok(new RegExp(`function ${method}\\(.*\\): \\\\Illuminate\\\\Filesystem\\\\FilesystemAdapter;`).test(o), `${method} → FilesystemAdapter`);
+	}
+	for (const method of ['store', 'driver']) {
+		assert.ok(new RegExp(`function ${method}\\(.*\\): \\\\Illuminate\\\\Cache\\\\Repository;`).test(o), `${method} → Cache\\Repository`);
+	}
+	assert.ok(o.includes('abstract class Storage {'));
+	assert.ok(o.includes('abstract class Cache {'));
+});
+
+test('FACADE_OVERRIDES declares every accessor abstract, so the stub needs no body', () => {
+	const signatures = h.FACADE_OVERRIDES.split('\n').filter((line) => line.includes('function ')).map((line) => line.trim());
+
+	assert.strictEqual(signatures.length, 5);
+	// A body would be either `{}` — "not all paths return a value" — or an invented return.
+	assert.ok(signatures.every((line) => line.startsWith('abstract public static function') && line.endsWith(';')));
+});
+
+test('buildStubContent drops the facade overrides when the project generates its own', () => {
+	assert.ok(h.buildStubContent([], [], [], undefined, true).includes('abstract class Storage {'));
+
+	const without = h.buildStubContent([], [], [], undefined, false);
+
+	assert.ok(!without.includes('abstract class Storage {'));
+	assert.ok(!without.includes('Illuminate\\Support\\Facades'));
+	// Restify has no rival generator, so it stays either way.
+	assert.ok(without.includes('trait ProxiesCanSeeToGate'));
+});
+
+test('buildStubContent carries the facade overrides, after the Restify block', () => {
+	const content = h.buildStubContent([]);
+
+	assert.ok(content.includes('namespace Illuminate\\Support\\Facades {'));
+	assert.ok(content.includes('function disk(\\UnitEnum|string|null $name = null): \\Illuminate\\Filesystem\\FilesystemAdapter'));
+	// Restify first: each block opens its own namespace, so a swap would only move the boundary,
+	// but the stub is read by hand often enough that the order should match the docblock.
+	assert.ok(content.indexOf('ProxiesCanSeeToGate') < content.indexOf('abstract class Storage'));
+});
+
 // ---- macros -----------------------------------------------------------------
 
 test('getPhpImports resolves plain, aliased and grouped use statements', () => {
@@ -385,6 +442,96 @@ test('buildStubContent includes model concerns and stays unchanged without them'
 	assert.ok(withTraits.indexOf('trait HasUuid {}') < withTraits.indexOf('ProxiesCanSeeToGate'));
 
 	assert.strictEqual(h.buildStubContent(models, []), h.buildStubContent(models, [], []));
+});
+
+
+// ---- auth model behind Request::user() ---------------------------------------
+
+const STOCK_AUTH_CONFIG = `<?php
+
+use App\\Models\\User;
+
+return [
+    'defaults' => [
+        'guard' => env('AUTH_GUARD', 'web'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+    ],
+
+    'guards' => [
+        'web' => [
+            'driver' => 'session',
+            'provider' => 'users',
+        ],
+    ],
+
+    'providers' => [
+        'users' => [
+            'driver' => 'eloquent',
+            'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        // 'users' => [
+        //     'driver' => 'database',
+        //     'table' => 'users',
+        // ],
+    ],
+];`;
+
+test('extractAuthModel walks defaults -> guards -> providers and resolves the import', () => {
+	assert.strictEqual(h.extractAuthModel(STOCK_AUTH_CONFIG), '\\App\\Models\\User');
+});
+
+test('extractAuthModel follows the default guard, not the first provider', () => {
+	const config = `<?php
+return [
+    'defaults' => ['guard' => 'admin'],
+    'guards' => [
+        'web' => ['provider' => 'users'],
+        'admin' => ['provider' => 'admins'],
+    ],
+    'providers' => [
+        'users' => ['model' => \\App\\Models\\User::class],
+        'admins' => ['model' => \\App\\Models\\Admin::class],
+    ],
+];`;
+
+	assert.strictEqual(h.extractAuthModel(config), '\\App\\Models\\Admin');
+});
+
+test('extractAuthModel gives up rather than guess', () => {
+	// A token guard names no provider; a wrong model would poison every $request->user().
+	const tokenGuard = `<?php
+return [
+    'defaults' => ['guard' => 'api'],
+    'guards' => ['api' => ['driver' => 'token']],
+    'providers' => ['users' => ['model' => \\App\\Models\\User::class]],
+];`;
+
+	assert.strictEqual(h.extractAuthModel(tokenGuard), undefined);
+	assert.strictEqual(h.extractAuthModel('<?php return [];'), undefined);
+});
+
+test('readPhpArrayBlock returns the balanced body', () => {
+	assert.strictEqual(h.readPhpArrayBlock(`'a' => ['b' => [1]], 'c' => [2]`, 'a'), `'b' => [1]`);
+	assert.strictEqual(h.readPhpArrayBlock(`'a' => [1]`, 'missing'), undefined);
+});
+
+test('readPhpConfigString unwraps env()', () => {
+	assert.strictEqual(h.readPhpConfigString(`'guard' => env('AUTH_GUARD', 'web')`, 'guard'), 'web');
+	assert.strictEqual(h.readPhpConfigString(`'guard' => 'admin'`, 'guard'), 'admin');
+	assert.strictEqual(h.readPhpConfigString(`'driver' => 'token'`, 'guard'), undefined);
+});
+
+test('buildStubContent emits Request::user() only when a model was found', () => {
+	const withModel = h.buildStubContent([], [], [], '\\App\\Models\\User');
+
+	assert.ok(withModel.includes('namespace Illuminate\\Http {'));
+	assert.ok(withModel.includes('@method \\App\\Models\\User|null user(string|null $guard = null)'));
+	assert.ok(withModel.includes('class Request {}'));
+	// Restify stays last so its trait block is not read as part of the Request namespace.
+	assert.ok(withModel.indexOf('class Request {}') < withModel.indexOf('ProxiesCanSeeToGate'));
+
+	assert.ok(!h.buildStubContent([], [], []).includes('Illuminate\\Http'));
 });
 
 

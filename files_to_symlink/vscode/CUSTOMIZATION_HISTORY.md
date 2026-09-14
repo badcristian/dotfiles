@@ -305,7 +305,10 @@ whitespace caused autosave noise in an earlier implementation.
 `laravelIntelligence.js` builds a passive, on-demand
 `_ide_helper_manual.php`. It scans models for classic and modern accessors,
 emits `@property-read` types, declares `@method` signatures for Macroable
-registrations, and adds selected Restify `self` to `static` overrides.
+registrations, adds selected Restify `self` to `static` overrides, and retypes the
+facade accessors whose docblock names a contract rather than the class the
+manager builds — `Storage::disk()`, `Cache::store()`. That last block is skipped
+when the project generates its own `_ide_helper.php`.
 
 The helper is generated only through an explicit action. It is indexed where
 Intelephense needs type information but hidden from user-facing reference
@@ -6680,6 +6683,84 @@ Verification:
 - **not verified: the keystroke in a live window.** Keybinding changes apply on
   save, but the running window was not exercised.
 
+### 2026-09-09 — Storage::disk()->download() stopped reading as undefined
+
+Intent:
+
+- `Storage::disk('local')->download(...)` in `ribeit-depozit` reported
+  `Undefined method 'download'. intelephense(P1013)` on correct code. The facade
+  docblock types `disk()` as `\Illuminate\Contracts\Filesystem\Filesystem`, an
+  interface with 23 methods that does not include `download()`, `url()` or
+  `response()`; the manager only ever builds `FilesystemAdapter`, where they
+  live. Larastan patches this with `StorageDynamicStaticMethodReturnTypeExtension`
+  and passes the file at level 9 — Intelephense reads the docblock and has
+  nothing.
+
+Implementation:
+
+- `FACADE_OVERRIDES` added beside `RESTIFY_OVERRIDES` in `laravelIntelligence.js`:
+  partial `Illuminate\Support\Facades\Storage` and `Cache` classes retyping five
+  accessors — `disk()`, `build()`, `cloud()` as `\Illuminate\Filesystem\FilesystemAdapter`,
+  `store()` and `driver()` as `\Illuminate\Cache\Repository`;
+- every accessor is declared `abstract public static function … ;` so the merged
+  declaration carries no body;
+- `shouldOverrideFacades()` drops the whole block when the project's own
+  `_ide_helper.php` already declares `namespace Illuminate\Support\Facades`, and
+  the completion notice then reads "Restify type overrides" rather than "Restify
+  and facade type overrides".
+
+Decisions and lessons:
+
+- **abstract, because a body is what makes the stub noisy.** `{}` under a native
+  return type reports P1075 "not all paths return a value"; a `@return` docblock
+  with an empty body reports P1003 on the unused parameter. An abstract
+  declaration has neither. Measured on the generated stub: 13 P1003 hints, all
+  13 from the Restify block's method bodies, none from this one;
+- **the facade is overridden, not the contract.** Adding `@method download()` to
+  `Contracts\Filesystem\Filesystem` would fix the same call, and would also
+  silence a real error for anyone who implements that interface themselves. A
+  facade accessor is the narrower and truer claim: `Storage::disk()` returns what
+  the manager built;
+- `Queue::connection()` has the same contract-typed docblock and was left alone.
+  Its concrete class is the driver's — `RedisQueue`, `DatabaseQueue`,
+  `SqsQueue` — so there is no single honest return type to name;
+- **where barryvdh/laravel-ide-helper is installed, this steps aside.** Four
+  projects under `~/dev` already generate `_ide_helper.php`, and it answers this
+  better: reflecting the live container, it writes
+  `@return \Illuminate\Filesystem\LocalFilesystemAdapter` for `disk()`, sampled
+  from the disk actually configured. Two declarations of the same accessor would
+  double the hover, which is the same reason `readAuthModel()` skips its
+  `Request::user()` block when a project ships `_ide_stubs.php`;
+- the block is emitted unconditionally otherwise, like the Restify one: a project
+  with no Laravel gets a stub declaring facades it never calls, which costs an
+  index entry and nothing else.
+
+Verification:
+
+- Intelephense 1.18.5 was driven headless over stdio (its own
+  `node_modules/intelephense/lib/intelephense.js`, LSP client script in the
+  session scratchpad) against a synthetic workspace carrying the real facade
+  docblock. Before: `Undefined method 'download'.` After: no diagnostic;
+- the same run keeps `->definitelyNotAMethod()` reported as P1013, which is what
+  proves the type resolved to `FilesystemAdapter` rather than collapsing to
+  `mixed` and silencing everything; `Storage::disk()->put()` (contract) and
+  `Cache::store('redis')->flexible()` (concrete only) both resolve;
+- against the real thing: a copy of the `ribeit-depozit` working tree with its
+  own 307 MB `vendor`, indexed by the same server.
+  `app/Restify/Contracts/Getters/AppendixFileRestifyGetter.php` reported
+  `Undefined method 'download'` before the block and nothing but its pre-existing
+  unused-`$request` hint after it;
+- `test/laravelIntelligence.test.js` reports 38 passing, 34 before: 4 new, over
+  the five accessors, the abstract form, placement after the Restify block, and
+  the `_ide_helper.php` opt-out. `node --test test/*.test.js` reports 188, 0
+  failures — that number counts files, so it is unchanged by the four;
+  `node --check` clean; the manifest parses;
+- `install_vscode.sh` run; the registry reports `local.smart-references@0.0.39`
+  and the extension directory resolves back into this repository;
+- **not verified: the live editor.** The running window predates the version
+  bump, so it needs **Developer: Reload Window**, then `Shift+Cmd+.` to
+  regenerate `_ide_helper_manual.php` before the squiggle clears.
+
 ### 2026-09-10 — Option+Enter splits a one-line ternary
 
 Intent:
@@ -6750,3 +6831,60 @@ Verification:
 - `install_vscode.sh` run; the registry reports `local.smart-references@0.0.40`;
 - **not verified: the live editor.** The running window predates the bump, so
   **Developer: Reload Window** first, then Option+Enter on a one-line ternary.
+
+### 2026-09-10 — A Restify File field stayed a File through its chain
+
+Intent:
+
+- `File::make('file')->path(...)->storingRules([...])->storeOriginalName('file_name')`
+  reported `Undefined method 'storeOriginalName'` at
+  `ContractRepository.php:183`. The class hierarchy is fine —
+  `File extends Field extends OrganicField extends BaseField` — and so is the
+  code. What breaks it is a vendor docblock: `Field::storingRules()` returns
+  `$this` but is annotated `@return Field`, so the expression downcasts to the
+  base class and every method `File` adds is gone from there on.
+
+Implementation:
+
+- `RESTIFY_OVERRIDES` in `laravelIntelligence.js` gained the rest of the
+  downcasters. On `Fields\Field`: `rules()`, `storingRules()`,
+  `updatingRules()` (all `@return Field`) and `setRepository()`,
+  `setParentRepository()` (both native `: Field`);
+- a new partial for the `Fields\Concerns\Deletable` trait covers `delete()`,
+  `deletable()` and `prunable()`, which are natively typed
+  `: DeletableContract` — an interface carrying none of the field API. Their
+  docblocks already say `@return $this`, and the native type is what wins;
+- bumped to `0.0.41` and deployed through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- **no docblock in app code could have fixed this.** The type is lost inside the
+  vendor chain, before any first-party symbol is involved. The alternatives were
+  breaking the chain into a `/** @var File $field */` variable, or reordering so
+  the narrowing call comes last — both push vendor's bug into the call site,
+  which is the thing the stub exists to avoid;
+- `->deletable(false)` narrows the same way and sits in the very chain that was
+  reported. It happened to be last, so nothing was chained off it and nothing was
+  reported. It is covered now rather than after the next reorder;
+- `path()` is annotated `@return $this` and needed nothing, which is what makes
+  the diagnosis quick: walk the chain and the first call whose annotation names a
+  class instead of `$this`/`static` is the one that broke it.
+
+Verification:
+
+- headless Intelephense 1.18.5 against a copy of the `ribeit-depozit` working
+  tree with its real `vendor` and its real generated stub: line 183 reported
+  `Undefined method 'storeOriginalName'` before the block and nothing after it;
+- five Restify repositories — Contract, Appendix, User, Client, Service — were
+  diagnosed before and after in one run. The only difference between the two
+  reports is that P1013 disappearing: no new diagnostic anywhere, so the
+  `Deletable` partial merges with the trait rather than hiding it;
+- the three `Symbol '…' is declared but not used` hints in `ContractRepository`
+  are unrelated and predate this: `ScanDirectoryEnum`, `ScanStorageService` and
+  `UploadedFile` are imported and unused in the current working tree;
+- `test/laravelIntelligence.test.js` reports 39 passing, 38 before;
+  `node --test test/*.test.js` 196, 0 failures; `node --check` clean; the
+  manifest parses;
+- `install_vscode.sh` run; the registry reports `local.smart-references@0.0.41`;
+- **not verified: the live editor.** Needs **Developer: Reload Window**, then
+  `Shift+Cmd+.` to write the new overrides into `_ide_helper_manual.php`.
