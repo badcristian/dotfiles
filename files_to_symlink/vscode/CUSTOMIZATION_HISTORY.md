@@ -185,7 +185,7 @@ meanings without leaking into unrelated editors:
 | `Enter`, `=` | PHP-aware editing helpers |
 | `Shift+Cmd+.` | Regenerate the passive Laravel IDE helper |
 | `Cmd+P` | Command Palette, matching the desired PhpStorm muscle memory |
-| `Cmd+O` | PhpStorm-style project picker instead of the macOS folder dialog |
+| `Shift+Cmd+O` | PhpStorm-style project picker instead of Go to Symbol in Editor |
 | `Cmd+W` | Close the editor, or close the window when no editor is open |
 | double `Shift` | Quick file open |
 | `Cmd+Left` / `Cmd+Right` | Previous/next editor |
@@ -428,10 +428,10 @@ starts hidden.
 
 #### `local.project-chooser`
 
-This extension replaces the macOS folder dialog on `Cmd+O` with a PhpStorm-style
-project picker. It exists because an empty VS Code window offers no fast way to
-return to a known project, and because the native dialog is a file browser
-rather than a project list.
+This extension puts a PhpStorm-style project picker on `Shift+Cmd+O`. It exists
+because an empty VS Code window offers no fast way to return to a known project,
+and because the native folder dialog on `Cmd+O` is a file browser rather than a
+project list.
 
 The list is assembled from three sources, in priority order:
 
@@ -6645,6 +6645,40 @@ Verification:
 - **not verified: the keystroke in a live editor.** The window running when this
   was deployed predates the registration, so one **Developer: Reload Window** is
   still required.
+
+### 2026-09-09 — The project chooser moved to Shift+Cmd+O
+
+Intent:
+
+- keep the project picker, but free `Cmd+O` and reach the chooser through
+  `Shift+Cmd+O` instead.
+
+Implementation:
+
+- `projectChooser.open` is now bound to `Shift+Cmd+O`, with
+  `-workbench.action.gotoSymbol` removed from that chord;
+- the four `-` entries that had freed `Cmd+O`
+  (`openLocalFileFolder`, `openFileFolder`, `openFolderViaWorkspace`,
+  `showAllSymbols`) are gone, so `Cmd+O` returns to the macOS folder dialog;
+- `Cmd+Enter` and `Option+Cmd+N` inside the picker are unchanged: they are
+  scoped by `projectChooser.visible`, not by the opening chord.
+
+Decisions and lessons:
+
+- `Cmd+O` was restored rather than left dead. Nothing custom claims it now, and
+  a key bound to nothing is worse than the default it displaced; the picker's
+  trailing **Open Folder…** entry still reaches the same dialog;
+- **Go to Symbol in Editor** loses its default chord. It stays reachable from
+  the Command Palette, and as `@` in the double-`Shift` quick open.
+
+Verification:
+
+- `keybindings.json` parses and holds exactly two `Shift+Cmd+O` entries, no
+  `Cmd+O` entry;
+- current-state docs updated: the shortcut table, the `local.project-chooser`
+  section, and both READMEs;
+- **not verified: the keystroke in a live window.** Keybinding changes apply on
+  save, but the running window was not exercised.
 
 ### 2026-09-10 — Option+Enter splits a one-line ternary
 

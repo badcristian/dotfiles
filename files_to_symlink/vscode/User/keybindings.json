@@ -261,26 +261,11 @@
 		"when": "folderMatchFocus && isEditableItem && replaceActive && searchViewletVisible"
 	},
 	{
-		"key": "cmd+o",
-		"command": "-workbench.action.files.openLocalFileFolder",
-		"when": "remoteFileDialogVisible"
+		"key": "shift+cmd+o",
+		"command": "-workbench.action.gotoSymbol"
 	},
 	{
-		"key": "cmd+o",
-		"command": "-workbench.action.files.openFileFolder",
-		"when": "isMacNative && openFolderWorkspaceSupport"
-	},
-	{
-		"key": "cmd+o",
-		"command": "-workbench.action.files.openFolderViaWorkspace",
-		"when": "!openFolderWorkspaceSupport && workbenchState == 'workspace'"
-	},
-	{
-		"key": "cmd+o",
-		"command": "-workbench.action.showAllSymbols"
-	},
-	{
-		"key": "cmd+o",
+		"key": "shift+cmd+o",
 		"command": "projectChooser.open"
 	},
 	{

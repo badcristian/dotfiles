@@ -174,7 +174,7 @@ own. It contains:
 - a reproducible Marketplace extension list;
 - local extensions for PHP/Laravel navigation and editing, PHP DocBlocks,
   project icons, preview-tab and Markdown behavior, status-bar control, and a
-  PhpStorm-style project chooser on `Cmd+O`;
+  PhpStorm-style project chooser on `Shift+Cmd+O`;
 - unit tests for the more involved local-extension behavior;
 - installers that link and register those extensions.
 

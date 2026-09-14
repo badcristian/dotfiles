@@ -43,11 +43,11 @@ bash ~/dev/dotfiles/files_to_symlink/vscode/install_vscode.sh
 - `local.preview-pin-on-click`: preview tab reuse, pin on editor click, carry the last Markdown Preview/source mode across all `.md` files, and keep bottom breathing room in rendered Markdown previews.
 - `local.phpstorm-project-icons`: command palette command to scan PHP files and update PhpStorm icon mappings.
 - `local.statusbar-toggle`: local status bar toggle helper.
-- `local.project-chooser`: PhpStorm-style project picker on `Cmd+O`. Lists recently opened folders and workspaces first, then git repositories found one level under `projectChooser.projectRoots` (default `~/dev`), and ends with an **Open Folder…** entry that falls back to the native dialog. An empty window always opens the picked project in place; a window that already has a project open follows the **Open in a new window** toggle, which is on by default and persists across windows.
+- `local.project-chooser`: PhpStorm-style project picker on `Shift+Cmd+O`. Lists recently opened folders and workspaces first, then git repositories found one level under `projectChooser.projectRoots` (default `~/dev`), and ends with an **Open Folder…** entry that falls back to the native dialog. An empty window always opens the picked project in place; a window that already has a project open follows the **Open in a new window** toggle, which is on by default and persists across windows.
 
 ## Open Project
 
-`Cmd+O` opens the picker instead of the macOS folder dialog.
+`Shift+Cmd+O` opens the picker. `Cmd+O` keeps the macOS folder dialog.
 
 | Key | Action |
 | --- | --- |
