@@ -111,3 +111,90 @@ test('every injected grammar regex compiles', () => {
 
 	visit(grammar);
 });
+
+test('static-analysis tags are phpdoc keywords, and their aliases are class names', () => {
+	const grammar = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'syntaxes/phpdoc.tmLanguage.json'), 'utf8'));
+	const tag = grammar.repository['analysis-tag'].patterns[0];
+	const alias = grammar.repository['type-alias'].patterns[0];
+
+	// PHP's own grammar hard-codes a phpDocumentor-era tag list, so all of these were prose.
+	assert.equal(tag.name, 'keyword.other.phpdoc.php');
+	const keyword = new RegExp(tag.match);
+	for (const line of ['@phpstan-type', '@phpstan-ignore-next-line', '@psalm-suppress', '@template-covariant', '@mixin', '@readonly']) {
+		assert.match(line, keyword);
+	}
+	// `@uses` is already a built-in tag; `@use\b` must not claim its first four letters.
+	assert.equal(keyword.test('@uses'), false);
+
+	const declared = new RegExp(alias.match).exec('@phpstan-type ParsedFolder array{');
+	assert.equal(declared[1], '@phpstan-type');
+	assert.equal(declared[2], 'ParsedFolder');
+	assert.equal(alias.captures['2'].name, 'entity.name.type.class.php');
+	// The alias match stops before `array{`, or the shape rule never opens.
+	assert.equal(declared[0], '@phpstan-type ParsedFolder');
+
+	const imported = new RegExp(alias.match).exec('@phpstan-import-type ParsedFolder from NomenclatorImportDTO');
+	assert.equal(imported[3], 'from');
+	assert.equal(imported[4], 'NomenclatorImportDTO');
+
+	// Listed before #analysis-tag, which would otherwise match the tag alone and drop the alias.
+	const order = grammar.patterns.map((pattern) => pattern.include);
+	assert.ok(order.indexOf('#type-alias') < order.indexOf('#analysis-tag'));
+	assert.ok(order.indexOf('#tag-type') < order.indexOf('#analysis-tag'));
+});
+
+test('array shapes open on `array{` only, and close on their own brace', () => {
+	const grammar = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'syntaxes/phpdoc.tmLanguage.json'), 'utf8'));
+	const shape = grammar.repository['array-shape'].patterns[0];
+	const begin = new RegExp(shape.begin);
+
+	assert.equal(begin.exec('array{indicative: string}')[2], 'array');
+	assert.equal(begin.exec('?list{int}')[1], '?');
+	// No whitespace before the brace: ` * mentioning array {like this}` is prose, not a type.
+	assert.equal(begin.test('array {with a space}'), false);
+	// An unclosed shape stops at the docblock rather than eating the file.
+	assert.match('*/', new RegExp(shape.end));
+
+	const key = grammar.repository['shape-body'].patterns
+		.find((pattern) => pattern.captures && pattern.captures['1'].name === 'variable.other.property.php');
+	assert.equal(new RegExp(key.match).exec('retention_years: ?int')[1], 'retention_years');
+	assert.equal(new RegExp(key.match).exec("'b-c': int")[1], "'b-c'");
+	// `a?: int` is an optional key, so the `?` belongs to the key, not to `int`.
+	assert.equal(new RegExp(key.match).exec('a?: int')[2], '?');
+});
+
+test('no rule reachable from a shape can consume the closing brace', () => {
+	const grammar = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'syntaxes/phpdoc.tmLanguage.json'), 'utf8'));
+
+	// The trap this pins: an L: injection is retried inside its own region and wins ties
+	// against that region's end pattern. Any rule offered at a `}` therefore swallows the
+	// brace that should close the shape, and the shape runs to the end of the docblock.
+	const offered = [
+		...grammar.patterns.map((pattern) => pattern.include),
+		...grammar.repository['shape-body'].patterns.map((pattern) => pattern.include),
+	].filter(Boolean);
+
+	for (const include of offered) {
+		const entry = grammar.repository[include.slice(1)];
+		for (const rule of entry.patterns ?? [entry]) {
+			const source = rule.begin ?? rule.match;
+			assert.equal(new RegExp(source).test('}'), false, `${include}: ${source}`);
+		}
+	}
+});
+
+test('hyphenated PHPStan scalars are one type, not a prefix plus a class', () => {
+	const grammar = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'syntaxes/phpdoc.tmLanguage.json'), 'utf8'));
+	const scalar = new RegExp(grammar.repository['scalar-type'].match);
+
+	// `\barray\b` matches inside `array-key`, because `-` closes a word: the longer names
+	// have to come first in the alternation.
+	assert.equal(scalar.exec('array-key')[0], 'array-key');
+	assert.equal(scalar.exec('non-empty-string')[0], 'non-empty-string');
+	assert.equal(scalar.exec('int')[0], 'int');
+	assert.equal(scalar.exec('integer')[0], 'integer');
+
+	// `non-empty-list<Foo>` used to match the class branch at `list<`, leaving `non-empty-` grey.
+	const primitive = grammar.repository['generic-type'].patterns[0];
+	assert.equal(new RegExp(primitive.begin).exec('non-empty-list<Foo>')[2], 'non-empty-list');
+});

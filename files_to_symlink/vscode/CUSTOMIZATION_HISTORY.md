@@ -6498,3 +6498,87 @@ Verification:
   reload needed;
 - **not verified: the keystroke in a live editor.** As with 2026-08-06, this is
   covered by simulation rather than by a test that drives the editor.
+
+### 2026-09-07 — PHPStan docblocks stopped rendering as one grey wall
+
+Intent:
+
+- give a class docblock made of `@phpstan-type` declarations the same structure
+  every `@param` docblock already has. In
+  `ribeit-depozit/app/Domains/Nomenclators/DTO/NomenclatorImportDTO.php` the tag,
+  the alias it declares, and the whole `array{...}` shape under it — eleven lines
+  — were a single undifferentiated grey, while the `@param array<…>` block twenty
+  lines below it was fully coloured.
+
+Root cause:
+
+- VS Code's PHP grammar matches docblock tags against a **hard-coded
+  phpDocumentor-era list** (`api|abstract|author|…|deprecated|final|ignore`).
+  Nothing namespaced — `@phpstan-*`, `@psalm-*` — and none of the generics tags
+  `@template`, `@extends`, `@implements`, `@mixin` is in it, so the tag itself
+  never became `keyword.other.phpdoc.php`;
+- its type region opens for `@global|param|property|return|throws|var` only, so
+  the text after an unrecognised tag was never a type either;
+- the grammar has **no array-shape syntax at all**. `array{a: int}` is not
+  `array<…>`, so neither PHP's grammar nor the local injection, which knew only
+  angle-bracket generics, matched it. The one token that did light up was the `?`
+  in `?string`, from the injection's `nullable-marker` — visible in the
+  screenshot as the sole non-grey character in the block.
+
+Implementation, all in `syntaxes/phpdoc.tmLanguage.json`:
+
+- `#analysis-tag` — every `@phpstan-*`/`@psalm-*` tag becomes a phpdoc keyword.
+  Open-ended on the vendor prefixes (`@(?:phpstan|psalm)-[a-z][a-z-]*`) rather
+  than a second hard-coded list, plus the fixed generics tags;
+- `#type-alias` — `@phpstan-type ParsedFolder`, `@phpstan-import-type X from Y`
+  and `@template T of Foo` scope the declared name as a class;
+- `#array-shape` — a begin/end region for `array{…}`, `list{…}`, `object{…}`,
+  with keys as `variable.other.property.php`, nested shapes, and generics inside
+  shapes. Multi-line shapes work, which is what the reported docblock needed;
+- `#tag-type` — mirrors the built-in type region for the tags PHP's grammar
+  never listed, so `@phpstan-var array-key` and `@mixin \Foo\Bar` type as well;
+- `#scalar-type` and `#class-type` were lifted out of `generic-body`, which now
+  shares them with `shape-body`. The scalar list gained the PHPStan names
+  (`non-empty-string`, `positive-int`, `class-string`, …), and `array-key` moved
+  ahead of `array` in the alternation;
+- Smart References bumped to `0.0.37` and deployed through `install_vscode.sh`.
+
+Decisions and lessons:
+
+- **`}` must not appear in any rule reachable from a shape.** This is the same
+  trap the code-span rule records: an `L:` injection is retried inside its own
+  region and wins ties against that region's `end`, so a rule offered at the
+  closing brace consumes it and the shape runs to the end of the docblock.
+  `shape-body` therefore matches `[()\[\]]` and not `[{}()\[\]]`, and a test
+  walks every rule reachable from a shape asserting none of them matches `}`;
+- `end` carries `(?=\*/)` for the same reason in reverse: an unclosed `array{`
+  is contained by its own docblock instead of swallowing the file;
+- **no whitespace is allowed before `{`.** `array{` is a type; ` * mentioning
+  array {like this}` is prose, and one optional space is the whole difference;
+- only standard PHP scopes were used, so both themes colour this without a new
+  `tokenColorCustomizations` entry — the 2026-08-04 lesson, unchanged;
+- `array-key` is why hyphenated names go first: `\barray\b` matches inside it,
+  because `-` closes a word. `generic-body` had the same latent ordering bug and
+  was fixed with the extraction.
+
+Verification:
+
+- the real `text.html.php` grammar, its embedded `source.php`, and the injection
+  were tokenized together over the reported file. Before: lines 16–28 produced a
+  single token with no scope beyond the base comment. After: `@phpstan-type` is
+  `keyword.other.phpdoc.php`, `ParsedDepartment` is `entity.name.type.class.php`,
+  `array` is `storage.type.php`, `indicative` is `variable.other.property.php`,
+  `string` is `storage.type.php`; the ten-line shape closes on its own `}` at
+  line 27 and `*/` at line 29 is still the comment terminator;
+- an edge-case fixture confirmed an unclosed shape stops at `*/` with the
+  following `class` and `const` still tokenizing as PHP; `` `array{shape` ``
+  inside backticks stays a code span; `array {with a space}` stays prose;
+  `@uses` still routes to the built-in tag while `@use` types its class;
+- four new tests in `test/phpDocSyntax.test.js`; all 181 Smart References tests
+  pass, both JSON files parse;
+- the installer completed with `VS Code dotfiles links installed.`, the registry
+  records `local.smart-references` at `0.0.37`, and `.obsolete` holds no `local.`
+  entries;
+- **not verified: the rendered pixels.** The window running when this was
+  deployed predates the registration, so one **Developer: Reload Window** is
+  still required.

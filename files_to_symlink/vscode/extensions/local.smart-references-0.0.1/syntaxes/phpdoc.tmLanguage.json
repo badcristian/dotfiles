@@ -9,6 +9,18 @@
 			"include": "#inline-tag"
 		},
 		{
+			"include": "#type-alias"
+		},
+		{
+			"include": "#tag-type"
+		},
+		{
+			"include": "#analysis-tag"
+		},
+		{
+			"include": "#array-shape"
+		},
+		{
 			"include": "#generic-type"
 		},
 		{
@@ -107,11 +119,141 @@
 				}
 			]
 		},
+		"type-alias": {
+			"patterns": [
+				{
+					"comment": "Declares a name, so the alias is the class, not the tag argument. Must precede #analysis-tag, which would swallow the tag alone.",
+					"match": "(@(?:phpstan|psalm)-(?:import-)?type|@template(?:-covariant|-contravariant)?)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(from|of|as)\\s+(\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*))?",
+					"captures": {
+						"1": {
+							"name": "keyword.other.phpdoc.php"
+						},
+						"2": {
+							"name": "entity.name.type.class.php"
+						},
+						"3": {
+							"name": "keyword.other.phpdoc.php"
+						},
+						"4": {
+							"name": "entity.name.type.class.php"
+						}
+					}
+				}
+			]
+		},
+		"tag-type": {
+			"patterns": [
+				{
+					"comment": "Mirrors the built-in @param/@return type region for the tags PHP's grammar never listed. Ends at whitespace; a nested generic or shape suspends that end, so `array{a: int}` survives its spaces.",
+					"begin": "(@(?:phpstan|psalm)-(?:param|return|var|property(?:-read|-write)?|self-out|this-out|assert(?:-if-true|-if-false)?|require-extends|require-implements)|@(?:param-out|mixin|extends|implements|use))\\s+(?=[?\\\\A-Za-z_(])",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.other.phpdoc.php"
+						}
+					},
+					"end": "(?=\\s|\\*/)",
+					"contentName": "meta.other.type.phpdoc.php",
+					"patterns": [
+						{
+							"include": "#generic-body"
+						}
+					]
+				}
+			]
+		},
+		"analysis-tag": {
+			"patterns": [
+				{
+					"comment": "PHP's grammar hard-codes a phpDocumentor-era tag list, so every @phpstan-*/@psalm-* tag and the generics tags render as prose. Open-ended on the vendor prefixes: new phpstan tags arrive faster than this file is edited.",
+					"match": "@(?:phpstan|psalm)-[a-z][a-z-]*\\b|@(?:template(?:-covariant|-contravariant|-extends|-implements|-use)?|extends|implements|use|mixin|param-out|readonly|immutable|pure|no-named-arguments|consistent-constructor)\\b",
+					"name": "keyword.other.phpdoc.php"
+				}
+			]
+		},
+		"array-shape": {
+			"patterns": [
+				{
+					"name": "meta.type.shape.phpdoc.php",
+					"comment": "No whitespace before `{`: `array {` also reads as prose. `(?=\\*/)` keeps an unclosed shape inside its own docblock.",
+					"begin": "(\\??)(array-key|non-empty-array|non-empty-list|array|iterable|list|object)(\\{)",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.nullable.phpdoc.php"
+						},
+						"2": {
+							"name": "storage.type.php"
+						},
+						"3": {
+							"name": "punctuation.definition.type.begin.phpdoc.php"
+						}
+					},
+					"end": "(\\})|(?=\\*/)",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.type.end.phpdoc.php"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#shape-body"
+						}
+					]
+				}
+			]
+		},
+		"shape-body": {
+			"patterns": [
+				{
+					"include": "#array-shape"
+				},
+				{
+					"include": "#generic-type"
+				},
+				{
+					"include": "#nullable-marker"
+				},
+				{
+					"comment": "The `?` is an optional key, not a nullable type; same punctuation either way.",
+					"match": "([A-Za-z_][A-Za-z0-9_]*|'[^']*'|\"[^\"]*\"|[0-9]+)(\\?)?(?=\\s*:)",
+					"captures": {
+						"1": {
+							"name": "variable.other.property.php"
+						},
+						"2": {
+							"name": "punctuation.definition.nullable.phpdoc.php"
+						}
+					}
+				},
+				{
+					"include": "#scalar-type"
+				},
+				{
+					"include": "#class-type"
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.delimiter.phpdoc.php"
+				},
+				{
+					"match": ":",
+					"name": "punctuation.separator.key-value.phpdoc.php"
+				},
+				{
+					"match": "[|&]",
+					"name": "punctuation.separator.type.phpdoc.php"
+				},
+				{
+					"comment": "`}` is missing on purpose. An L: injection is retried inside its own region and beats that region's end, so a rule matching `}` here would consume the closing brace and run the shape to the end of the docblock.",
+					"match": "[()\\[\\]]",
+					"name": "punctuation.definition.type.phpdoc.php"
+				}
+			]
+		},
 		"generic-type": {
 			"patterns": [
 				{
 					"name": "meta.type.generic.primitive.phpdoc.php",
-					"begin": "(\\??)(array|iterable|list|non-empty-array|class-string)(\\s*)(<)",
+					"begin": "(\\??)(array|iterable|list|non-empty-array|non-empty-list|class-string)(\\s*)(<)",
 					"beginCaptures": {
 						"1": {
 							"name": "punctuation.definition.nullable.phpdoc.php"
@@ -166,18 +308,19 @@
 		"generic-body": {
 			"patterns": [
 				{
+					"include": "#array-shape"
+				},
+				{
 					"include": "#generic-type"
 				},
 				{
 					"include": "#nullable-marker"
 				},
 				{
-					"match": "\\b(?:array|array-key|bool|boolean|callable|false|float|int|integer|iterable|mixed|never|null|object|resource|self|static|string|true|void)\\b",
-					"name": "storage.type.php"
+					"include": "#scalar-type"
 				},
 				{
-					"match": "\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*",
-					"name": "entity.name.type.class.php"
+					"include": "#class-type"
 				},
 				{
 					"match": ",",
@@ -192,6 +335,15 @@
 					"name": "punctuation.definition.type.phpdoc.php"
 				}
 			]
+		},
+		"scalar-type": {
+			"comment": "Hyphenated names first: `\\barray\\b` matches inside `array-key`, because `-` closes a word.",
+			"match": "\\b(?:array-key|non-empty-array|non-empty-list|non-empty-string|non-falsy-string|numeric-string|class-string|positive-int|negative-int|array|bool|boolean|callable|double|false|float|int|integer|iterable|list|mixed|never|null|numeric|object|resource|scalar|self|static|string|true|void)\\b",
+			"name": "storage.type.php"
+		},
+		"class-type": {
+			"match": "\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*",
+			"name": "entity.name.type.class.php"
 		},
 		"nullable-marker": {
 			"patterns": [
