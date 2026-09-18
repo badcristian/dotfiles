@@ -501,6 +501,9 @@ export PHP11_SLOT=0x2bf550a9
 export PHP11_PIN=12345678
 export GPG_TTY=$(tty)
 
+# `claude setup-token` output, outside this public repo. tmux-agent-usage.sh reads the same file.
+[[ -r ~/.config/claude/oauth-token ]] && export CLAUDE_CODE_OAUTH_TOKEN="$(<~/.config/claude/oauth-token)"
+
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"

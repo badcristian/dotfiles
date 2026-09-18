@@ -330,6 +330,25 @@ process. When the Codex account holds credits, that balance is shown at the
 right of its name row, since a window sitting at 100% is not the end of the
 session while there are credits left to spend.
 
+Claude's usage endpoint needs a plain sign-in: a `claude setup-token` token
+carries inference scope only and is answered `403` without `user:profile`, which
+is also why Claude Code itself reports no rate limits while it runs on one. So
+the popup keeps that sign-in alive on its own. It copies the keychain login to
+`~/.config/claude/usage-credentials.json` on first read and renews it there,
+because Claude Code renews a login only while that login is the credential in
+use. Renewing rotates the refresh token, so the keychain copy goes stale;
+signing in to Claude Code again reseeds the file. When Anthropic answers `429`,
+the popup honours `Retry-After`: the last reading stays, marked stale, and
+nothing is sent until it passes.
+
+`p` reads the same numbers the other way, from the
+`anthropic-ratelimit-unified-*` headers that ride on any inference response.
+That path needs no sign-in — the `claude setup-token` token is enough — but it
+spends a request to get them, one Haiku call of 22 tokens in and one out, which
+is why it is a keypress and not part of a refresh. Its reading is labelled with
+the time it was taken and is kept when a later refresh cannot reach the
+endpoint.
+
 Codex's five-hour window only starts counting at the first request after it
 lapses, so an idle afternoon pushes every later reset back. `codex-warmup.sh`
 keeps the windows back to back instead: launchd runs it every thirty minutes, it
