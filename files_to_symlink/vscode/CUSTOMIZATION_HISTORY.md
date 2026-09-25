@@ -7503,3 +7503,36 @@ Verification:
   `2026_09_08_125931_create_archive_tables.php` with the box label that
   escaped the comment: every line lands behind `         * `;
 - **not verified: the live editor.** Reload the window and paste once.
+
+### 2026-09-25 — Enter after a split chain's `;` goes back to the statement indent
+
+Intent:
+
+- with `->restrictOnDelete();$table->string('number');` as a chain's last line,
+  Enter before `$table` left the new statement at the `->` indent, and every
+  further Enter at its start kept it there. The next statement belongs at the
+  indent of the line the chain began on.
+
+Implementation:
+
+- `getPhpStatementEndEnterInfo`, tried by `smartEnter` when no arrow break
+  applies: after a `;` whose statement ran over `->` lines, the break takes the
+  first line's indent. At the start of a line whose previous non-blank line is
+  such a `;`, an over-indented line is re-indented the same way. Smart
+  References `0.0.49`.
+
+Decisions and lessons:
+
+- **only for split chains.** The statement start is found by walking up `->`
+  lines; a statement on one line returns undefined and keeps VS Code's own
+  Enter, whose indent is already right there;
+- the start-of-line case only moves a line that starts like a statement
+  (`$`, a name, `\`), never a `->` or `}`, and never outwards past the start.
+
+Verification:
+
+- run against a stub document: after the `;` on the chain's last line, at the
+  start of the stuck line, and past a blank line all land at 12 spaces; `$a;$b;`
+  on one line and a normal line below a normal statement stay plain Enter;
+- 229 tests pass, `node --check` clean;
+- **not verified: the live editor.** Reload the window and press Enter once.

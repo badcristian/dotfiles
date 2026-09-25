@@ -3851,6 +3851,54 @@ function getPhpArrowBreakInfo(document, position) {
 	};
 }
 
+// After a `;` ending a split chain the next statement goes back to where the chain's statement
+// began, not the `->` indent. Also at the start of a line already stuck at that indent.
+function getPhpStatementEndEnterInfo(document, position) {
+	const line = document.lineAt(position.line).text;
+	const beforeCursor = line.slice(0, position.character);
+	let endLine = /;\s*$/.test(beforeCursor) ? position.line : undefined;
+
+	if (endLine === undefined && !beforeCursor.trim() && /^\s*[$\w\\]/.test(line)) {
+		for (let index = position.line - 1; index >= 0 && endLine === undefined; index--) {
+			const text = document.lineAt(index).text;
+
+			if (text.trim()) {
+				endLine = /;\s*$/.test(text) ? index : -1;
+			}
+		}
+	}
+
+	if (endLine === undefined || endLine < 0) {
+		return undefined;
+	}
+
+	let startLine = endLine;
+
+	while (startLine > 0 && /^\s*\??->/.test(document.lineAt(startLine).text)) {
+		startLine--;
+	}
+
+	// Not a split chain -> VS Code's own indent is already right.
+	if (startLine === endLine) {
+		return undefined;
+	}
+
+	const indent = getLineIndent(document.lineAt(startLine).text);
+	const lineIndent = getLineIndent(line).length;
+
+	if (endLine === position.line) {
+		const afterWhitespace = line.slice(position.character).match(/^\s*/)[0].length;
+
+		return { range: new vscode.Range(position, position.translate(0, afterWhitespace)), text: `\n${indent}` };
+	}
+
+	if (lineIndent <= indent.length) {
+		return undefined;
+	}
+
+	return { range: new vscode.Range(position.line, 0, position.line, lineIndent), text: `\n${indent}` };
+}
+
 function getPhpEmptyArrayEnterInfo(document, position) {
 	const line = document.lineAt(position.line).text;
 	const beforeCursor = line.slice(0, position.character);
@@ -4093,6 +4141,15 @@ async function smartEnter() {
 	const breakInfo = getPhpArrowBreakInfo(editor.document, position);
 
 	if (!breakInfo) {
+		const statementEnd = getPhpStatementEndEnterInfo(editor.document, position);
+
+		if (statementEnd) {
+			await editor.edit((editBuilder) => editBuilder.replace(statementEnd.range, statementEnd.text));
+			const end = getPositionAfterInsertedText(statementEnd.range.start, statementEnd.text);
+			editor.selection = new vscode.Selection(end, end);
+			return;
+		}
+
 		await vscode.commands.executeCommand('default:type', { text: '\n' });
 		return;
 	}
