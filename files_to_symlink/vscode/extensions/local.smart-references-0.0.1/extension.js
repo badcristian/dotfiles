@@ -20,6 +20,7 @@ const { getPhpSignatureSplit } = require('./phpSignatureSplit');
 const { getPhpArraySplit } = require('./phpArraySplit');
 const { getPhpTernarySplit } = require('./phpTernarySplit');
 const { getPhpUseSplit } = require('./phpUseSplit');
+const { getDocblockPaste } = require('./phpDocblockPaste');
 const { isPhpDirectCallArgument } = require('./phpCallArguments');
 const {
 	getGraphqlClassReferenceAt,
@@ -397,7 +398,28 @@ async function smartPaste() {
 		return;
 	}
 
-	const replacement = normalizePhpClipboardExpression(await vscode.env.clipboard.readText());
+	const clipboard = await vscode.env.clipboard.readText();
+
+	if (editor.selections.length === 1) {
+		const { document, selection } = editor;
+		const start = selection.start;
+		const linesAbove = [];
+
+		for (let line = start.line - 1; line >= 0 && linesAbove.length < 500; line--) {
+			linesAbove.push(document.lineAt(line).text);
+		}
+
+		const docblockText = getDocblockPaste(linesAbove, document.lineAt(start.line).text, start.character, clipboard);
+
+		if (docblockText) {
+			await editor.edit((editBuilder) => editBuilder.replace(selection, docblockText));
+			const end = getPositionAfterInsertedText(start, docblockText);
+			editor.selection = new vscode.Selection(end, end);
+			return;
+		}
+	}
+
+	const replacement = normalizePhpClipboardExpression(clipboard);
 	const ranges = replacement ? getPhpSmartPasteRanges(editor.document, editor.selections) : undefined;
 
 	if (!ranges) {

@@ -7467,3 +7467,39 @@ Verification:
   the closure only the one below; last, after an existing blank line, neither;
 - 223 tests pass, `node --check` clean;
 - **not verified: the live editor.** Reload the window and split one chain.
+
+### 2026-09-25 — Cmd+V inside a PHP docblock keeps the text in the comment
+
+Intent:
+
+- pasting several lines onto a ` *` line of a `/** … */` block put every line
+  after the first at column 0, outside the comment. Each should get the block's
+  ` * ` gutter, as PhpStorm does.
+
+Implementation:
+
+- `phpDocblockPaste.js`: pure `getDocblockPaste(linesAbove, lineText,
+  character, clipboard)`, returning the text to insert or undefined;
+- `smartPaste` (already Cmd+V in PHP) tries it first for a single selection and
+  falls through to the existing paste otherwise. Smart References `0.0.48`,
+  6 new tests.
+
+Decisions and lessons:
+
+- **a line starting with `*` is not proof of a docblock.** A wrapped
+  multiplication starts with one too, so the lines above are walked to a `/**`,
+  stopping at a `*/` or any line without a gutter;
+- the whole line is matched, not the text before the cursor: after the `*` of
+  `*/` the text before the cursor looks like a gutter line;
+- a clipboard already carrying ` * ` gutters (copied out of another docblock) has
+  them stripped first rather than getting a second set. Common indentation is
+  removed, relative indentation kept, so ASCII art and code survive;
+- one line pastes as before: nothing to prefix.
+
+Verification:
+
+- 229 tests pass, `node --check` clean;
+- the helper run against line 19 of `ribeit-depozit`'s
+  `2026_09_08_125931_create_archive_tables.php` with the box label that
+  escaped the comment: every line lands behind `         * `;
+- **not verified: the live editor.** Reload the window and paste once.
