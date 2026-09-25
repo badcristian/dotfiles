@@ -3979,6 +3979,8 @@ function reindentPhpChainChunk(chunk, continuationIndent) {
 	return output.join('\n');
 }
 
+const PHP_BARE_VARIABLE_END = /(?<![$\w\x80-\xff])\$[A-Za-z_\x80-\xff][\w\x80-\xff]*\s*$/;
+
 function splitPhpChainText(text) {
 	const layout = getPhpChainLayout(text);
 
@@ -3986,12 +3988,16 @@ function splitPhpChainText(text) {
 		return undefined;
 	}
 
+	// Bare variable receiver keeps its first call: `$table->foreignId(…)`, not `$table` alone.
+	const splitPositions = layout.splitPositions.length > 1 && PHP_BARE_VARIABLE_END.test(text.slice(0, layout.splitPositions[0]))
+		? layout.splitPositions.slice(1)
+		: layout.splitPositions;
 	const baseIndent = getLineIndent(text);
 	const indent = `${baseIndent}    `;
 	const lines = [];
 	let start = 0;
 
-	for (const [index, position] of layout.splitPositions.entries()) {
+	for (const [index, position] of splitPositions.entries()) {
 		const chunk = text.slice(start, position);
 		lines.push(index === 0 ? chunk.trimEnd() : reindentPhpChainChunk(chunk, indent));
 		start = position;

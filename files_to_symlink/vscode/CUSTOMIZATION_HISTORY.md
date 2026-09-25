@@ -7378,3 +7378,33 @@ Verification:
   recognises both `creator` and `file` and ignores the `macro` keyword;
 - 223 tests pass, `node --check` clean on `extension.js`;
 - **not verified: the live editor.** Reload the window, `Cmd+B` on `'file'`.
+
+### 2026-09-25 — Split Chain keeps a variable's first call on its line
+
+Intent:
+
+- Option+Enter → Split PHP Chain on
+  `$table->foreignId('nomenclator_id')->constrained('nomenclators')->restrictOnDelete();`
+  left `$table` alone on the first line. Wanted the Laravel layout, first call
+  kept with its receiver and only the rest broken out.
+
+Implementation:
+
+- `splitPhpChainText` skips the first break when the text before it ends in a
+  bare variable (`$table`, `$query`, `$this`). Smart References `0.0.45`.
+
+Decisions and lessons:
+
+- **bare variable only.** `$a['k']` or `$$name` still split at every arrow:
+  "the receiver" there is an expression, and keeping a call on it hides where
+  the chain starts. A static call was already kept (`User::query()` then `->…`);
+- a property step counts as the first call: `$this->items` stays together and
+  `->map()` breaks, which reads as the collection being chained.
+
+Verification:
+
+- `splitPhpChainText` run under a stubbed `vscode` on five shapes: the
+  `foreignId` line above, `return $query->…`, `$x = $this->items->…`,
+  `User::query()->…` (unchanged) and `$a['k']->…` (unchanged);
+- 223 tests pass, `node --check` clean;
+- **not verified: the live editor.** Reload the window and run it once.
