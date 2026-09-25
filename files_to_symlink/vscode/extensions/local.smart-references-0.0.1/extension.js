@@ -3807,16 +3807,25 @@ function getPhpArrowBreakInfo(document, position) {
 	}
 
 	const arrowColumn = position.character + afterMatch[1].length;
+	const nextLine = position.line + 1 < document.lineCount ? document.lineAt(position.line + 1).text : '';
+	// Chain already continues below -> one arrow here is enough, and the break lines up with it.
+	const continuesBelow = /^\s*->/.test(nextLine);
 	const layout = getPhpChainLayout(line);
+	const operators = getPhpObjectOperatorPositions(line);
+	const splitPositions = layout
+		? layout.splitPositions
+		: continuesBelow && operators.length > 0
+			? operators.filter((operator) => operator.depth === Math.min(...operators.map((each) => each.depth))).map((operator) => operator.position)
+			: [];
 
-	if (!layout || !layout.splitPositions.includes(arrowColumn)) {
+	if (!splitPositions.includes(arrowColumn)) {
 		return undefined;
 	}
 
 	return {
 		arrowColumn,
 		deleteWhitespace: afterMatch[1].length,
-		indent: `${getLineIndent(line)}    `,
+		indent: continuesBelow ? getLineIndent(nextLine) : `${getLineIndent(line)}    `,
 	};
 }
 

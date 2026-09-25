@@ -7408,3 +7408,33 @@ Verification:
   `User::query()->…` (unchanged) and `$a['k']->…` (unchanged);
 - 223 tests pass, `node --check` clean;
 - **not verified: the live editor.** Reload the window and run it once.
+
+### 2026-09-25 — Enter before `->` lines up with a chain continuing below
+
+Intent:
+
+- with `$table->string('number')` above an indented `->uniqueCaseless(…)`,
+  Enter before `->string` left the new line at `$table`'s indent. It should
+  line up with `->uniqueCaseless` under it.
+
+Implementation:
+
+- `getPhpArrowBreakInfo` also breaks when the next line starts with `->`, even
+  with a single arrow on the cursor's line, and takes the indent from that next
+  line. Smart References `0.0.46`.
+
+Decisions and lessons:
+
+- **the chain was invisible from one line.** The layout needs two arrows or a
+  static call before the arrow, so `$table->string(…)` read as "not a chain" and
+  fell through to the plain Enter. The next line is the evidence that it is one;
+- a single arrow with no `->` line below stays a plain Enter, so an ordinary
+  `$table->id();` does not start wrapping.
+
+Verification:
+
+- `getPhpArrowBreakInfo` run on a fake document: the two-line case above lines
+  up at 16 spaces, the one-line `->uniqueCaseless` split is unchanged, and
+  `$table->string('number');` above `$table->id();` stays a plain Enter;
+- 223 tests pass, `node --check` clean;
+- **not verified: the live editor.** Reload the window and press Enter once.
