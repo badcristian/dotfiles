@@ -400,6 +400,15 @@ reads only a one-line state file, so a redraw stays fork-free; a refresh is
 spawned in the background only once the report is genuinely stale. Results are
 cached under `~/.cache/tmux-health/`.
 
+Every refresh also appends one line to `history.jsonl` in that directory: the
+memory split, the swap rate, the footprint of each tracked application, the
+largest single process, and the uptime it was all measured at. Memory is what
+this machine runs out of, and it moves slowly enough that hourly samples
+describe it — an app growing over days, swap building across an uptime, a
+restart that does or does not clear it. CPU, power and temperature are
+deliberately not kept: a two-second sample once an hour catches a spike only by
+luck. Read it back with `bash ~/tmux-health.sh history`.
+
 The ` vi` button on the left of the bar opens a
 searchable Vim keybinding reference. Alongside the editor sections it carries a
 command-line section for zsh's vi mode and a tmux scrollback section, so the

@@ -22,8 +22,10 @@ set -uo pipefail
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/tmux-health"
 report_file="$cache_dir/report.json"
 state_file="$cache_dir/state"
+history_file="$cache_dir/history.jsonl"
 lock_dir="$cache_dir/refresh.lock"
 max_age="${TMUX_HEALTH_MAX_AGE:-3600}"
+history_keep="${TMUX_HEALTH_HISTORY_KEEP:-2000}"
 
 icon_ok=$'\U000F05E0'
 icon_warn=$'\U000F0028'
@@ -51,11 +53,15 @@ rank() {
     esac
 }
 
+# The seventh argument is raw numbers for the history, and only the memory checks
+# pass one. Everything else here is a display string: "2859 MB/h out" is written
+# to be read, not to be compared against last Tuesday.
 emit() {
     jq -nc \
         --arg id "$1" --arg label "$2" --arg state "$3" \
         --arg value "$4" --arg detail "$5" --arg fix "$6" \
-        '{id:$id, label:$label, state:$state, value:$value, detail:$detail, fix:$fix}'
+        --argjson data "${7:-null}" \
+        '{id:$id, label:$label, state:$state, value:$value, detail:$detail, fix:$fix, data:$data}'
 }
 
 check_disk() {
@@ -117,7 +123,11 @@ check_memory() {
     # Abbreviated deliberately: the detail column is 62 wide at the popup's size and
     # the full words did not fit, so they were being clipped mid-phrase.
     emit memory "Memory" "$state" "${used} GB used of ${total} GB" \
-        "app ${app} · wired ${wired} · comp ${comp} · cache ${cache} · ${free_pct}% reclaimable" "$fix"
+        "app ${app} · wired ${wired} · comp ${comp} · cache ${cache} · ${free_pct}% reclaimable" "$fix" \
+        "$(jq -nc --argjson used "$used" --argjson total "$total" --argjson app "$app" \
+            --argjson wired "$wired" --argjson comp "$comp" --argjson cache "$cache" \
+            --argjson free_pct "$free_pct" \
+            '{used:$used, total:$total, app:$app, wired:$wired, comp:$comp, cache:$cache, free_pct:$free_pct}')"
 }
 
 # Swap, measured as a rate rather than as a ratio.
@@ -158,7 +168,8 @@ check_swap() {
     # run. Both mean there is no interval to measure yet, not that swapping is
     # absent, so neither is reported as a clean bill of health.
     if [[ ! $last_pages =~ ^[0-9]+$ || ! $last_at =~ ^[0-9]+$ ]] || (( pages < last_pages || now <= last_at )); then
-        emit swap "Swap" ok "no baseline" "$detail · rate from the next check" ""
+        emit swap "Swap" ok "no baseline" "$detail · rate from the next check" "" \
+            "$(jq -nc --argjson resident "$used" '{rate_mb_h:null, resident_mb:$resident}')"
         return
     fi
 
@@ -168,7 +179,8 @@ check_swap() {
     (( rate >= 128 )) && state=warn
     (( rate >= 1024 )) && state=crit
     [[ $state != ok ]] && fix='Pages are being written out of RAM continuously, which is the stutter you feel. The Top memory row names what is holding it.'
-    emit swap "Swap" "$state" "${rate} MB/h out" "$detail" "$fix"
+    emit swap "Swap" "$state" "${rate} MB/h out" "$detail" "$fix" \
+        "$(jq -nc --argjson rate "$rate" --argjson resident "$used" '{rate_mb_h:$rate, resident_mb:$resident}')"
 }
 
 check_load() {
@@ -422,6 +434,9 @@ check_thermal() {
     # have compared as a real reading.
     [[ $fan_pct =~ ^-?[0-9]+$ ]] || fan_pct=-1
     [[ $fan_rpm =~ ^-?[0-9]+$ ]] || fan_rpm=-1
+    # 101% of maximum is an rpm above the fan's own ceiling: a bad reading, not a hot
+    # machine. Discarded rather than reported, and it took nine snapshots to notice.
+    (( fan_pct > 100 )) && fan_pct=-1
     [[ $hotspot == cpu || $hotspot == gpu ]] || hotspot=cpu
 
     # Neither sensor answered — a Mac with no battery and no macmon. Pressure still does.
@@ -484,7 +499,9 @@ check_thermal() {
         # a busy machine — it is cooling that has stopped working as well as it did
         # here: blocked vents, a hot room, a failing fan.
         awk -v t="$temp" 'BEGIN { exit !(t >= 80) }' && state=warn
-        (( fan_pct >= 70 )) && state=warn
+        # Fans held at 0 until the die reached 81 °C in the stress run, so busy fans on
+        # a cool die is the sensor talking, not heat: nine snapshots said 76% at 42 °C.
+        (( fan_pct >= 70 )) && awk -v t="$temp" 'BEGIN { exit !(t >= 70) }' && state=warn
         (( pressure > 0 )) && state=warn
         awk -v t="$temp" 'BEGIN { exit !(t >= 92) }' && state=crit
     else
@@ -553,6 +570,13 @@ hog_name() {
     case "$1" in
         *node_modules/.bin/vite*' build '*) printf 'Vite build' ;;
         *node_modules/.bin/vite*) printf 'Vite dev server' ;;
+        # Mix and Nuxt launch as `node <path>/webpack.js`, so the basename fallback
+        # logged the largest process on this machine as "node" in 119 of 142 samples.
+        *webpack-dev-server*) printf 'Webpack dev server' ;;
+        *webpack/bin/webpack.js*) printf 'Webpack watcher' ;;
+        *nuxt*) printf 'Nuxt dev server' ;;
+        # Before the Code Helper arms: tsserver *is* a `Code Helper (Plugin)`.
+        *tsserver*) printf 'TS server' ;;
         *intelephense*) printf 'Intelephense' ;;
         *'Code Helper (Plugin)'*) printf 'VS Code extensions' ;;
         *'Code Helper (Renderer)'*) printf 'VS Code window' ;;
@@ -566,6 +590,8 @@ hog_name() {
         *WindowServer*) printf 'WindowServer' ;;
         *mysqld*|*mariadbd*) printf 'MySQL' ;;
         *postgres*) printf 'Postgres' ;;
+        *redis-server*) printf 'Redis' ;;
+        *php-fpm*) printf 'PHP-FPM' ;;
         *) printf '%s' "$(basename "${1%% *}")" ;;
     esac
 }
@@ -581,6 +607,8 @@ hog_fix() {
             printf '%s' 'A VS Code extension host. Each open window runs its own, so closing windows you are not using frees a whole set. Developer: Restart Extension Host reclaims a leaked one without losing the window.' ;;
         *'Code Helper (Renderer)'*|*'Visual Studio Code'*)
             printf '%s' 'A VS Code window. Close the ones you are not using — each carries its own renderer, extension host and language servers.' ;;
+        *webpack/bin/webpack.js*|*webpack-dev-server*)
+            printf '%s' 'A webpack/Mix watcher holds the whole module graph for as long as it runs, and laravel-mix 5 is webpack 4, which never gives it back. Check the watch script for --watch-poll: it stats every file in the graph every second whether or not anything changed, and FSEvents does that for free on a local disk. Restart it between projects rather than leaving it up for days.' ;;
         *'Google Chrome'*)
             printf '%s' 'A Chrome renderer, which is one tab or a group of same-site tabs. Close it, or turn on Memory Saver to let Chrome discard idle tabs itself.' ;;
         */claude)
@@ -643,7 +671,7 @@ memory_by_process() {
 # double-count, but summing across an application still can, so the per-app totals
 # below are reported as orientation rather than used as the trigger.
 check_hogs() {
-    local total_mb snapshot top_mb top_pid top_cmd name pct state fix='' detail
+    local total_mb snapshot top_mb top_pid top_cmd name pct state fix='' detail apps apps_json
 
     total_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || printf '0') / 1048576 ))
     (( total_mb > 0 )) || { emit hogs "Top memory" ok "unknown" "could not read physical memory size" ""; return; }
@@ -655,7 +683,9 @@ check_hogs() {
     name="$(hog_name "$top_cmd")"
     pct=$(( top_mb * 100 / total_mb ))
 
-    detail="$(
+    # "<mb>\t<app>\t<pretty>", biggest first. The row shows three; the history keeps
+    # them all, which is what makes an app growing over days visible at all.
+    apps="$(
         awk -F'\t' '
             { mb = $1; $0 = $3 }
             /Visual Studio Code/ { app = "VS Code" }
@@ -665,6 +695,11 @@ check_hogs() {
             !app && /GitHub Desktop/ { app = "GitHub Desktop" }
             !app && /(^|\/)(mysqld|mariadbd)( |$)/ { app = "MySQL" }
             !app && /(^|\/)postgres( |:|$)/ { app = "Postgres" }
+            !app && /(^|\/)redis-server/ { app = "Redis" }
+            # Thirteen php-fpm processes, none big enough to rank on its own. Only the
+            # per-app total shows the four Valet PHP versions costing 151 MB together.
+            !app && /php-fpm/ { app = "PHP-FPM" }
+            !app && /webpack|(^|\/)vite( |$)|nuxt/ { app = "Watchers" }
             !app && /Docker/ { app = "Docker" }
             { if (app) total[app] += mb; app = "" }
             # Size first and tab-separated: every name here can contain a space, so
@@ -676,10 +711,11 @@ check_hogs() {
                     mb = int(total[a])
                     printf "%d\t%s\t%s\n", mb, a, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb))
                 }
-            }' <<< "$snapshot" |
-            sort -rn | head -3 |
-            awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? " · " : ""), $2, $3 } END { print "" }'
+            }' <<< "$snapshot" | sort -rn
     )"
+    detail="$(head -3 <<< "$apps" |
+        awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? " · " : ""), $2, $3 } END { print "" }')"
+    apps_json="$(jq -Rn '[inputs | select(length > 0) | split("\t") | {(.[1]): (.[0] | tonumber)}] | add // {}' <<< "$apps")"
     [[ -n $detail ]] || detail="no tracked application is holding memory"
 
     state=ok
@@ -688,7 +724,9 @@ check_hogs() {
     [[ $state != ok ]] && fix="$(hog_fix "$top_cmd")"
     emit hogs "Top memory" "$state" \
         "$(awk -v n="$name" -v mb="$top_mb" 'BEGIN { printf "%s %s", n, (mb >= 1024 ? sprintf("%.1f GB", mb / 1024) : sprintf("%d MB", mb)) }')" \
-        "$detail" "$fix"
+        "$detail" "$fix" \
+        "$(jq -nc --argjson mb "$top_mb" --argjson pid "$top_pid" --arg name "$name" --argjson apps "$apps_json" \
+            '{mb:$mb, pid:$pid, name:$name, apps:$apps}')"
 }
 
 check_processes() {
@@ -720,6 +758,37 @@ write_state() {
     printf '%s %s\n' "$1" "$now" > "$state_file"
 }
 
+# One line per refresh, memory only.
+#
+# Memory is what this machine runs out of, and it moves slowly enough that an hourly
+# sample describes it: an app growing over days, swap building across an uptime, a
+# restart that does or does not clear it. CPU, power and temperature are left out on
+# purpose — a two-second sample once an hour catches a spike only by luck, so keeping
+# them would be noise wearing a timestamp.
+#
+# Read from the report that was just written, so it samples nothing itself. About
+# 300 bytes a line, which puts the default cap at months rather than days.
+append_history() {
+    local boot now up_h lines
+    [[ -f $report_file ]] || return 0
+
+    # Uptime, because a footprint means something different on hour 2 and on day 13.
+    boot="$(sysctl -n kern.boottime 2>/dev/null | awk -F'[^0-9]+' '{print $2}')"
+    printf -v now '%(%s)T' -1
+    up_h=-1
+    [[ $boot =~ ^[0-9]+$ ]] && (( boot > 0 && now > boot )) && up_h=$(( (now - boot) / 3600 ))
+
+    jq -c --argjson up "$up_h" '
+        (.checks | map(select(.data != null) | {key: .id, value: .data}) | from_entries) as $d
+        | {at: .checked_at, uptime_h: $up, mem: $d.memory, swap: $d.swap, hogs: $d.hogs}' \
+        "$report_file" >> "$history_file" 2>/dev/null || return 0
+
+    lines="$(wc -l < "$history_file" 2>/dev/null | tr -d ' ')"
+    [[ $lines =~ ^[0-9]+$ ]] && (( lines > history_keep )) || return 0
+    tail -n "$history_keep" "$history_file" > "$history_file.tmp" &&
+        mv "$history_file.tmp" "$history_file"
+}
+
 refresh_clients() {
     tmux refresh-client -S 2>/dev/null || true
 }
@@ -749,6 +818,7 @@ run_refresh() {
             '{checked_at:$at, overall:$overall, checks:.}' > "$report_file.tmp" &&
         mv "$report_file.tmp" "$report_file"
 
+    append_history
     write_state "$overall"
     refresh_clients
 }
@@ -967,6 +1037,7 @@ interactive_refresh() {
         mv "$report_file.tmp" "$report_file"
     rm -f "$cache_dir/partial.jsonl"
 
+    append_history
     write_state "$overall"
     refresh_clients
     render_report
@@ -1076,8 +1147,9 @@ case "${1:-}" in
     status-icon) status_icon ;;
     status-state) status_state ;;
     report) [[ -f $report_file ]] && jq . "$report_file" || echo '{}' ;;
+    history) [[ -f $history_file ]] && cat "$history_file" || printf '' ;;
     *)
-        printf 'Usage: %s {refresh|ensure-fresh|popup|status-icon|status-state|report}\n' "$0" >&2
+        printf 'Usage: %s {refresh|ensure-fresh|popup|status-icon|status-state|report|history}\n' "$0" >&2
         exit 2
         ;;
 esac

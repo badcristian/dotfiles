@@ -31,6 +31,18 @@ Nothing here is tracked in git. The snapshots and the review file live in the
 cache directory because they describe this machine at a moment, not the
 configuration; a fresh clone correctly finds nothing.
 
+## Performance questions: read the history first
+
+`~/.cache/tmux-health/history.jsonl` carries one line per health refresh: the
+memory split, the swap rate, the footprint of every tracked application, the
+largest single process, and the uptime behind all of it. `bash
+~/tmux-health.sh history` prints it.
+
+Read it before proposing anything about this machine's performance. One reading
+cannot tell a leak from a busy afternoon, and the row in the status bar is one
+reading. Uptime is in each line because a footprint means something different on
+hour 2 than on day 13. Not in git, for the same reason as the snapshots above.
+
 ## VS Code changes
 
 Before changing anything under `files_to_symlink/vscode`, read
