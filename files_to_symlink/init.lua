@@ -26,7 +26,8 @@ APPS = {
     -- {shortcut = "§", name = "TablePlus"},
 	{shortcut = "§", name = "TablePlus"},
 	-- {shortcut = "t", name = "TablePlus"},
-	{shortcut = "0", name = "Postman"},
+	-- {shortcut = "0", name = "Postman"},
+	{shortcut = "0", name = "Microsoft Excel"},
     {shortcut = "l", name = "Slack"},
 	-- {shortcut = "e", name = "Tinkerwell", modifiers = {"cmd", "shift"}},
     -- {shortcut = "p", name = "Spotify"},
@@ -366,6 +367,87 @@ MACOS_APPEARANCE_WATCHER = hs.distributednotifications.new(
 cacheEffectiveAppearance()
 
 -- =============================================================================
+-- Window Margins
+-- Swish's maximize leaves a gap around the window; zoom, double-click and apps
+-- opening full size do not. No window may outgrow the padded area: an axis that
+-- does is snapped to it. Smaller windows and native fullscreen are left alone.
+-- =============================================================================
+
+-- Measured from Swish's maximize: 8px on every side of the usable frame.
+WINDOW_MARGIN = 8
+
+-- Rounding noise from the accessibility API, not a window that grew.
+WINDOW_MARGIN_TOLERANCE = 2
+
+WINDOW_MARGIN_SETTLE_DELAY = 0.35
+
+-- Apps often resize a new window just after it appears.
+WINDOW_MARGIN_CREATE_REAPPLY_DELAY = 0.3
+
+function paddedFrame(screen)
+    local usable = screen:frame()
+
+    return {
+        x = usable.x + WINDOW_MARGIN,
+        y = usable.y + WINDOW_MARGIN,
+        w = usable.w - 2 * WINDOW_MARGIN,
+        h = usable.h - 2 * WINDOW_MARGIN
+    }
+end
+
+local function fitWithinMargins(win)
+    if not win or not win:isStandard() or win:isFullScreen() or not win:screen() then
+        return
+    end
+
+    local padded = paddedFrame(win:screen())
+    local frame = win:frame()
+    local fitted = {x = frame.x, y = frame.y, w = frame.w, h = frame.h}
+
+    if frame.w > padded.w + WINDOW_MARGIN_TOLERANCE then
+        fitted.x, fitted.w = padded.x, padded.w
+    end
+
+    if frame.h > padded.h + WINDOW_MARGIN_TOLERANCE then
+        fitted.y, fitted.h = padded.y, padded.h
+    end
+
+    if fitted.w ~= frame.w or fitted.h ~= frame.h then win:setFrame(fitted, 0) end
+end
+
+local windowMarginTimers = {}
+
+local function scheduleFitWithinMargins(win, delay)
+    local id = win and win:id()
+    if not id then return end
+
+    if windowMarginTimers[id] then windowMarginTimers[id]:stop() end
+
+    windowMarginTimers[id] = hs.timer.doAfter(delay, function()
+        windowMarginTimers[id] = nil
+        fitWithinMargins(win)
+    end)
+end
+
+-- Held globally so the filter is not garbage collected.
+WINDOW_MARGIN_FILTER = hs.window.filter.new()
+
+WINDOW_MARGIN_FILTER:subscribe(hs.window.filter.windowCreated, function(win)
+    fitWithinMargins(win)
+    scheduleFitWithinMargins(win, WINDOW_MARGIN_CREATE_REAPPLY_DELAY)
+end)
+WINDOW_MARGIN_FILTER:subscribe(hs.window.filter.windowMoved, function(win)
+    scheduleFitWithinMargins(win, WINDOW_MARGIN_SETTLE_DELAY)
+end)
+
+-- Global so it can be driven from a shell via `hs -c 'fitAllWithinMargins()'`.
+function fitAllWithinMargins()
+    for _, win in ipairs(WINDOW_MARGIN_FILTER:getWindows()) do fitWithinMargins(win) end
+end
+
+fitAllWithinMargins()
+
+-- =============================================================================
 -- Ghostty Window Geometry
 -- Ghostty can only place new windows at fixed pixel coordinates
 -- (`window-position-x` / `window-position-y`), so a window stops being centered
@@ -426,12 +508,12 @@ local function ghosttyIsAdjustable(win)
 end
 
 -- Centers the window on its screen. `size` defaults to the window's current
--- size, and is clamped so an oversized remembered size cannot push a window off
--- a smaller display.
+-- size, and is clamped to the padded frame so an oversized remembered size can
+-- neither leave the display nor cover its margins.
 local function ghosttyCenter(win, size)
     if not ghosttyIsAdjustable(win) then return end
 
-    local usable = win:screen():frame()
+    local usable = paddedFrame(win:screen())
     local target = size or win:frame()
     local width = math.min(target.w, usable.w)
     local height = math.min(target.h, usable.h)
