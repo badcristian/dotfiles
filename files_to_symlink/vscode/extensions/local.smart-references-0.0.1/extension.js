@@ -4030,7 +4030,14 @@ function getSplitPhpChainEdit(document, lineNumber) {
 		return undefined;
 	}
 
-	return { range, replacement };
+	// Split chain = own paragraph. Not beside `{`/`}`: Pint's curly_brace_block strips those.
+	const above = range.start.line > 0 ? document.lineAt(range.start.line - 1).text : '';
+	const below = range.end.line + 1 < document.lineCount ? document.lineAt(range.end.line + 1).text : '';
+	const ownsLines = range.start.character === 0 && !document.lineAt(range.end.line).text.slice(range.end.character).trim();
+	const padAbove = ownsLines && above.trim() && !/\{\s*$/.test(above);
+	const padBelow = ownsLines && below.trim() && !/^\s*\}/.test(below);
+
+	return { range, replacement: `${padAbove ? '\n' : ''}${replacement}${padBelow ? '\n' : ''}` };
 }
 
 async function smartEnter() {

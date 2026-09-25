@@ -7438,3 +7438,32 @@ Verification:
   `$table->string('number');` above `$table->id();` stays a plain Enter;
 - 223 tests pass, `node --check` clean;
 - **not verified: the live editor.** Reload the window and press Enter once.
+
+### 2026-09-25 — Split Chain sets the chain off with blank lines
+
+Intent:
+
+- a chain split over five lines reads as its own paragraph, so Split PHP Chain
+  adds a blank line above and below it when there is none.
+
+Implementation:
+
+- `getSplitPhpChainEdit` pads the replacement with a newline on each side whose
+  neighbouring line is not blank. It covers the command and the Option+Enter
+  action, which both go through it. Smart References `0.0.47`.
+
+Decisions and lessons:
+
+- **never beside a brace.** No blank line after a line ending in `{` or before
+  one starting with `}`: Pint's Laravel preset (`no_extra_blank_lines` with
+  `curly_brace_block`) deletes them on the next format;
+- only when the statement has its lines to itself: a statement sharing a line
+  with code before it or after its `;` is left unpadded.
+
+Verification:
+
+- `getSplitPhpChainEdit` run against a mock document with real `Range`s: in
+  the middle of a `Schema::create` closure it gets both blank lines; first in
+  the closure only the one below; last, after an existing blank line, neither;
+- 223 tests pass, `node --check` clean;
+- **not verified: the live editor.** Reload the window and split one chain.
