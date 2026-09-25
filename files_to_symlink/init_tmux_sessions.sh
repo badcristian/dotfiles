@@ -6,8 +6,7 @@ tmux new-session -d -s home -c "$HOME"
 # ── ribeit-api ────────────────────────────────────────────────────────────────
 tmux new-session -d -s ribeit-api -c /Users/mac/dev/ribeit-api
 
-# Window 1: left full-height (claude) | right split in 2
-tmux split-window -h -t ribeit-api:1 -c /Users/mac/dev/ribeit-api
+# Window 1: hook gave left|right; cut the right pane in 2, claude on the left
 tmux split-window -v -p 40 -t ribeit-api:1.1 -c /Users/mac/dev/ribeit-api
 tmux send-keys -t ribeit-api:1.0 "claude"
 tmux select-pane -t ribeit-api:1.0
@@ -27,8 +26,7 @@ tmux new-session -d -s dfs-api -c /Users/mac/dev/dfs-api
 # ── ribeit-ui ────────────────────────────────────────────────────────────────
 tmux new-session -d -s ribeit-ui -c /Users/mac/dev/ribeit-ui
 
-# Window 1: left full-height (claude) | right split in 2
-tmux split-window -h -t ribeit-ui:1 -c /Users/mac/dev/ribeit-ui
+# Window 1: hook gave left|right; cut the right pane in 2, claude on the left
 tmux split-window -v -p 40 -t ribeit-ui:1.1 -c /Users/mac/dev/ribeit-ui
 tmux send-keys -t ribeit-ui:1.0 "claude"
 tmux select-pane -t ribeit-ui:1.0
@@ -47,8 +45,7 @@ tmux new-session -d -s usb-token-client -c /Users/mac/dev/usb-token-client
 # ── spro-app ──────────────────────────────────────────────────────────────────
 tmux new-session -d -s spro-app -c /Users/mac/dev/spro-app
 
-# Window 1: left full-height (claude) | right split in 2
-tmux split-window -h -t spro-app:1 -c /Users/mac/dev/spro-app
+# Window 1: hook gave left|right; cut the right pane in 2, claude on the left
 tmux split-window -v -p 40 -t spro-app:1.1 -c /Users/mac/dev/spro-app
 tmux send-keys -t spro-app:1.0 "claude"
 tmux select-pane -t spro-app:1.0
@@ -66,8 +63,7 @@ tmux select-pane -t spro-app:1.0
 # ── spro-wordpress ────────────────────────────────────────────────────────────
 tmux new-session -d -s spro-wordpress -c /Users/mac/dev/spro-wordpress
 
-# Window 1: left full-height (claude) | right split in 2
-tmux split-window -h -t spro-wordpress:1 -c /Users/mac/dev/spro-wordpress
+# Window 1: hook gave left|right; cut the right pane in 2, claude on the left
 tmux split-window -v -p 40 -t spro-wordpress:1.1 -c /Users/mac/dev/spro-wordpress
 tmux send-keys -t spro-wordpress:1.0 "claude"
 tmux select-pane -t spro-wordpress:1.0
@@ -83,8 +79,7 @@ tmux select-pane -t spro-wordpress:1.0
 # ── spro-marketing ────────────────────────────────────────────────────────────
 tmux new-session -d -s spro-marketing -c /Users/mac/dev/spro-marketing
 
-# Window 1: left full-height (claude) | right split in 2
-tmux split-window -h -t spro-marketing:1 -c /Users/mac/dev/spro-marketing
+# Window 1: hook gave left|right; cut the right pane in 2, claude on the left
 tmux split-window -v -p 40 -t spro-marketing:1.1 -c /Users/mac/dev/spro-marketing
 tmux send-keys -t spro-marketing:1.0 "claude"
 tmux select-pane -t spro-marketing:1.0

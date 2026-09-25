@@ -225,9 +225,20 @@ init
 
 This opens a fuzzy project picker containing Home and the immediate directories
 under `~/dev`. Selecting a project switches to its existing Tmux session or
-creates a session with one shell in that project directory. Inside Tmux, `init`
+creates a session in that project directory. Inside Tmux, `init`
 opens the same centered popup as `Cmd-P`; outside Tmux it uses the current
 terminal directly.
+
+Every new session opens split into two shells side by side, with the left one
+focused, so the usual first `Ctrl-A` `%` is already done. This is an
+`after-new-session` hook in `tmux.conf` rather than a step in any one script, so
+it holds for all three routes into a session: the picker, a bare `tmux
+new-session`, and `init_tmux_sessions.sh` at boot. The boot script's project
+sessions therefore split only the right pane — the left|right split is already
+there when it runs. The hook takes its directory from `session_path` and not
+from `pane_current_path`: at the moment it fires the new shell has not reported
+a working directory yet, and roughly one session in four had the right pane
+open wherever the caller happened to be standing.
 
 Selecting "Find any folder" opens a simple directory browser starting in
 `~/dev`. It behaves like navigating with `cd`: select a child directory to
