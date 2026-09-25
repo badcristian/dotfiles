@@ -287,6 +287,9 @@
   "files.associations": {
     "*.css": "tailwindcss",
     "*.module": "php",
+    // Apps Script = V8 JS. API completions need `/// <reference types="google-apps-script" />`
+    // per file: tsserver keeps .gs in an inferred project, which ignores node_modules/@types.
+    "*.gs": "javascript",
   },
   "editor.quickSuggestions": {
     "strings": true,
@@ -864,6 +867,13 @@
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
+  // VS Code ships no SchemaStore catalog; manifest keys autocomplete only through this.
+  "json.schemas": [
+    {
+      "fileMatch": ["appsscript.json"],
+      "url": "https://www.schemastore.org/appsscript.json",
+    },
+  ],
   "js/ts.updateImportsOnFileMove.enabled": "always",
   // Ceiling for the TS server heap, not a reservation. The default is 3072, and V8
   // only collects seriously as it nears the ceiling -- so the default lets a Nuxt

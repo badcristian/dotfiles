@@ -2,6 +2,8 @@
 // declarations. Pure text in, pure text out, so the transformation is testable without a VS Code
 // host; extension.js owns the document range and the code action.
 
+const { scanPhpBalancedList } = require('./phpBalancedList');
+
 const PARAMETER_INDENT = '    ';
 
 function getPhpSignatureSplit(lineText, nextLineText) {
@@ -26,53 +28,7 @@ function getPhpSignatureSplit(lineText, nextLineText) {
 		return undefined;
 	}
 
-	// Only the commas that separate parameters, so a default value's own commas — `array $x = [1, 2]`,
-	// `Foo $y = new Foo(1, 2)` — stay where they are. Quotes are tracked for the same reason.
-	const commaIndexes = [];
-	let closeIndex = -1;
-	let depth = 0;
-	let quote = '';
-	let escaped = false;
-
-	for (let index = openIndex; index < lineText.length; index++) {
-		const character = lineText[index];
-
-		if (quote) {
-			if (escaped) {
-				escaped = false;
-			} else if (character === '\\') {
-				escaped = true;
-			} else if (character === quote) {
-				quote = '';
-			}
-			continue;
-		}
-
-		if (character === '\'' || character === '"') {
-			quote = character;
-			continue;
-		}
-
-		if (character === '(' || character === '[' || character === '{') {
-			depth++;
-			continue;
-		}
-
-		if (character === ')' || character === ']' || character === '}') {
-			depth--;
-
-			if (depth === 0) {
-				closeIndex = index;
-				break;
-			}
-
-			continue;
-		}
-
-		if (character === ',' && depth === 1) {
-			commaIndexes.push(index);
-		}
-	}
+	const { closeIndex, commaIndexes } = scanPhpBalancedList(lineText, openIndex);
 
 	// No closing parenthesis on this line means the signature is already split. One parameter is
 	// left alone: splitting it lengthens the declaration without making anything readable.

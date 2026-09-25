@@ -19,6 +19,12 @@ const { shouldInsertJsonComma } = require('./jsonSmartEnter');
 const { getPhpSignatureSplit } = require('./phpSignatureSplit');
 const { getPhpArraySplit } = require('./phpArraySplit');
 const { getPhpTernarySplit } = require('./phpTernarySplit');
+const { getPhpUseSplit } = require('./phpUseSplit');
+const { isPhpDirectCallArgument } = require('./phpCallArguments');
+const {
+	getGraphqlClassReferenceAt,
+	findGraphqlClassReferences,
+} = require('./graphqlLighthouseNavigation');
 const {
 	findLaravelConfigKeyRange,
 	findLaravelConfigKeyReadRanges,
@@ -4231,6 +4237,35 @@ async function splitPhpTernaryAtSelection() {
 	});
 }
 
+function getSplitPhpUseEdit(document, lineNumber) {
+	const line = document.lineAt(lineNumber);
+	const replacement = getPhpUseSplit(line.text);
+
+	if (!replacement) {
+		return undefined;
+	}
+
+	return { range: line.range, replacement };
+}
+
+async function splitPhpUseAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getSplitPhpUseEdit(editor.document, editor.selection.active.line);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getInlayHintLabelText(label) {
 	if (Array.isArray(label)) {
 		return label.map((part) => typeof part === 'string' ? part : part.value).join('');
@@ -4508,8 +4543,15 @@ async function getPhpInlayHintEdits(document, target) {
 		return [];
 	}
 
+	// A call range covers its arguments, so the provider also answers for the calls written inside
+	// them. Naming this call's arguments is the intention; rewriting the nested calls is not.
+	const callText = typeof target === 'number' ? undefined : document.getText(hintRange);
+	const callStartOffset = typeof target === 'number' ? 0 : document.offsetAt(hintRange.start);
+
 	const edits = await Promise.all(hints
 		.filter((hint) => hint && hint.position && containsPosition(hintRange, hint.position))
+		.filter((hint) => callText === undefined
+			|| isPhpDirectCallArgument(callText, document.offsetAt(hint.position) - callStartOffset))
 		.map(async (hint) => {
 			const insertion = formatInlayHintInsertion(document, hint);
 			const classFqns = await getInlayHintLabelClassFqns(hint);
@@ -4637,6 +4679,21 @@ function createSplitPhpTernaryAction(document, range) {
 	}
 
 	const action = new vscode.CodeAction('Split ternary onto separate lines', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
+function createSplitPhpUseAction(document, range) {
+	const edit = getSplitPhpUseEdit(document, range.start.line);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Split use variables onto separate lines', vscode.CodeActionKind.QuickFix);
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 	action.isPreferred = true;
@@ -5351,6 +5408,111 @@ function createLaravelCollectionKeyTypeAction(document, range) {
 	return action;
 }
 
+const GRAPHQL_SEARCH_EXCLUDE = '{**/{.git,vendor,node_modules,storage,tmp,bootstrap/cache}/**}';
+
+// The schema is 77 files and under a megabyte in spro-app, and both callers are user-initiated
+// (Cmd+B, Find References), so it is read on demand rather than indexed and kept fresh.
+async function readGraphqlSchemaFiles() {
+	const uris = await vscode.workspace.findFiles('**/*.graphql', GRAPHQL_SEARCH_EXCLUDE, 500);
+	const files = [];
+
+	for (const uri of uris) {
+		const text = await tryReadWorkspaceText(uri);
+
+		if (text) {
+			files.push({ uri, text });
+		}
+	}
+
+	return files;
+}
+
+async function findGraphqlSchemaLocations(fqcn, methodName) {
+	const locations = [];
+
+	for (const file of await readGraphqlSchemaFiles()) {
+		for (const match of findGraphqlClassReferences(file.text, fqcn, methodName)) {
+			locations.push(new vscode.Location(file.uri, rangeFromOffsets(file.text, match.start, match.end)));
+		}
+	}
+
+	return locations;
+}
+
+// `App\GraphQL\Mutations\MetaCampaignCause@link` -> the `link()` declaration, or the class file
+// when the directive names no method.
+async function getGraphqlResolverTarget(reference) {
+	const uri = await findClassFileUri(reference.className, reference.namespace);
+
+	if (!uri) {
+		logDebug(`  graphql: no PHP file for "${reference.fqcn}"`);
+		return undefined;
+	}
+
+	const source = reference.methodName ? await tryReadWorkspaceText(uri) : undefined;
+	const declarations = source ? getPhpMethodDeclarationRanges(source, reference.methodName) : [];
+
+	if (declarations.length === 0) {
+		return new vscode.Location(uri, new vscode.Position(0, 0));
+	}
+
+	return new vscode.Location(uri, rangeFromOffsets(source, declarations[0].start, declarations[0].end));
+}
+
+function createGraphqlDefinitionProvider() {
+	return {
+		async provideDefinition(document, position) {
+			const reference = getGraphqlClassReferenceAt(document.getText(), document.offsetAt(position));
+
+			return reference ? getGraphqlResolverTarget(reference) : undefined;
+		},
+	};
+}
+
+// Registered as much for `editorHasReferenceProvider` as for its answers: Cmd+B is bound to
+// `smartReferences.go` under that clause, and without a reference provider a .graphql file never
+// satisfies it, so the key would keep toggling the sidebar.
+function createGraphqlReferenceProvider() {
+	return {
+		async provideReferences(document, position) {
+			const reference = getGraphqlClassReferenceAt(document.getText(), document.offsetAt(position));
+
+			return reference ? findGraphqlSchemaLocations(reference.fqcn, reference.methodName) : undefined;
+		},
+	};
+}
+
+// The PHP half: Find References on a resolver's class name or on one of its methods also answers
+// with the schema sites that name it. Intelephense's own results are merged in by VS Code.
+function createPhpGraphqlReferenceProvider() {
+	return {
+		async provideReferences(document, position) {
+			const source = document.getText();
+			const className = getPhpClassNameAfterOffset(source, 0);
+			const word = document.getWordRangeAtPosition(position);
+
+			if (!className || !word) {
+				return undefined;
+			}
+
+			const name = document.getText(word);
+			const fqcn = getPhpClassFqn(source, className);
+
+			// Only the two declarations a schema can name. Anywhere else in the file the schema has
+			// nothing to say, and the answer is Intelephense's alone.
+			if (name === className) {
+				return findGraphqlSchemaLocations(fqcn);
+			}
+
+			const offset = document.offsetAt(position);
+			const onDeclaration = getPhpMethodDeclarationRanges(source, name)
+				.some((range) => offset >= range.start && offset <= range.end);
+
+			return onDeclaration ? findGraphqlSchemaLocations(fqcn, name) : undefined;
+		},
+	};
+}
+
 function createPhpCodeActionProvider() {
 	return {
 		async provideCodeActions(document, range) {
@@ -5389,6 +5551,12 @@ function createPhpCodeActionProvider() {
 
 			if (splitTernaryAction) {
 				actions.push(splitTernaryAction);
+			}
+
+			const splitUseAction = createSplitPhpUseAction(document, range);
+
+			if (splitUseAction) {
+				actions.push(splitUseAction);
 			}
 
 			const inlayHintsAction = await createApplyPhpInlayHintsAction(document, range);
@@ -5727,7 +5895,7 @@ function activate(context) {
 	// so Cmd+Click reaches it too; it reads only the open document and stats candidate paths, so it
 	// carries none of the workspace-scan cost that keeps the Laravel helpers command-driven.
 	vueComponentNavigation.register(context);
-	i18nKeyNavigation.register(context); // the only reference provider for JSON, so Cmd+B binds there
+	i18nKeyNavigation.register(context); // JSON key -> t() call sites; t('key') -> locale files
 
 	// The macro index is built from PHP source, so any PHP write can add or remove a registration.
 	// Dropping it is cheap and rebuilding is lazy, so there is nothing to gain from working out which
@@ -5775,6 +5943,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpSignature', splitPhpSignatureAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpArray', splitPhpArrayAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpUse', splitPhpUseAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.toggleFileMarker', async (resourceUri, selectedResourceUris) => {
@@ -5832,6 +6001,13 @@ function activate(context) {
 			);
 		});
 	}));
+	const graphqlSelector = [{ language: 'graphql', scheme: 'file' }, { language: 'graphql' }];
+	context.subscriptions.push(vscode.languages.registerDefinitionProvider(graphqlSelector, createGraphqlDefinitionProvider()));
+	context.subscriptions.push(vscode.languages.registerReferenceProvider(graphqlSelector, createGraphqlReferenceProvider()));
+	context.subscriptions.push(vscode.languages.registerReferenceProvider(
+		[{ language: 'php', scheme: 'file' }, { language: 'php' }],
+		createPhpGraphqlReferenceProvider()
+	));
 	context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
 		[
 			{ language: 'php', scheme: 'file' },

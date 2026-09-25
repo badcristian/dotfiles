@@ -2,6 +2,8 @@
 // on one line. Pure text in, pure text out, so the transformation is testable without a VS Code
 // host; extension.js owns the document range and the code action.
 
+const { scanPhpBalancedList } = require('./phpBalancedList');
+
 const ELEMENT_INDENT = '    ';
 
 // `[` after one of these reads as a value, not as a subscript on the word in front of it.
@@ -74,53 +76,7 @@ function getPhpArraySplit(lineText) {
 		return undefined;
 	}
 
-	// Only the commas that separate elements of this array, so a nested array, a call's arguments
-	// and a closure body keep theirs. Quotes are tracked for the same reason.
-	const commaIndexes = [];
-	let closeIndex = -1;
-	let depth = 0;
-	let quote = '';
-	let escaped = false;
-
-	for (let index = openIndex; index < lineText.length; index++) {
-		const character = lineText[index];
-
-		if (quote) {
-			if (escaped) {
-				escaped = false;
-			} else if (character === '\\') {
-				escaped = true;
-			} else if (character === quote) {
-				quote = '';
-			}
-			continue;
-		}
-
-		if (character === '\'' || character === '"') {
-			quote = character;
-			continue;
-		}
-
-		if (character === '(' || character === '[' || character === '{') {
-			depth++;
-			continue;
-		}
-
-		if (character === ')' || character === ']' || character === '}') {
-			depth--;
-
-			if (depth === 0) {
-				closeIndex = index;
-				break;
-			}
-
-			continue;
-		}
-
-		if (character === ',' && depth === 1) {
-			commaIndexes.push(index);
-		}
-	}
+	const { closeIndex, commaIndexes } = scanPhpBalancedList(lineText, openIndex);
 
 	// No closing bracket on this line means the array is already split.
 	if (closeIndex === -1) {

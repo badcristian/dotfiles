@@ -2,7 +2,7 @@
 	"name": "smart-references",
 	"displayName": "Smart References",
 	"description": "Jump to a single same-file reference, otherwise show references in a compact picker.",
-	"version": "0.0.41",
+	"version": "0.0.43",
 	"publisher": "local",
 	"engines": {
 		"vscode": "^1.67.0"
@@ -20,6 +20,7 @@
 		"onLanguage:hack",
 		"onLanguage:json",
 		"onLanguage:jsonc",
+		"onLanguage:graphql",
 		"onCommand:smartReferences.go",
 		"onCommand:smartReferences.showReferencesAt",
 		"onCommand:smartReferences.useQuickPickReferences",
@@ -34,6 +35,7 @@
 		"onCommand:smartReferences.splitPhpSignature",
 		"onCommand:smartReferences.splitPhpArray",
 		"onCommand:smartReferences.splitPhpTernary",
+		"onCommand:smartReferences.splitPhpUse",
 		"onCommand:smartReferences.applyPhpInlayHints",
 		"onCommand:smartReferences.deleteFileWithoutAutoReveal",
 		"onCommand:smartReferences.toggleFileMarker",
@@ -121,6 +123,10 @@
 			{
 				"command": "smartReferences.splitPhpTernary",
 				"title": "Smart References: Split PHP Ternary"
+			},
+			{
+				"command": "smartReferences.splitPhpUse",
+				"title": "Smart References: Split PHP Closure Use Variables"
 			},
 			{
 				"command": "smartReferences.applyPhpInlayHints",

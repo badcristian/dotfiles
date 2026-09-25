@@ -1,7 +1,7 @@
 'use strict';
 
-// FIND-USAGES for a key in a JSON file: Cmd+B on `"intro"` in an i18n locale file lists the
-// `t('interface.intro')` call sites.
+// Both directions for a vue-i18n key: Cmd+B on `"intro"` in a locale file lists the
+// `t('interface.intro')` call sites, and Cmd+B inside that `t('...')` opens the key in each locale file.
 //
 // Why this exists: nothing registers a reference provider for JSON. VS Code's built-in JSON
 // language service offers completion, validation and symbols, but no references, so the
@@ -26,6 +26,16 @@ const USAGE_GLOB = '**/*.{vue,ts,js,mts,cts,tsx,jsx}';
 const USAGE_EXCLUDE = '{**/{.git,node_modules,vendor,dist,build,coverage,public/build}/**,**/*.d.ts}';
 const MAX_USAGE_FILES = 2000;
 const FILE_SCAN_BATCH_SIZE = 40;
+
+// Measured across ~/dev: resources/js/i18n/locales, src/locales, src/i18n. Laravel's `lang/` belongs to
+// `__()`, not `t()`.
+const LOCALE_GLOB = '**/{locales,i18n}/**/*.json';
+const MAX_LOCALE_FILES = 50;
+const DEFINITION_LANGUAGES = ['vue', 'typescript', 'javascript', 'typescriptreact', 'javascriptreact'];
+
+// vue-i18n's call family - t, $t, tc, te, tm - bare or qualified like `i18n.global.t`. The leading
+// boundary keeps `format(` from reading as `t(`.
+const I18N_CALL_PREFIX = '(?:^|[^A-Za-z0-9_$])(?:[A-Za-z0-9_$]+\\s*\\.\\s*)*\\$?t[cem]?\\s*\\(\\s*';
 
 // --------------------------------------------------------------------------------------
 // Pure helpers (exported as _internal for unit tests — no vscode dependency).
@@ -101,17 +111,10 @@ function decodeJsonString(raw) {
 	}
 }
 
-// The dotted path of the key the offset falls on, built from every enclosing container: object keys
-// contribute their name, array elements contribute their index, which is how vue-i18n addresses
-// them. Returns undefined for anything that is not a key — a value, a delimiter, whitespace.
-function getJsonKeyPathAtOffset(source, offset) {
+// `visit(keyPath, literal)` per object key, in document order; a truthy return stops the walk. Array
+// elements contribute their index to the path, which is how vue-i18n addresses list entries.
+function walkJsonKeys(source, visit) {
 	const text = String(source);
-	const target = Number(offset);
-
-	if (!Number.isFinite(target) || target < 0) {
-		return undefined;
-	}
-
 	const path = [];
 	const stack = [];
 	let pendingSegment;
@@ -120,9 +123,7 @@ function getJsonKeyPathAtOffset(source, offset) {
 	while (i < text.length) {
 		i = skipTrivia(text, i);
 
-		// Every key that could contain the offset starts at or before it; past that point there is
-		// nothing left to find, and a large locale file should not be walked to its end.
-		if (i > target || i >= text.length) {
+		if (i >= text.length) {
 			break;
 		}
 
@@ -170,7 +171,7 @@ function getJsonKeyPathAtOffset(source, offset) {
 			const literal = readJsonString(text, i);
 
 			if (!literal) {
-				return undefined;
+				return;
 			}
 
 			const frame = stack[stack.length - 1];
@@ -181,8 +182,8 @@ function getJsonKeyPathAtOffset(source, offset) {
 			if (isKey) {
 				const name = decodeJsonString(literal.raw);
 
-				if (target >= literal.start && target <= literal.end) {
-					return [...path, name].join('.');
+				if (visit([...path, name].join('.'), literal)) {
+					return;
 				}
 
 				pendingSegment = name;
@@ -194,13 +195,52 @@ function getJsonKeyPathAtOffset(source, offset) {
 
 		i++;
 	}
-
-	return undefined;
 }
 
-// Offsets of the key literal inside every translation call for `keyPath`. Covers vue-i18n's whole
-// family - t, $t, tc, te, tm and their qualified forms like `i18n.global.t` - because a project
-// mixes the composition and options APIs in the same tree.
+// The dotted path of the key the offset falls on. Undefined for anything that is not a key — a value,
+// a delimiter, whitespace.
+function getJsonKeyPathAtOffset(source, offset) {
+	const target = Number(offset);
+
+	if (!Number.isFinite(target) || target < 0) {
+		return undefined;
+	}
+
+	let found;
+
+	// A key starting past the offset ends the search; a large locale file is not walked to its end.
+	walkJsonKeys(source, (keyPath, literal) => {
+		if (literal.start > target) {
+			return true;
+		}
+
+		if (target <= literal.end) {
+			found = keyPath;
+			return true;
+		}
+
+		return false;
+	});
+
+	return found;
+}
+
+// Key-literal offsets, quotes excluded, wherever `keyPath` is declared. Joined-path equality matches
+// nested `{"a": {"b"}}` and flat `{"a.b"}` alike, and vue-i18n reads both.
+function getJsonKeyRanges(source, keyPath) {
+	const ranges = [];
+
+	walkJsonKeys(source, (candidate, literal) => {
+		if (candidate === keyPath) {
+			ranges.push({ start: literal.start + 1, end: literal.end - 1 });
+		}
+	});
+
+	return ranges;
+}
+
+// Offsets of the key literal inside every translation call for `keyPath`, in single quotes, double
+// quotes or backticks.
 function getI18nUsageRanges(source, keyPath) {
 	const text = String(source);
 	const key = String(keyPath || '');
@@ -210,7 +250,8 @@ function getI18nUsageRanges(source, keyPath) {
 	}
 
 	const pattern = new RegExp(
-		'(?:^|[^A-Za-z0-9_$])(?:[A-Za-z0-9_$]+\\s*\\.\\s*)*\\$?t[cem]?\\s*\\(\\s*([\'"`])'
+		I18N_CALL_PREFIX
+		+ '([\'"`])'
 		+ escapeRegExp(key)
 		+ '(?=\\1)',
 		'g',
@@ -227,8 +268,32 @@ function getI18nUsageRanges(source, keyPath) {
 	return ranges;
 }
 
+// Key of the translation call whose literal holds `offset`, quotes included. A template literal with
+// `${` is built at runtime, so no single locale entry defines it.
+function getI18nKeyAtOffset(source, offset) {
+	const text = String(source);
+	const pattern = new RegExp(I18N_CALL_PREFIX + '([\'"`])((?:\\\\.|(?!\\1)[^\\\\\\n])*)\\1', 'g');
+	let match;
+
+	while ((match = pattern.exec(text)) !== null) {
+		const end = match.index + match[0].length;
+
+		if (offset < end - match[2].length - 2) {
+			return undefined;
+		}
+
+		if (offset <= end) {
+			return match[1] === '`' && match[2].includes('${')
+				? undefined
+				: match[2].replace(/\\(.)/g, '$1');
+		}
+	}
+
+	return undefined;
+}
+
 // --------------------------------------------------------------------------------------
-// vscode-coupled: the provider.
+// vscode-coupled: the providers.
 // --------------------------------------------------------------------------------------
 
 function positionFromOffset(source, offset) {
@@ -251,7 +316,7 @@ async function tryReadWorkspaceText(uri) {
 	}
 }
 
-const provider = {
+const referenceProvider = {
 	async provideReferences(document, position) {
 		const keyPath = getJsonKeyPathAtOffset(document.getText(), document.offsetAt(position));
 
@@ -286,6 +351,46 @@ const provider = {
 	},
 };
 
+// Cmd+hover asks too, so the glob waits until the cursor is inside a `t('...')` literal.
+const definitionProvider = {
+	async provideDefinition(document, position) {
+		const key = getI18nKeyAtOffset(document.getText(), document.offsetAt(position));
+		const folder = key && vscode.workspace.getWorkspaceFolder(document.uri);
+
+		if (!folder) {
+			return undefined;
+		}
+
+		const files = await vscode.workspace.findFiles(
+			new vscode.RelativePattern(folder, LOCALE_GLOB),
+			USAGE_EXCLUDE,
+			MAX_LOCALE_FILES,
+		);
+		// findFiles has no order. Sorted, the first definition - the one Cmd+B opens - is stable.
+		files.sort((a, b) => a.path.localeCompare(b.path));
+
+		const texts = await Promise.all(files.map((uri) => tryReadWorkspaceText(uri)));
+		const locations = [];
+
+		for (let index = 0; index < files.length; index++) {
+			const text = texts[index];
+
+			if (text === undefined) {
+				continue;
+			}
+
+			for (const range of getJsonKeyRanges(text, key)) {
+				locations.push(new vscode.Location(
+					files[index],
+					rangeFromOffsets(text, range.start, range.end),
+				));
+			}
+		}
+
+		return locations;
+	},
+};
+
 function register(context) {
 	context.subscriptions.push(
 		vscode.languages.registerReferenceProvider(
@@ -293,7 +398,11 @@ function register(context) {
 				{ language: 'json', scheme: 'file' },
 				{ language: 'jsonc', scheme: 'file' },
 			],
-			provider,
+			referenceProvider,
+		),
+		vscode.languages.registerDefinitionProvider(
+			DEFINITION_LANGUAGES.map((language) => ({ language, scheme: 'file' })),
+			definitionProvider,
 		),
 	);
 }
@@ -304,6 +413,8 @@ module.exports = {
 		skipTrivia,
 		readJsonString,
 		getJsonKeyPathAtOffset,
+		getJsonKeyRanges,
 		getI18nUsageRanges,
+		getI18nKeyAtOffset,
 	},
 };

@@ -165,6 +165,10 @@ The settings intentionally create a compact, low-noise editor:
 - Prettier owns JavaScript, TypeScript, and JSON formatting, Laravel Pint owns
   PHP formatting, and JavaScript/TypeScript imports update automatically when
   files move.
+- Google Apps Script is plain settings, not an extension: `*.gs` opens as
+  JavaScript, and `appsscript.json` validates against SchemaStore's manifest
+  schema through `json.schemas`. The marketplace "Google Apps Script" extension
+  is an extension pack that installs Vim and a spell checker; do not add it.
 
 The injected layer modifies VS Code's workbench at a DOM/CSS level through
 `be5invis.vscode-custom-css`. It is inherently more fragile than an extension
@@ -263,6 +267,9 @@ framework-specific bridges:
 - JSON key find-usages: Cmd+B on a key in any JSON file builds its dotted path
   from the enclosing objects and arrays, then lists the vue-i18n `t(...)` call
   sites that use it;
+- vue-i18n key definitions, the opposite direction: Cmd+B inside a `t('...')`
+  literal opens that key in every JSON file under a `locales/` or `i18n/` folder,
+  whether the file is flat or nested;
 - Laravel `config('file.nested.key')` definition navigation to the exact key in
   `config/file.php`, and `Log::channel('name')` to that channel in
   `config/logging.php`;
@@ -6888,3 +6895,455 @@ Verification:
 - `install_vscode.sh` run; the registry reports `local.smart-references@0.0.41`;
 - **not verified: the live editor.** Needs **Developer: Reload Window**, then
   `Shift+Cmd+.` to write the new overrides into `_ide_helper_manual.php`.
+
+### 2026-09-15 — Cmd+B inside `t('...')` opens the key in the locale files
+
+Intent:
+
+- `Cmd+B` on `t('Companies count')` in
+  `ribeit-depozit/resources/js/pages/clients/ClientIndexPage.vue` should open the
+  translation. Before this it fell through to the reference picker. The opposite
+  direction, locale key → call sites, has existed since 2026-08-26.
+
+Diagnosis:
+
+- nothing answers a definition request inside the string. The project's own
+  TypeScript 6.0.3 language service, asked directly with the real tsconfig and
+  the `DefineLocaleMessage` augmentation loaded, returns no definition inside the
+  literal. It only resolves `t` itself, to the destructured const and vue-i18n's
+  `__call` signature. `goToDefinition` saw an empty list and fell back.
+
+Implementation:
+
+- `i18nKeyNavigation.js` gained a definition provider for `vue`, `typescript`,
+  `javascript` and their React variants. With the cursor inside the literal of a
+  `t`/`$t`/`tc`/`te`/`tm` call, it globs `**/{locales,i18n}/**/*.json` in that
+  workspace folder and returns every declaration of the key, sorted by path;
+- the JSON walk was lifted out of `getJsonKeyPathAtOffset` into `walkJsonKeys`,
+  which both directions now share, and the call-name prefix into
+  `I18N_CALL_PREFIX`, so the two regexes cannot drift apart.
+
+Decisions and lessons:
+
+- **a provider, not a branch in Cmd+B**, as with Vue components on 2026-08-12.
+  Cmd+Click and peek get it too, and since no native provider answers inside the
+  literal, its first location is exactly what `goToDefinition` opens;
+- returns every locale file rather than one. Cmd+B opens the first, `en.json` by
+  path order; peek lists both;
+- a key matches by joined dotted path, so nested `{"a": {"b"}}` and flat
+  `{"a.b"}` both define `a.b`. vue-i18n reads both shapes, and ribeit-depozit's
+  files are flat on purpose (its `i18n/index.ts` says why);
+- a template literal containing `${` is refused: no single entry defines a key
+  built at runtime. `t('')` is ignored too;
+- the folder names are measured, not guessed: every Vue project under `~/dev`
+  keeps its locales as JSON in `resources/js/i18n/locales`, `src/locales` or
+  `i18n/locales`. Laravel `lang/` stays with the existing `__()` support;
+- definition providers are also asked on Cmd+hover, so the glob runs only once
+  the cursor is inside a translation literal. Anywhere else the cost is one regex
+  pass over the open document.
+
+Verification:
+
+- `test/i18nKeyNavigation.test.js` 28 passing, 15 before, including the
+  `ClientIndexPage.vue` line verbatim, a Prettier-broken multi-line call, a value
+  that repeats its key, and a flat dotted key beside a nested one;
+  `node --test test/*.test.js` 196, 0 failures; `node --check` clean on the
+  module and `extension.js`; `git diff --check` clean;
+- replayed against the real files outside VS Code: `ClientIndexPage.vue:110`
+  → `en.json:321` and `ro.json:321`, and the reverse from `ro.json:321` still
+  finds `ClientIndexPage.vue:110`, so the walker refactor kept that direction;
+- every literal `t('...')` call in five projects was checked against an
+  independent oracle that `JSON.parse`s each locale file and does vue-i18n's two
+  lookups. It agreed on all 57,673 call × locale-file pairs, 0 disagreements in
+  either direction. ribeit-depozit resolves 563 of 563 calls. The misses
+  elsewhere (e.g. 8,579 of 22,076 in construction-frontend) are keys genuinely
+  absent from the locale file: untranslated strings vue-i18n shows as-is;
+- **not verified: the live editor.** The extension is symlinked into
+  `~/.vscode/extensions`; needs **Developer: Reload Window**, then Cmd+B inside
+  `t('Companies count')`.
+
+### 2026-09-16 — Apps Script `.gs` files open as JavaScript
+
+Intent:
+
+- `Code.gs` in `~/Downloads/GoogleChatForward/apps-script` should be highlighted
+  and completed like the JavaScript it is, and `appsscript.json` should offer its
+  manifest keys.
+
+Diagnosis:
+
+- VS Code has no language for `.gs`, so the file opened as plain text: no
+  highlighting, and every spell checker that covers plain text reads it as
+  prose;
+- `labnol.google-apps-script` had been installed to fix that. Its manifest
+  contributes nothing: no language, grammar, or schema. It is an
+  `extensionPack` of 19 extensions. The 14 not already present arrived in the
+  same second, among them `vscodevim.vim` (enabled, so Enter moved the cursor
+  and the editor refused typing) and `ban.spellright`;
+- Spellright's diagnostics read `"own": no suggestions`, source `spelling`. In
+  the screenshot, every word of `Code.gs` was underlined, `const` and `the`
+  included, so it had no working dictionary. The flagged "own" was on
+  `Code.gs:4`, not in `appsscript.json`. Its root cause was not investigated;
+  the pack and all 14 extras were uninstalled during the session.
+
+Implementation:
+
+- `files.associations` maps `*.gs` to `javascript`;
+- `json.schemas` maps `appsscript.json` to
+  `https://www.schemastore.org/appsscript.json`.
+
+Decisions and lessons:
+
+- **VS Code does not apply the SchemaStore catalog.** `json-language-features`
+  hard-codes a handful of schemastore URLs (package, tsconfig, jsconfig, babelrc,
+  bower, typings) and nothing else. The catalog lists `appsscript.json`, but
+  that alone reaches no editor. `schemastore.org` is already a default
+  `json.schemaDownload.trustedDomains` entry, so no prompt appears;
+- **Apps Script API completion needs a line in the file.** tsserver, probed
+  headless with the bundled TypeScript and VS Code's inferred-project options,
+  kept `Code.gs` in an inferred project in every variant. With
+  `@types/google-apps-script` installed beside it, the project still held only
+  `Code.gs`, and `SpreadsheetApp.` completed with words from the buffer. A
+  `jsconfig.json` including `*.gs` changed nothing, because non-TS extensions
+  fall outside `include`. Only `/// <reference types="google-apps-script" />`
+  at the top of the file loaded the types, and then `SpreadsheetApp.` listed
+  `AutoFillSeries`, `BandingTheme`, …. Apps Script treats that line as a comment;
+- installing the types in a home-level `node_modules/@types` would avoid the
+  per-project install. It was rejected: default `typeRoots` walk up the tree, so
+  every TypeScript project under `~` would inherit Apps Script globals.
+
+Verification:
+
+- `settings.json` parses with `jsonc-parser` (0 errors, 153 keys, 152 at HEAD);
+  `files.associations` and `json.schemas` read back as written;
+- the current `GoogleChatForward/apps-script/appsscript.json` validates against
+  the downloaded schema under Ajv. The schema sets no
+  `additionalProperties: false`, so `"chat": {}` raises no false warning;
+- `code --list-extensions` shows no `vim`, `spellright`, or `labnol` entry;
+- **not verified: the live editor.** Reopen `Code.gs`; the language picker should
+  read JavaScript.
+
+### 2026-09-18 — GitLens reinstalled; its blame config had outlived it
+
+Intent: the editor-title button that draws the per-line author-and-date column
+was gone. The question was whether the extension behind it had been removed.
+
+Finding: it had. `code --list-extensions` listed no `eamodio.gitlens`,
+`~/.vscode/extensions` held no folder for it, and
+`globalStorage/storage.json` carried an empty `disabledExtensions` — so it was
+uninstalled outright, not disabled as on 2026-08-17. Nothing else moved: the
+eight `gitlens.*` keys in `settings.json`, the `Option+Cmd+B` binding to
+`gitlens.toggleFileBlame`, and the `eamodio.gitlens` line in
+`marketplace_extensions.txt` were all still in place. Uninstalling does not
+touch settings, so a missing feature looks identical to a broken one.
+
+`waderyan.gitblame` is still installed and is a different thing — one status-bar
+line for the cursor's line, no toolbar button, no column.
+
+Implementation: `code --install-extension eamodio.gitlens`, which brought
+v19.2.0. No settings or keybindings were changed; they were already correct.
+
+Verification:
+
+- `code --list-extensions --show-versions` reads `eamodio.gitlens@19.2.0`;
+- all eight configured keys still exist in that version's contributed
+  configuration, so none of them is dead;
+- the manifest contributes `gitlens.toggleFileBlame:editor/title` at
+  `navigation@100`, gated on `config.gitlens.menus.editorGroup.blame` (default
+  `true`, not overridden here) and `config.gitlens.fileAnnotations.command ==
+  blame`, which `settings.json:839` sets;
+- workspace-to-profile associations in `storage.json` all read
+  `__default__profile__`, the profile a CLI install writes to. The one other
+  profile, `Agents`, is unused by these workspaces;
+- **not verified: the live editor.** Reload the window and open a committed
+  file; the blame button should be back at the right of the editor title bar.
+
+### 2026-09-18 — Parameter names stop at the call they were asked for
+
+Intent: "Add parameter names and return type hints to this call" named the
+arguments of every call written inside the call, not just the call's own. On
+
+```php
+->when(
+    $tenant?->isForGroupAdmin(),
+    fn (self $query): Builder => $query->where('electronic_registers.group_id', $tenant->group_id),
+    …
+)
+```
+
+it produced `value:`, `callback:` and `default:` as intended, and also rewrote
+the argument list of `where()`, `whereIn()` and `select()` inside them.
+
+Cause: `getPhpInlayHintEdits` asks
+`vscode.executeInlayHintProvider` for a range and keeps every hint that falls
+inside it. A call range spans its arguments, so the hints of the calls written
+in those arguments are inside it too, and nothing distinguished them.
+
+Implementation: `phpCallArguments.js` exports `isPhpDirectCallArgument(callText,
+offset)`, which walks the call text counting parentheses outside strings and
+comments. Depth 1 is between the call's own parentheses. `getPhpInlayHintEdits`
+keeps only hints at that depth; the line fallback, which has no call range, is
+unfiltered as before.
+
+Decisions and lessons:
+
+- **Depth, not position matching.** Comparing hint offsets against the
+  argument-separating commas would need the same scan and then an exact-offset
+  agreement with the provider. The depth of the offset is the same information
+  with nothing to agree on;
+- an arrow function's return type hint sits right after its parameter list's
+  closing parenthesis, which is back at depth 1, so `fn ($query) => …` passed as
+  an argument still gets its `: Builder`. Only hints inside a nested call's
+  parentheses are dropped;
+- the existing scanner in `getPhpCallRangeAtPosition` was left alone. It answers
+  a different question, where the call ends, and merging the two would have put
+  a second caller's needs into a function that already works.
+
+Verification:
+
+- `test/phpCallArguments.test.js`, 6 tests, built on the snippet above: the three
+  `when()` arguments accepted, the nested `where`/`whereIn`/`select` arguments
+  refused, a chained `->select(` inside an argument still refused, the arrow
+  function's return-type position accepted, and parentheses inside strings, line
+  comments, block comments and escaped quotes treated as text;
+- `node --test test/*.test.js` reports 202 passing, 0 failures, 196 before;
+  `node --check` clean on `extension.js` and the new module;
+- the extension directory is a symlink into this repository, so the file is live;
+- **not verified: the live editor.** Reload the window, put the cursor on a call
+  whose arguments contain calls, and run the action; only the outer call's
+  arguments should gain names.
+
+### 2026-09-18 — Option+Enter splits a closure's `use` variables
+
+Intent: the signature split only ever looks at a declaration's parameters, so the
+one list it cannot reach is a closure's `use`. On
+
+```php
+        DB::transaction(function () use ($ad, $adSet, $creative, $linkWithTracking, $trackingId, $cause, $uploaded, $adSpec): void {
+```
+
+Option+Enter now offers **Split use variables onto separate lines**:
+
+```php
+        DB::transaction(function () use (
+            $ad,
+            $adSet,
+            $creative,
+            $linkWithTracking,
+            $trackingId,
+            $cause,
+            $uploaded,
+            $adSpec
+        ): void {
+```
+
+Implementation:
+
+- `phpUseSplit.js`, `getPhpUseSplit(lineText)`. Pure text in, pure text out, the
+  same shape as its three siblings;
+- `extension.js` gained `getSplitPhpUseEdit`, `splitPhpUseAtSelection`, the
+  `createSplitPhpUseAction` code action and the `smartReferences.splitPhpUse`
+  command, beside the chain, signature, array and ternary ones;
+- `phpBalancedList.js`, `scanPhpBalancedList(lineText, openIndex)` — the
+  depth-and-quote scan that finds where a one-line list closes and which commas
+  separate its own entries. It was already byte-identical in
+  `phpSignatureSplit.js` and `phpArraySplit.js`; this would have been the third
+  copy, so it was extracted and both callers repointed at it;
+- bumped to `0.0.42`.
+
+Decisions and lessons:
+
+- **the `)` in front is the whole test.** `\buse\s*\(` alone would also match an
+  import or a trait `use` — but neither is ever followed by a parenthesis, and a
+  closure's use list is always preceded by its parameter list's closing one.
+  `static function () use (` and `function &() use (` come free from that;
+- **the layout is the codebase's own, not invented.** The three hand-split use
+  lists already in spro-app (`FacebookApiReportService.php:29`,
+  `AnonymizeCauseAction.php:268`, `SyncMetaAdsJob.php:96`) all put the variables
+  at `+4` and align `): void {` with the statement line. The first of them ends
+  without a trailing comma, which is what the split emits;
+- **no brace to pull up.** The signature split extends its edit range through a
+  following bare `{`, because PSR-12 §4.5 puts a declaration's brace on its own
+  line. §6 keeps a closure's brace on the list's line, so there is nothing below
+  to collect and `getPhpUseSplit` needs no `nextLineText`;
+- one variable is left alone, for the same reason as one parameter: two extra
+  lines, nothing gained, and the action would otherwise offer itself on most
+  closures in the file;
+- a by-reference `&$results` is text between commas, so it needs no handling of
+  its own — but it is tested, since it is the case that would break a scan
+  written against `$`.
+
+Verification:
+
+- `test/phpUseSplit.test.js`, 10 tests: the eight-variable example above, a
+  closure that also has parameters (they stay put), `&$results`, static and
+  by-reference closures, a PHP 8.0 trailing comma, and the six shapes that must
+  be refused — one variable, an already split list, an import, a trait `use`, a
+  closure with no `use`, and a commented-out one;
+- `node --test test/*.test.js` reports 212 passing, 0 failures, 202 before — the
+  10 new ones, with the signature and array suites still green over the extracted
+  scanner;
+- `node --check` clean on `extension.js` and both new modules; `package.json`
+  parses;
+- run against the two real lines in
+  `Modules/Facebook/Jobs/UpdateCampaignAdsJob.php` (137 and 201), the output is
+  character-for-character the intended layout;
+- the extension directory is a symlink into this repository, so the files are
+  live;
+- **not verified: the live editor.** Reload the window, put the cursor on a
+  one-line closure with two or more `use` variables, and press Option+Enter.
+
+### 2026-09-18 — Lighthouse resolvers connect the GraphQL schema to PHP
+
+Intent: in `spro-app`, `@field(resolver: "App\\GraphQL\\Mutations\\MetaCampaignCause@link")`
+is the entire wiring between the schema and the class that serves it, and
+nothing in the editor knew it. Cmd+B on the literal did nothing, and Find
+References on `MetaCampaignCause::link()` never mentioned the schema. Both
+directions now work, plus the one-line cause of the missing highlighting.
+
+**Cause of the missing highlighting, which was also blocking the navigation:**
+`graphql.vscode-graphql-syntax` was disabled globally in `state.vscdb`. It is
+the only installed extension that contributes the `graphql` language id —
+checked across all 82 — so with it off a `.graphql` file opens as plaintext:
+no grammar, and no language id for a provider to attach to. The 2026-07-30 entry
+above had said to disable the heavy `graphql.vscode-graphql` per workspace and
+**keep the 1 MB syntax one enabled everywhere**; both were disabled instead.
+Re-enabling it is a manual step, because per-extension enablement lives in
+`state.vscdb` and VS Code rewrites that file from memory while it is running.
+
+Implementation:
+
+- `graphqlLighthouseNavigation.js`, pure text in / pure data out:
+  `getGraphqlClassReferenceAt(text, offset)` reads the literal under the cursor
+  into `{ fqcn, className, namespace, methodName, argument }`, and
+  `findGraphqlClassReferences(text, fqcn, methodName)` finds every site naming a
+  class, optionally narrowed to one method;
+- three providers in `extension.js`: a DefinitionProvider on `graphql`
+  (literal → the PHP method declaration, or the class file when the directive
+  names no method), a ReferenceProvider on `graphql`, and a ReferenceProvider on
+  `php` that answers with schema sites. VS Code merges the last one with
+  Intelephense's own results;
+- `findClassFileUri` and `getPhpMethodDeclarationRanges` already existed and are
+  reused, as are `getPhpClassNameAfterOffset` and `getPhpClassFqn` — the first
+  draft of the PHP provider had re-inlined the class-declaration regex and the
+  `namespace\class` join that both of those already do;
+- bumped to `0.0.43`, with `onLanguage:graphql` added to `activationEvents`.
+
+Decisions and lessons:
+
+- **the GraphQL reference provider exists as much for `editorHasReferenceProvider`
+  as for its answers.** Cmd+B is bound to `smartReferences.go` under that `when`
+  clause, and `goToSmartReference` reaches the definition through
+  `vscode.executeDefinitionProvider`. A definition provider alone would leave the
+  clause false in a `.graphql` file and Cmd+B would fall back to toggling the
+  sidebar;
+- **the argument name is the filter, not the value's shape.** `ability:
+  "view_analiza_ads"` is a perfectly valid PHP class name and there are 1087 of
+  them; only `resolver`, `model`, `class`, `builder` and `validator` carry a
+  class. The first three are the ones the schema uses today, the other two are
+  the rest of Lighthouse's vocabulary and cost one alternation;
+- **the schema is read on demand, not indexed.** 77 files and 852 KB, and both
+  callers are a keypress the user just made. An index would need invalidation on
+  every schema save to buy nothing measurable here;
+- a bare `resolver: "App\\GraphQL\\Queries\\Me"` names no method — Lighthouse
+  calls `__invoke` — so it resolves to the class file rather than failing;
+- the leading separator is dropped, because the schema writes `\\App\\User` and
+  `App\\User` interchangeably and a PHP `namespace` declaration has neither.
+
+Verification:
+
+- `test/graphqlLighthouseNavigation.test.js`, 11 tests: resolver, model and
+  scalar `class` arguments, the literal offsets excluding the quotes, an
+  `ability` refused, positions outside any literal, finding all sites for a class
+  and narrowing to one method, both separator spellings, a bare class, and four
+  malformed values;
+- `node --test test/*.test.js` reports 223 passing, 0 failures, 212 before;
+- the parser was run over the real schema: **3187 class literals across the 77
+  files, 184 distinct classes, zero unparsed**;
+- both directions checked end to end against the real files —
+  `MetaCampaignCause.php` resolves to `App\GraphQL\Mutations\MetaCampaignCause`,
+  whose class name finds 3 schema sites (`analiza-ads.graphql:24` and `:74`,
+  `campaign-manage-v2.graphql:30`) and whose `link()` narrows to
+  `analiza-ads.graphql:74`; the literal at that line resolves back to
+  `link()` at `MetaCampaignCause.php:50`;
+- `node --check` clean on `extension.js` and the new module; `package.json`
+  parses;
+- **not verified: the live editor, and it cannot work until
+  `graphql.vscode-graphql-syntax` is re-enabled** — until then `.graphql` is
+  plaintext and neither the grammar nor these providers load.
+
+### 2026-09-20 — Prettier had been uninstalled; `.gs` formatting and Cmd+B
+
+Intent: `~/dev/jobsite-sync/apps-script/Code.gs` should format, and Cmd+B on
+`PropertiesService.getScriptProperties()` should reach the API declaration. The
+2026-09-16 entry mapped `*.gs` to JavaScript and stopped there.
+
+Finding: `esbenp.prettier-vscode` was not installed. `code --list-extensions`
+had no entry, `~/.vscode/extensions/extensions.json` had none, and no folder
+existed — while `settings.json` names it `editor.defaultFormatter` five times
+(`[javascript]`, `[typescript]`, `[html]`, `[jsonc]`, `[json]`) and
+`marketplace_extensions.txt:21` still listed it. The same shape as the GitLens
+loss two days earlier: config intact, extension gone, Format Document pointing
+at nothing. Nothing in this file records removing it.
+
+Implementation:
+
+- `code --install-extension esbenp.prettier-vscode`, v12.4.0. No settings
+  changed and `marketplace_extensions.txt` already carried the line;
+- everything else is project-local under `~/dev/jobsite-sync/` — a `.prettierrc`,
+  `@types/google-apps-script` in a gitignored `node_modules`, a hand-written
+  `types/chat_v1.d.ts`, and two triple-slash lines in `Code.gs`. Written up in
+  the vault under `_CODEBASES/GOOGLE-CHAT-FORWARD/`, not here.
+
+Decisions and lessons:
+
+- **Prettier needs nothing to read a `.gs`.** `prettier --file-info Code.gs`
+  answers `{"ignored": false, "inferredParser": "babel"}`. The parser comes from
+  Prettier's own extension table, not from `files.associations`, so CLI and
+  editor agree with no `prettier.documentSelectors` entry;
+- **`printWidth: 500` does not mean "few changes", it means "long lines".** On
+  this 211-line file the global keys touch fewer lines than a project config
+  does (65 against 73) and leave a 211-character line standing, 7 of them over
+  120. At `printWidth: 110` the longest line is 120 and it is a trailing comment,
+  which Prettier never reflows. Counting changed lines measures the wrong thing;
+- **a project `.prettierrc` wins over the VS Code settings outright**, which is
+  where a repo with an opinion belongs — the same split the 2026-08-31 entry
+  drew for `ribeit-depozit`. The global keys stay as they are;
+- **Prettier collapses a hand-broken call chain regardless of width.**
+  `ScriptApp.newTrigger('poll').timeBased().everyMinutes(…).create()` goes to one
+  line at 110 as well as at 500. That is the member-chain heuristic, not a
+  setting, and it is the one deliberate formatting choice the tool overrules;
+- **go to definition reaches the declaration, never Google's code.** Apps Script
+  services execute server-side and no implementation is published anywhere. Cmd+B
+  lands on `getScriptProperties(): Properties;` with the interface docblock above
+  it, and that is the whole of what exists to reach;
+- **the triple-slash line may follow the file's docblock.** TypeScript allows
+  comments before a directive, so the header a reader wants first stays first.
+  The 2026-09-16 finding that the line is required *per file* still holds;
+- **`Chat` is the one advanced service with no upstream types.** The package
+  ships Drive v3, Gmail, Sheets and ~20 more under `apis/`; Chat is absent, so
+  every `Chat.*` call was `any` until the local stub;
+- **a headless tsserver probe needs a longer warm-up than it looks.** 3 s after
+  `open` sufficed with one `.d.ts`; with the Chat stub referenced too, the same
+  probe answered `NONE` for a definition that resolves at 6 s. A cold server's
+  null reads exactly like a missing type.
+
+Verification:
+
+- `code --list-extensions --show-versions` reads `esbenp.prettier-vscode@12.4.0`;
+- probed against `ms-vscode.vscode-typescript-next`'s tsserver (6.0.20260416),
+  the version the editor runs, opening the file with `scriptKindName: "JS"` as
+  VS Code sends it. `PropertiesService.getScriptProperties` →
+  `properties.d.ts:38`, `DriveApp.getFolderById` → `drive.d.ts:107`,
+  `GmailApp.getUserLabelByName` → `gmail.d.ts:38`, `UrlFetchApp.fetch` →
+  `url-fetch.d.ts:93`, `LockService.getScriptLock` → `lock.d.ts:47`, and with the
+  stub referenced, `Chat.Spaces.list` and `Chat.Spaces.Messages.create` →
+  `chat_v1.d.ts`. Without the triple-slash line every one of them answered
+  `NONE`, type `any`;
+- types resolve from a `node_modules` one directory up, so the single install at
+  the repo root serves `apps-script/` and `gmail-receipts/` both;
+- `prettier --check` clean on `types/chat_v1.d.ts`; both `Code.gs` files report
+  unformatted, and were left that way — `editor.formatOnSave` is commented out
+  at `settings.json:683`, so nothing reformats until asked;
+- **not verified: the live editor.** Reload the window, open `Code.gs`, Cmd+B on
+  `PropertiesService.getScriptProperties()`, then Format Document.

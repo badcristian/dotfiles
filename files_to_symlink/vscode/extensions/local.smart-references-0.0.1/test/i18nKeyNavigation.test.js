@@ -149,5 +149,89 @@ test('returns nothing for an empty key', () => {
 	assert.deepStrictEqual(h.getI18nUsageRanges("t('interface.intro')", ''), []);
 });
 
+// --------------------------------------------------------------------------------------
+// getI18nKeyAtOffset
+// --------------------------------------------------------------------------------------
+
+// Verbatim from ribeit-depozit's ClientIndexPage.vue, the call that asked for the definition direction.
+const CALL = "        headerName: t('Companies'),";
+
+test('resolves the key of the call the cursor is inside', () => {
+	assert.strictEqual(h.getI18nKeyAtOffset(CALL, CALL.indexOf('Companies') + 3), 'Companies');
+});
+
+test('counts the surrounding quotes as part of the call key', () => {
+	const open = CALL.indexOf("'");
+	assert.strictEqual(h.getI18nKeyAtOffset(CALL, open), 'Companies');
+	assert.strictEqual(h.getI18nKeyAtOffset(CALL, open + "'Companies'".length), 'Companies');
+});
+
+// On `t` itself the cursor is on Volar's symbol, which keeps its own definition.
+test('returns undefined outside the literal', () => {
+	assert.strictEqual(h.getI18nKeyAtOffset(CALL, CALL.indexOf('t(')), undefined);
+	assert.strictEqual(h.getI18nKeyAtOffset(CALL, CALL.indexOf('headerName')), undefined);
+});
+
+// Prettier moves a long key onto its own line.
+test('resolves a key Prettier broke onto the next line', () => {
+	const source = "t(\n    'Every control in the application.',\n)";
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('control')), 'Every control in the application.');
+});
+
+test('picks the right call when a line holds two', () => {
+	const source = "{{ t('Clients') }} / {{ $t('Companies') }}";
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('Clients')), 'Clients');
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('Companies')), 'Companies');
+});
+
+test('keeps punctuation and placeholders in the key', () => {
+	const source = "t('+{count} see all', { count })";
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('see')), '+{count} see all');
+});
+
+test('unescapes a quote inside the key', () => {
+	const source = "t('Client\\'s boxes')";
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('boxes')), "Client's boxes");
+});
+
+test('refuses a template literal with an interpolation', () => {
+	const source = 't(`status.${status}`)';
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('status.')), undefined);
+});
+
+test('does not read a call whose name merely ends in t as a translation', () => {
+	const source = "format('Companies')";
+	assert.strictEqual(h.getI18nKeyAtOffset(source, source.indexOf('Companies')), undefined);
+});
+
+// --------------------------------------------------------------------------------------
+// getJsonKeyRanges
+// --------------------------------------------------------------------------------------
+
+// ribeit-depozit's locale files are flat, and the value often repeats the key verbatim.
+test('finds a flat key and not the identical value beside it', () => {
+	const source = '{\n  "Clients": "Clients",\n  "Companies": "Companies"\n}';
+	const ranges = h.getJsonKeyRanges(source, 'Companies');
+
+	assert.strictEqual(ranges.length, 1);
+	assert.strictEqual(ranges[0].start, source.indexOf('Companies'));
+	assert.strictEqual(source.slice(ranges[0].start, ranges[0].end), 'Companies');
+});
+
+test('finds a nested key by its dotted path', () => {
+	const [range] = h.getJsonKeyRanges(LOCALE, 'lab.intro');
+	assert.strictEqual(range.start, LOCALE.indexOf('"intro"', LOCALE.indexOf('"lab"')) + 1);
+});
+
+// vue-i18n tries the dotted path, then the key whole, so both shapes define `a.b`.
+test('finds a flat key containing dots as well as the nested one', () => {
+	const source = '{"a.b": "flat", "a": {"b": "nested"}}';
+	assert.strictEqual(h.getJsonKeyRanges(source, 'a.b').length, 2);
+});
+
+test('finds nothing for a key the file lacks', () => {
+	assert.deepStrictEqual(h.getJsonKeyRanges(LOCALE, 'interface.edges'), []);
+});
+
 
 console.log(`\n${passed} passing`);
