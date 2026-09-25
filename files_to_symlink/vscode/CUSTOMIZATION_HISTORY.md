@@ -7347,3 +7347,34 @@ Verification:
   at `settings.json:683`, so nothing reformats until asked;
 - **not verified: the live editor.** Reload the window, open `Code.gs`, Cmd+B on
   `PropertiesService.getScriptProperties()`, then Format Document.
+
+### 2026-09-25 — Cmd+B on a macro name that is also a PHP function
+
+Intent:
+
+- `Cmd+B` on `'file'` in `Blueprint::macro('file', …)` listed nothing and opened
+  Intelephense's `standard_5.php` instead, while `'creator'` two registrations up
+  listed its call sites as intended.
+
+Implementation:
+
+- `goToDefinition` returns "no definition" as soon as the cursor is on a
+  registration's name literal, before asking the language server, so the
+  existing reference path lists the call sites. Smart References `0.0.44`.
+
+Decisions and lessons:
+
+- **Intelephense treats a string literal as a callable name.** `'file'` is PHP's
+  `file()`, so native resolution was non-empty and the 2026-08-05 rule "reverse
+  direction only when the language server is empty" never ran. Any macro named
+  after a built-in function (`file`, `count`, `key`, `date`, …) had the same bug;
+- the registration literal is the macro's definition, so nothing the language
+  server says about it can be the answer. Skipping it costs nothing: the `macro`
+  keyword itself still resolves natively to `Macroable::macro()`.
+
+Verification:
+
+- against the real `ribeit-depozit` `AppServiceProvider.php`, the helper
+  recognises both `creator` and `file` and ignores the `macro` keyword;
+- 223 tests pass, `node --check` clean on `extension.js`;
+- **not verified: the live editor.** Reload the window, `Cmd+B` on `'file'`.

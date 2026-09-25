@@ -1322,6 +1322,14 @@ async function goToDefinition(uri, position) {
 		logDebug(`Laravel config redirect threw: ${error && error.message ? error.message : error}`);
 	}
 
+	// Registration name is the definition -> straight to call sites. Intelephense reads
+	// `macro('file', …)` as a callable string and answers with PHP's own `file()`.
+	const document = await vscode.workspace.openTextDocument(uri);
+
+	if (getMacroRegistrationNameAtOffset(document.getText(), document.offsetAt(position))) {
+		return false;
+	}
+
 	const definitions = await getDefinitionTargets(uri, position);
 
 	if (definitions.length === 0) {
