@@ -362,3 +362,38 @@ test('a union or nullable return type survives intact', () => {
 		'PendingRequest|Response',
 	);
 });
+
+test('a foreach over a literal array registers one macro per key', () => {
+	const source = [
+		'foreach (',
+		"    ['positiveSmallInteger' => 'smallInteger', 'positiveInteger' => 'integer'] as $macro => $type",
+		') {',
+		'    Blueprint::macro($macro, function (string $column, bool $nullable) use ($type): ColumnDefinition {',
+		'        return $this->addColumn($type, $column);',
+		'    });',
+		'}',
+	].join('\n');
+	const registrations = findMacroRegistrations(source);
+
+	assert.deepEqual(registrations.map((entry) => source.slice(entry.start, entry.end)), ['positiveSmallInteger', 'positiveInteger']);
+	assert.equal(registrations[0].receiver, 'Blueprint');
+	assert.equal(registrations[0].parameters, 'string $column, bool $nullable');
+	assert.equal(registrations[0].returnType, 'ColumnDefinition');
+	assert.equal(getMacroRegistrationNameAtOffset(source, source.indexOf('positiveInteger') + 3), 'positiveInteger');
+});
+
+test('a foreach over a literal list registers one macro per value', () => {
+	const source = "foreach (['a', 'b'] as $name) { Str::macro($name, fn () => 1); }";
+
+	assert.deepEqual(findMacroRegistrations(source).map((entry) => entry.name), ['a', 'b']);
+	assert.deepEqual(
+		findMacroRegistrations("foreach (['x' => 'a'] as $key => $name) { Str::macro($name, fn () => 1); }")
+			.map((entry) => entry.name),
+		['a'],
+	);
+});
+
+test('a macro name from anything but a literal foreach is not guessed', () => {
+	assert.deepEqual(findMacroRegistrations("foreach ($names as $name) { Str::macro($name, fn () => 1); }"), []);
+	assert.deepEqual(findMacroRegistrations('Str::macro($name, fn () => 1);'), []);
+});

@@ -7536,3 +7536,39 @@ Verification:
   on one line and a normal line below a normal statement stay plain Enter;
 - 229 tests pass, `node --check` clean;
 - **not verified: the live editor.** Reload the window and press Enter once.
+
+### 2026-09-27 — Cmd+B follows macros registered in a `foreach`
+
+Intent:
+
+- `$table->positiveSmallInteger('year_from', nullable: false)` in a
+  ribeit-depozit migration went nowhere on Cmd+B. `MacroServiceProvider`
+  registers it and `positiveInteger` in one loop —
+  `foreach (['positiveSmallInteger' => 'smallInteger', …] as $macro => $type)`
+  around `Blueprint::macro($macro, …)` — so no `macro('name'` literal exists.
+
+Implementation:
+
+- `findMacroRegistrations` also reads `macro($variable, …)`: the nearest
+  preceding `foreach` binding that variable over a literal array gives one
+  registration per key (or per value, when the variable is the value), located
+  at the array entry. Receiver and closure signature come from the shared call.
+- `getMacroRegistrationNameAtOffset` now reuses that scan, so Cmd+B on the
+  array key finds the call sites.
+- the closure return type is read past a `use (…)` clause; before, every
+  `function () use ($x): Type` macro was declared `mixed` in the IDE helper.
+  Smart References `0.0.50`.
+
+Decisions and lessons:
+
+- **literal arrays only.** `foreach ($names as $name)` names nothing the scan
+  can read, and guessing would be worse than falling back.
+
+Verification:
+
+- run against the real `app/Providers/MacroServiceProvider.php`: both loop
+  macros resolve to their keys with receiver `Blueprint` and return type
+  `ColumnDefinition`; the other five registrations unchanged;
+- 232 tests pass, `node --check` clean;
+- **not verified: the live editor.** Reload the window, press Cmd+B once;
+  regenerate the helper (Shift+Cmd+.) for chained calls to type.

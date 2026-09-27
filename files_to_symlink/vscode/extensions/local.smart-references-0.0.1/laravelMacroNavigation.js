@@ -202,11 +202,11 @@ function findClosingParen(text, openOffset) {
 }
 
 // The parameter list and declared return type of the closure a registration binds, read from the
-// argument that follows the name literal. A macro bound to something other than a closure — a
+// argument that follows the name argument. A macro bound to something other than a closure — a
 // callable array, a first-class callable — has neither, and both come back undefined.
 function getMacroClosureSignature(source, afterNameOffset) {
 	const text = String(source);
-	const separator = /^['"]\s*,\s*(?:macro\s*:\s*)?/.exec(text.slice(afterNameOffset));
+	const separator = /^\s*,\s*(?:macro\s*:\s*)?/.exec(text.slice(afterNameOffset));
 
 	if (!separator) {
 		return undefined;
@@ -227,8 +227,8 @@ function getMacroClosureSignature(source, afterNameOffset) {
 	}
 
 	// `: Type` runs to the arrow of an `fn` or the brace of a `function`; `=` is excluded from the
-	// type so `=>` cannot be swallowed by it.
-	const returnType = /^\s*:\s*([^={;]+?)\s*(?:=>|\{)/.exec(text.slice(closeParen + 1));
+	// type so `=>` cannot be swallowed by it. A `use (…)` clause may sit before it.
+	const returnType = /^\s*(?:use\s*\([^)]*\)\s*)?:\s*([^={;]+?)\s*(?:=>|\{)/.exec(text.slice(closeParen + 1));
 
 	return {
 		parameters: text.slice(openParen + 1, closeParen).trim(),
@@ -236,16 +236,72 @@ function getMacroClosureSignature(source, afterNameOffset) {
 	};
 }
 
+// The string literals a `foreach` over a literal array binds to `$variable`, with their offsets —
+// `foreach (['a' => 'x', 'b' => 'y'] as $macro => $type)` gives `a` and `b` for `$macro`. The
+// nearest preceding loop binding that variable wins; a loop over anything but a literal gives none.
+function findForeachLiteralBindings(text, variable, beforeOffset) {
+	const loop = /\bforeach\s*\(/g;
+	let header;
+	let match;
+
+	while ((match = loop.exec(text)) !== null && match.index < beforeOffset) {
+		const openParen = match.index + match[0].length - 1;
+		const closeParen = findClosingParen(text, openParen);
+
+		if (closeParen === -1 || closeParen > beforeOffset) {
+			continue;
+		}
+
+		const binding = /^([\s\S]*)\bas\s*(?:\$(\w+)\s*=>\s*)?&?\s*\$(\w+)\s*$/
+			.exec(text.slice(openParen + 1, closeParen));
+
+		if (binding && (binding[2] === variable || binding[3] === variable)) {
+			header = { offset: openParen + 1, subject: binding[1], isKey: binding[2] === variable, hasKey: !!binding[2] };
+		}
+	}
+
+	if (!header || !/^\s*\[[\s\S]*\]\s*$/.test(header.subject)) {
+		return [];
+	}
+
+	// Keys sit before `=>`; values after it, or after `[`/`,` in a list.
+	const entry = header.isKey
+		? /(['"])([^'"\\]*)\1\s*=>/g
+		: new RegExp(`(?:${header.hasKey ? '=>' : '[\\[,]'})\\s*(['"])([^'"\\\\]*)\\1\\s*(?=[,\\]])`, 'g');
+	const bindings = [];
+
+	while ((match = entry.exec(header.subject)) !== null) {
+		const start = header.offset + match.index + match[0].indexOf(match[1]) + 1;
+
+		bindings.push({ name: match[2], start, end: start + match[2].length });
+	}
+
+	return bindings;
+}
+
 // Every `X::macro('name', …)` / `$x->macro('name', …)` in one file, with the offsets of each name
 // literal plus what is needed to describe the macro to a language server. One pass over the file
 // answers both "where is this macro registered" and "what does calling it return", so a workspace
-// scan never has to run twice.
+// scan never has to run twice. `X::macro($name, …)` inside a `foreach` over a literal array
+// registers one macro per literal, each located at its array entry.
 function findMacroRegistrations(source) {
 	const text = String(source);
 	const registration = macroRegistrationPattern("[^'\"\\\\]*");
+	const loopRegistration = /(?:::|->)\s*macro\s*\(\s*(?:name\s*:\s*)?\$(\w+)(?=\s*,)/g;
 	const registrations = [];
 	let match;
 
+	function describe(operatorOffset, afterNameOffset) {
+		const signature = getMacroClosureSignature(text, afterNameOffset);
+
+		return {
+			isStatic: text.startsWith('::', operatorOffset),
+			receiver: getMacroRegistrationReceiver(text, operatorOffset),
+			parameters: signature ? signature.parameters : undefined,
+			returnType: signature ? signature.returnType : undefined,
+		};
+	}
+
 	while ((match = registration.exec(text)) !== null) {
 		const name = match[2];
 
@@ -254,50 +310,35 @@ function findMacroRegistrations(source) {
 		}
 
 		const start = match.index + match[0].lastIndexOf(name);
-		const signature = getMacroClosureSignature(text, start + name.length);
 
-		registrations.push({
-			name,
-			start,
-			end: start + name.length,
-			isStatic: text.startsWith('::', match.index),
-			receiver: getMacroRegistrationReceiver(text, match.index),
-			parameters: signature ? signature.parameters : undefined,
-			returnType: signature ? signature.returnType : undefined,
-		});
+		registrations.push({ name, start, end: start + name.length, ...describe(match.index, start + name.length + 1) });
 	}
 
-	return registrations;
+	while ((match = loopRegistration.exec(text)) !== null) {
+		const details = describe(match.index, match.index + match[0].length);
+
+		for (const binding of findForeachLiteralBindings(text, match[1], match.index)) {
+			if (isPhpIdentifier(binding.name)) {
+				registrations.push({ ...binding, ...details });
+			}
+		}
+	}
+
+	return registrations.sort((left, right) => left.start - right.start);
 }
 
-// The name being registered when the cursor sits inside the literal of `::macro('name', …)`, or
-// undefined anywhere else. Only the literal counts: on the `macro` keyword itself Intelephense
-// already resolves the real `Macroable::macro()`, and hijacking that would be a regression.
+// The name being registered when the cursor sits inside the literal of `::macro('name', …)` — or
+// on its array entry, for a loop registration — and undefined anywhere else. On the `macro` keyword
+// itself Intelephense already resolves the real `Macroable::macro()`; hijacking that would regress.
 function getMacroRegistrationNameAtOffset(source, offset) {
-	const text = String(source);
-
-	if (!Number.isInteger(offset) || offset < 0 || offset > text.length) {
+	if (!Number.isInteger(offset) || offset < 0 || offset > String(source).length) {
 		return undefined;
 	}
 
-	const registration = macroRegistrationPattern("[^'\"\\\\]*");
-	let match;
+	const registration = findMacroRegistrations(source)
+		.find((entry) => offset >= entry.start && offset <= entry.end);
 
-	while ((match = registration.exec(text)) !== null) {
-		const name = match[2];
-
-		if (!isPhpIdentifier(name)) {
-			continue;
-		}
-
-		const start = match.index + match[0].lastIndexOf(name);
-
-		if (offset >= start && offset <= start + name.length) {
-			return name;
-		}
-	}
-
-	return undefined;
+	return registration ? registration.name : undefined;
 }
 
 // Offsets of every `::name(` / `->name(` call in one file's code, for the reverse direction: from a
