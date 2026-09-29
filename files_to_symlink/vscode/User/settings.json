@@ -18,6 +18,8 @@
   // 1.139 defaults to "connected": square-bottomed tab filled with the editor colour, joined to the
   // editor. custom-workbench.css styles the pill; under "connected" its ring came out lopsided.
   "workbench.experimental.modernUIEditorTabStyle": "pill",
+  // Modified lines default to a hatch: on a 2px bar it leaves every other pixel blank.
+  "scm.diffDecorationsGutterPattern": { "added": false, "modified": false },
   // Wheel and trackpad still scroll the strip; only the slider under it goes. Also takes the
   // breadcrumbs' scrollbar, which the setting covers in the same title area.
   "workbench.editor.titleScrollbarVisibility": "hidden",
@@ -594,6 +596,10 @@
       "editor.lineHighlightBorder": "#00000000",
     },
     "[GitHub Light Default]": {
+      // Theme's #d4a72c66 on white = 1.35:1, invisible at 2px. Solid emphasis tokens, >= 3:1.
+      "editorGutter.modifiedBackground": "#bf8700",
+      "editorGutter.addedBackground": "#1a7f37",
+      "editorGutter.deletedBackground": "#cf222e",
       "foreground": "#000000",
       "descriptionForeground": "#000000",
       "editorGroup.emptyBackground": "#f6f8fa",

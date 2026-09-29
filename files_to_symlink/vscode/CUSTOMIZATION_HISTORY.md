@@ -7641,3 +7641,31 @@ Verification:
 - setting name, enum and default read from the bundled 1.139.1 JS;
 - **not verified: the rendered tab.** A settings change applies live; a new
   capture should show `#dbeafe` inside a ring rounded on all four corners.
+
+### 2026-09-29 — Light-theme change bars made visible
+
+Intent:
+
+- the modified-line bar in GitHub Light Default was barely visible.
+
+Implementation:
+
+- `[GitHub Light Default]` sets solid `editorGutter.{modified,added,deleted}Background`
+  from GitHub's emphasis tokens: `#bf8700`, `#1a7f37`, `#cf222e`;
+- `scm.diffDecorationsGutterPattern` turns the hatch off for modified lines
+  (shipped default `{added: false, modified: true}`), in every theme.
+
+Decisions and lessons:
+
+- **the 2px width stays** (2026-08-17). Width was not the problem: the theme's
+  `#d4a72c66` composites to `#ebddb5` on white, 1.35:1, and the hatch blanked
+  every other pixel row of what was left;
+- `#bf8700` over the theme's `#d4a72c`: 3.14:1 against 2.24:1, which clears the
+  3:1 floor for non-text UI while staying the same yellow.
+
+Verification:
+
+- capture decoded: bar `#ebddb5`, 1.5 CSS px wide, diagonal stripes;
+- setting name and default read from the bundled 1.139.1 JS; settings parse;
+- **not verified: the rendered bar.** Applies live; a new capture should show
+  a solid `#bf8700` strip.
