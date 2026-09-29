@@ -7572,3 +7572,42 @@ Verification:
 - 232 tests pass, `node --check` clean;
 - **not verified: the live editor.** Reload the window, press Cmd+B once;
   regenerate the helper (Shift+Cmd+.) for chained calls to type.
+
+### 2026-09-29 — VS Code 1.139 active tab fill re-pointed at `tab.*`
+
+Intent:
+
+- after the 1.139.1 update the light theme's active tab lost its fill: the
+  `#8bb8ff` ring still drew, but inside it was `#ffffff` instead of `#dbeafe`.
+
+Implementation:
+
+- 1.139 paints `.tab-fill` from a new family,
+  `--modern-ui-editor-tab-{active,unfocused-active,active-hover,hover,…}-background`,
+  fed by new theme colours `modernEditorTab.*` → `modernTab.*`. None of them
+  reads `tab.*`, so every per-theme tab palette in `settings.json` was ignored.
+  `custom-workbench.css` now points the active, active-hover and hover
+  variables (focused and unfocused) back at the `tab.*` colours;
+- active-hover maps to `tab.activeBackground`, not `tab.hoverBackground`: the
+  existing dark overlay does the lift, and the 1.139 default would darken the
+  active tab on hover — the 2026-08-05 problem again;
+- `check_workbench_customizations.sh` checks the new variable in the source,
+  in the bundled CSS and in the injected `workbench.html`.
+
+Decisions and lessons:
+
+- **the injector was fine.** `workbench.html` still carried the CSS; the
+  1.133 override `--modern-ui-editor-tab-action-active-background` still
+  applied, it just no longer paints the fill. Found by grepping the bundled CSS
+  for the `.tab.active>.tab-fill` rule, per lesson 11;
+- inactive backgrounds were left alone: 1.139 defaults them to transparent,
+  which equals `tab.inactiveBackground` (the bar colour) in every theme.
+
+Verification:
+
+- screenshot decoded: ring `#95b7f9`, fill `#ffffff`, ring box 22 CSS px tall;
+- `check_workbench_customizations.sh`: source contract passes; the installed
+  check fails on the new marker until the CSS is re-injected, as intended;
+- **not verified: the rendered tab.** Needs **Reload Custom CSS and JS**, a
+  restart, `fix_vscode_checksums.sh`, and a fresh capture. The 22px ring height
+  (target 24) was not investigated yet.

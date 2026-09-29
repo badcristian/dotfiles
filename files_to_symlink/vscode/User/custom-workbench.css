@@ -139,6 +139,17 @@
 	--modern-ui-editor-tab-action-active-background: var(--vscode-tab-activeBackground) !important;
 }
 
+/* 1.139 paints the fill from `modernEditorTab.*`, which never reads `tab.*` -> light active tab went
+ * white. Active-hover = active fill; the dark overlay below does the lift. */
+.monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) {
+	--modern-ui-editor-tab-active-background: var(--vscode-tab-activeBackground) !important;
+	--modern-ui-editor-tab-unfocused-active-background: var(--vscode-tab-unfocusedActiveBackground, var(--vscode-tab-activeBackground)) !important;
+	--modern-ui-editor-tab-active-hover-background: var(--vscode-tab-activeBackground) !important;
+	--modern-ui-editor-tab-unfocused-active-hover-background: var(--vscode-tab-unfocusedActiveBackground, var(--vscode-tab-activeBackground)) !important;
+	--modern-ui-editor-tab-hover-background: var(--vscode-tab-hoverBackground) !important;
+	--modern-ui-editor-tab-unfocused-hover-background: var(--vscode-tab-unfocusedHoverBackground, var(--vscode-tab-hoverBackground)) !important;
+}
+
 /* All outer tabs are 26px. Centre every modern fill state inside that common box so the active or
  * hovered capsule is 24px tall rather than making the painted tab look taller than its siblings. */
 .monaco-workbench.modern-ui-tabs:not(:is(.hc-black, .hc-light)) .part.editor .tabs-container > .tab > .tab-fill {

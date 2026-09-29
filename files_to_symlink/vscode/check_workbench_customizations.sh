@@ -27,6 +27,7 @@ const checks = [
 	[/\.tab\.has-icon\s*>\s*\.tab-label::before\s*\{[^}]*background-position-y:\s*calc\(50%\s*\+\s*2px\)\s*!important/s, "the 2px tab file-icon optical alignment"],
 	[/\.tab\.close-action-off:not\(\.sticky-compact\)\s*\{[^}]*padding-left:\s*var\(--vscode-spacing-size80\)\s*!important/s, "the symmetric padding for actionless modern tabs"],
 	[/--modern-ui-editor-tab-action-active-background:\s*var\(--vscode-tab-activeBackground\)\s*!important/, "the theme-backed modern active fill"],
+	[/--modern-ui-editor-tab-active-background:\s*var\(--vscode-tab-activeBackground\)\s*!important/, "the theme-backed 1.139 active fill"],
 	[/\.tab\s*>\s*\.tab-fill\s*\{[^}]*inset-block:\s*1px\s*!important/s, "the centred 24px tab fill"],
 	[/\.tab\s*>\s*\.tab-actions\s*\{[^}]*inset-block:\s*1px\s*!important/s, "the centred 24px tab action layer"],
 	[/\.tab\.sticky\s*>\s*\.tab-actions\s*\{[^}]*background-color:\s*transparent\s*!important/s, "the transparent pinned-action surface"],
@@ -79,6 +80,7 @@ const nativeChecks = [
 	[/modern-ui-tabs[^{}]*\.tabs-container\s*>\s*\.tab\s*>\s*\.tab-fill/, "modern .tab-fill"],
 	[/modern-ui-tabs[^{}]*\.tabs-container[^{}]*\.tab\s*>\s*\.tab-actions/, "modern .tab-actions"],
 	[/--modern-ui-editor-tab-action-active-background/, "modern active-action color variable"],
+	[/--modern-ui-editor-tab-active-background:/, "1.139 modern active-fill color variable"],
 	[/\.monaco-editor \.margin-view-overlays \.line-numbers\{[^}]*text-align:right[^}]*box-sizing:border-box/, "line-number overlay"],
 ];
 
@@ -107,6 +109,7 @@ const injectionMarkers = [
 	"background-position-y: calc(50% + 2px) !important;",
 	"padding-left: var(--vscode-spacing-size80) !important;",
 	"--modern-ui-editor-tab-action-active-background: var(--vscode-tab-activeBackground) !important;",
+	"--modern-ui-editor-tab-active-background: var(--vscode-tab-activeBackground) !important;",
 	".tab > .tab-actions",
 	"transform: translateX(4px) !important;",
 	".margin-view-overlays .cldr",
