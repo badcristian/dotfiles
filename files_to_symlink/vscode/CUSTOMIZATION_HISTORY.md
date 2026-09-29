@@ -7611,3 +7611,33 @@ Verification:
 - **not verified: the rendered tab.** Needs **Reload Custom CSS and JS**, a
   restart, `fix_vscode_checksums.sh`, and a fresh capture. The 22px ring height
   (target 24) was not investigated yet.
+
+### 2026-09-29 — 1.139's "connected" tab style turned back off
+
+Intent:
+
+- after re-injecting the entry above, the active tab was still white inside
+  and its ring was uneven: top corners rounded, bottom corners square.
+
+Implementation:
+
+- `settings.json` sets `workbench.experimental.modernUIEditorTabStyle` to
+  `"pill"`. 1.139 added the setting with default `"connected"`, which puts
+  `.modern-ui-connected-editor-tabs` on the workbench.
+
+Decisions and lessons:
+
+- **the entry above fixed the wrong layer on its own.** Under "connected" the
+  active `.tab-fill` is painted from `--modern-ui-connected-tab-surface` (the
+  editor colour) with `border-radius: cap cap 0 0`, meant to run down into the
+  editor. Our `inset-block: 1px` cut it off, and the inset ring followed that
+  radius. The `tab.*` re-pointing is still needed: under "pill" the fill reads
+  `--modern-ui-editor-tab-active-background`;
+- the square bottom was found by printing the ring's corners from the capture
+  as ASCII. The earlier row/column slices showed even 2px edges and missed it.
+
+Verification:
+
+- setting name, enum and default read from the bundled 1.139.1 JS;
+- **not verified: the rendered tab.** A settings change applies live; a new
+  capture should show `#dbeafe` inside a ring rounded on all four corners.

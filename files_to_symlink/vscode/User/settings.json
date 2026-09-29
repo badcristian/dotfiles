@@ -15,6 +15,9 @@
   "workbench.editor.tabSizing": "fit",
   "workbench.editor.wrapTabs": false,
   "workbench.editor.tabHeight": "compact",
+  // 1.139 defaults to "connected": square-bottomed tab filled with the editor colour, joined to the
+  // editor. custom-workbench.css styles the pill; under "connected" its ring came out lopsided.
+  "workbench.experimental.modernUIEditorTabStyle": "pill",
   // Wheel and trackpad still scroll the strip; only the slider under it goes. Also takes the
   // breadcrumbs' scrollbar, which the setting covers in the same title area.
   "workbench.editor.titleScrollbarVisibility": "hidden",
