@@ -34,7 +34,7 @@ APPS = {
     -- {shortcut = "i", name = "IntelliJ IDEA"},
     -- {shortcut = "i", name = "IntelliJ IDEA", modifiers = {"cmd", "shift"}}, -- cmd+shift+i
     -- {shortcut = "i", name = "Finder", modifiers = {"cmd", "shift"}}, -- cmd+shift+i
-    {shortcut = "/", name = "Claude", modifiers = {"cmd", "shift"}} -- cmd+shift+/
+    -- {shortcut = "/", name = "Claude", modifiers = {"cmd", "shift"}} -- cmd+shift+/
 }
 
 local function bindHotkey(modifiers, key, action)
