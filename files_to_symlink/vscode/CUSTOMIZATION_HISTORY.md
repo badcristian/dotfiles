@@ -294,8 +294,6 @@ framework-specific bridges:
   two branches;
 - extending PHPDoc syntax highlighting so spaced generic arguments, annotation
   variables, and nullable markers keep meaningful type/variable scopes;
-- Explorer deletion while temporarily preventing auto-reveal from moving the
-  selection;
 - manually marking Explorer files with a persistent coral-red flag decoration;
 - adding Explorer-selected files to the nearest repository's `.gitignore`;
 - explicit Laravel helper regeneration;
@@ -7704,3 +7702,35 @@ Verification:
   one resolves;
 - **not verified: the live Cmd+B.** Needs **Developer: Reload Window**, then
   Cmd+B on `AccessChangeService` in `AccessEntityUpdatedJob.php`.
+
+### 2026-10-01 — Explorer delete no longer toggles `explorer.autoReveal`
+
+Intent:
+
+- `explorer.autoReveal` kept turning up `false` in `settings.json`. Stop it.
+
+Cause:
+
+- `Cmd+Backspace` / `Delete` in the Explorer ran
+  `smartReferences.deleteFileWithoutAutoReveal`: write `autoReveal: false`,
+  `moveFileToTrash`, wait 1.5s, write back the value read at the start. A
+  second delete inside that window read the first one's `false` as the
+  original and restored it — permanently.
+
+Implementation:
+
+- command, both keybindings, and its `package.json` entries removed; the keys
+  fall back to VS Code's own `moveFileToTrash`. `autoReveal` back to `true`.
+
+Decisions and lessons:
+
+- **removed, not fixed.** The user asked for it gone. A setting written on
+  every keystroke is the wrong tool for a transient UI effect anyway: it lands
+  in the tracked `settings.json` and survives any interruption.
+
+Verification:
+
+- no `autoReveal` writer left in the extension; suite 235/235;
+- **not verified: the live delete.** After a reload, deleting from the Explorer
+  should leave `settings.json` untouched; the selection may now move to the
+  next file's reveal, which is what the removed command was suppressing.

@@ -5733,44 +5733,6 @@ async function setReferenceViewMode(mode) {
 	vscode.window.showInformationMessage(`Smart References will use ${mode === 'quickPick' ? 'QuickPick' : 'Webview'} references.`);
 }
 
-function delay(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function getExplorerAutoRevealRestoreTarget(config) {
-	const inspected = config.inspect('autoReveal');
-
-	if (inspected?.workspaceValue !== undefined) {
-		return {
-			target: vscode.ConfigurationTarget.Workspace,
-			value: inspected.workspaceValue,
-		};
-	}
-
-	return {
-		target: vscode.ConfigurationTarget.Global,
-		value: inspected?.globalValue,
-	};
-}
-
-async function executeWithExplorerAutoRevealDisabled(command) {
-	const config = vscode.workspace.getConfiguration('explorer');
-	const restore = getExplorerAutoRevealRestoreTarget(config);
-
-	await config.update('autoReveal', false, restore.target);
-
-	try {
-		await vscode.commands.executeCommand(command);
-		await delay(1500);
-	} finally {
-		await vscode.workspace.getConfiguration('explorer').update('autoReveal', restore.value, restore.target);
-	}
-}
-
-async function deleteFileWithoutAutoReveal() {
-	await executeWithExplorerAutoRevealDisabled('moveFileToTrash');
-}
-
 async function getGitRepositoryRootFromExtension(resourceUri) {
 	try {
 		const extension = vscode.extensions.getExtension('vscode.git');
@@ -6093,7 +6055,6 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpUse', splitPhpUseAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));
-	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.deleteFileWithoutAutoReveal', deleteFileWithoutAutoReveal));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.toggleFileMarker', async (resourceUri, selectedResourceUris) => {
 		try {
 			await fileMarkers.toggle(resourceUri, selectedResourceUris);
