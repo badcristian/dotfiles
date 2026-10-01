@@ -7803,3 +7803,34 @@ Verification:
 - suite 235/235; fragment parsing checked for `''`, `L17`, `12,5`;
 - **not verified: the live Cmd+B.** Reload Window, then Cmd+B on
   `x-pdf-ra.layout` in `access/v2/pdf.blade.php`.
+
+### 2026-10-01 — Breadcrumbs off again, and committed this time
+
+Intent:
+
+- the breadcrumb row was back under the tabs. Disable it permanently, and
+  remove any keybinding that toggles it.
+
+Cause:
+
+- `"breadcrumbs.enabled": false` was missing from `User/settings.json`.
+  `git log -S` finds it only in the 07-18 and 07-27 commits: the 2026-08-13
+  restore above was written and recorded here but never committed, and the
+  working-tree edit was lost.
+
+Implementation:
+
+- the setting restored beside the tab settings, with a comment saying why.
+
+Decisions:
+
+- **no keybinding to remove.** `breadcrumbs.toggle` in the 1.139.1 bundle
+  declares none; no user, IntelliJ-keymap or other extension binding names it.
+  Its only entry points are the command palette and View > Appearance.
+
+Verification:
+
+- settings symlink resolves to the repository file; settings parse;
+- **not verified: the rendered row.** Applies live; it should disappear without
+  a reload.
+
