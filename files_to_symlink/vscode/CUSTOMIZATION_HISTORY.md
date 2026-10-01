@@ -7734,3 +7734,39 @@ Verification:
 - **not verified: the live delete.** After a reload, deleting from the Explorer
   should leave `settings.json` untouched; the selection may now move to the
   next file's reveal, which is what the removed command was suppressing.
+
+### 2026-10-01 — Cmd+B works in Blade files
+
+Intent:
+
+- `Cmd+B` on `<x-pdf-ra.section>` in `ribeit-api/resources/views/access`
+  did nothing. Open the component's Blade file.
+
+Cause:
+
+- the `smartReferences.go` binding requires `editorHasReferenceProvider`, which
+  Blade lacks. `Cmd+B` fell through to the IntelliJ keymap's
+  `editor.action.goToDeclaration`; Laravel LSP (`laravel.vscode-laravel` 2.0.1,
+  server v0.0.32) answers definition, never declaration.
+
+Implementation:
+
+- second `cmd+b` binding: `editorLangId == 'blade'` -> `smartReferences.go`;
+  `onLanguage:blade` activation event.
+
+Decisions and lessons:
+
+- **no document-link fallback.** Drafted one, then probed the server over stdio
+  on 5 files: 47 of 47 links also answer `textDocument/definition`. It added
+  nothing;
+- **PHP inside Blade stays unresolved.** The same probe: definition on an
+  `@use` class returns `[]`. Intelephense 1.18.5 has no Blade support; adding
+  `*.blade.php` to its associations parses templates as raw PHP. DEVSENSE PHP
+  Tools (paid) is the one VS Code option advertising Blade definitions.
+
+Verification:
+
+- LSP probe above; suite 235/235;
+- **not verified: the live Cmd+B.** Reload Window, then Cmd+B on
+  `x-pdf-ra.title` in `access/v2/documents/anexa.blade.php`.
+

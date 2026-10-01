@@ -108,6 +108,11 @@
 		"when": "editorTextFocus && editorHasReferenceProvider"
 	},
 	{
+		"key": "cmd+b",
+		"command": "smartReferences.go",
+		"when": "editorTextFocus && editorLangId == 'blade'"
+	},
+	{
 		"key": "backspace",
 		"command": "smartReferences.smartBackspace",
 		"when": "editorTextFocus && !editorReadonly && (editorLangId == php || editorLangId == vue || editorLangId == typescript || editorLangId == javascript)"
