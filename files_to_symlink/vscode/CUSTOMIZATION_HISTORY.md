@@ -7770,3 +7770,36 @@ Verification:
 - **not verified: the live Cmd+B.** Reload Window, then Cmd+B on
   `x-pdf-ra.title` in `access/v2/documents/anexa.blade.php`.
 
+
+### 2026-10-01 — Correction: Blade Cmd+B needs the document-link fallback
+
+Intent:
+
+- after the entry above, Cmd+B on `x-pdf-ra.layout` in
+  `access/v2/pdf.blade.php` reached `smartReferences.go` and answered
+  "No other references found".
+
+Cause:
+
+- **the entry above was wrong to drop the link fallback.** Its stdio probe sent
+  no `initializationOptions`. The VS Code client hardcodes
+  `definitionProvider: false` (`dist/extension.js`, no setting) — confirmed in
+  the window's `Laravel LSP.log`. In the editor the definition is empty; the
+  client is built to deliver these as document links.
+
+Implementation:
+
+- `resolveDocumentLinkTarget` restored, last in the empty-definition resolver
+  list: `vscode.executeLinkProvider`, the `file:` link under the cursor, `#L12`
+  / `#12,5` fragment as the target line.
+
+Lessons:
+
+- a probe of a client-configured server must replay the client's real
+  initialize options. They are in the server's own log line.
+
+Verification:
+
+- suite 235/235; fragment parsing checked for `''`, `L17`, `12,5`;
+- **not verified: the live Cmd+B.** Reload Window, then Cmd+B on
+  `x-pdf-ra.layout` in `access/v2/pdf.blade.php`.

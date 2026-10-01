@@ -1328,6 +1328,26 @@ async function resolveLaravelModelMagicCallTarget(uri, position) {
 	return { uri: modelUri, range: rangeFromOffsets(modelSource, range.start, range.end) };
 }
 
+// Laravel's VS Code client starts its LSP with `definitionProvider: false`: Blade components,
+// views, routes arrive as document links only. `#L12` / `#12,5` fragment = target line.
+async function resolveDocumentLinkTarget(uri, position) {
+	const links = await vscode.commands.executeCommand('vscode.executeLinkProvider', uri, 50);
+	const target = Array.isArray(links)
+		? links.find((link) => link.range.contains(position) && link.target?.scheme === 'file')?.target
+		: undefined;
+
+	if (!target) {
+		return undefined;
+	}
+
+	const [, line = '1', column = '1'] = /^L?(\d+)(?:[,:](\d+))?/.exec(target.fragment) ?? [];
+	const targetPosition = new vscode.Position(Number(line) - 1, Number(column) - 1);
+
+	logDebug(`document link redirect: ${target.path}:${line}`);
+
+	return { uri: target.with({ fragment: '' }), range: new vscode.Range(targetPosition, targetPosition) };
+}
+
 // Class declaration only: a method a facade declares itself is still worth landing on.
 async function resolveLaravelFacadeTarget(target) {
 	const source = target.uri.path.endsWith('.php') ? await tryReadWorkspaceText(target.uri) : undefined;
@@ -1399,6 +1419,7 @@ async function goToDefinition(uri, position) {
 			resolveLaravelColumnTarget,
 			resolveLaravelMiddlewareTarget,
 			resolveLaravelModelMagicCallTarget,
+			resolveDocumentLinkTarget,
 		]) {
 			try {
 				const queryTarget = await resolve(uri, position);
