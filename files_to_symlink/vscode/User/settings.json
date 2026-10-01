@@ -310,7 +310,7 @@
   // buffer; that is not a PhpStorm behaviour and it makes indenting unpredictable.
   "editor.tabCompletion": "onlySnippets",
   "editor.snippetSuggestions": "top",
-  "explorer.autoReveal": true,
+  "explorer.autoReveal": false,
   "workbench.panel.opensMaximized": "never",
   "security.workspace.trust.untrustedFiles": "open",
   "js/ts.suggest.completeFunctionCalls": true,
