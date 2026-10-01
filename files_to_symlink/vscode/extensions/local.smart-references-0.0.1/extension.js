@@ -38,6 +38,7 @@ const {
 	getMiddlewareAliasAtOffset,
 } = require('./laravelMiddlewareNavigation');
 const { getModelMagicMethodAtOffset } = require('./laravelModelMagicCalls');
+const { getFacadeTargetClassName } = require('./laravelFacadeNavigation');
 const {
 	findMacroCallRanges,
 	findMacroRegistrations,
@@ -1327,6 +1328,38 @@ async function resolveLaravelModelMagicCallTarget(uri, position) {
 	return { uri: modelUri, range: rangeFromOffsets(modelSource, range.start, range.end) };
 }
 
+// Class declaration only: a method a facade declares itself is still worth landing on.
+async function resolveLaravelFacadeTarget(target) {
+	const source = target.uri.path.endsWith('.php') ? await tryReadWorkspaceText(target.uri) : undefined;
+	const className = source && getFacadeTargetClassName(source);
+	const declaration = className && findPhpClassDeclarationRange(source, getPhpClassInfo(source)?.name);
+
+	if (!declaration || offsetToPosition(source, declaration.start).line !== target.range.start.line) {
+		return undefined;
+	}
+
+	const fqn = resolvePhpClassName(source, className);
+	const classUri = await getPhpClassUriFromFqn(fqn, getWorkspaceFolderUri(target.uri));
+
+	if (!classUri) {
+		logDebug(`Laravel facade ${target.uri.path}: ${fqn} did not resolve`);
+
+		return undefined;
+	}
+
+	const classSource = await readWorkspaceText(classUri);
+	const classDeclaration = findPhpClassDeclarationRange(classSource, fqn.split('\\').pop());
+
+	logDebug(`Laravel facade redirect: ${target.uri.path} -> ${classUri.path}`);
+
+	return {
+		uri: classUri,
+		range: classDeclaration
+			? rangeFromOffsets(classSource, classDeclaration.start, classDeclaration.end)
+			: new vscode.Range(0, 0, 0, 0),
+	};
+}
+
 async function goToDefinition(uri, position) {
 	try {
 		const configTarget = await resolveLaravelConfigTarget(uri, position);
@@ -1419,6 +1452,12 @@ async function goToDefinition(uri, position) {
 		}
 	} catch (error) {
 		logDebug(`accessor redirect threw: ${error && error.message ? error.message : error}`);
+	}
+
+	try {
+		finalTarget = await resolveLaravelFacadeTarget(finalTarget) ?? finalTarget;
+	} catch (error) {
+		logDebug(`Laravel facade redirect threw: ${error && error.message ? error.message : error}`);
 	}
 
 	if (isCurrentLocation(finalTarget, uri, position)) {

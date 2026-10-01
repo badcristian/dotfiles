@@ -279,6 +279,8 @@ framework-specific bridges:
 - Eloquent query-string navigation: `->with('metaToken')` opens `metaToken()` on
   the model the chain started from, following a dotted path one hop at a time, and
   `->where('status', …)` opens that column's `@property` line on the same model;
+- Laravel facades: `Cmd+B` on a facade class name opens the class
+  `getFacadeAccessor()` returns (else its `@mixin`), not the forwarding shell;
 - Laravel macro navigation in both directions: `Rule::uniqueCaseInsensitive(...)`
   opens the `Rule::macro('uniqueCaseInsensitive', ...)` registration, and the
   name in that registration finds every call site;
@@ -7669,3 +7671,36 @@ Verification:
 - setting name and default read from the bundled 1.139.1 JS; settings parse;
 - **not verified: the rendered bar.** Applies live; a new capture should show
   a solid `#bf8700` strip.
+
+### 2026-10-01 — Cmd+B on a facade opens the class behind it
+
+Intent:
+
+- `Cmd+B` on `AccessChangeService` in `ribeit-api`'s `AccessEntityUpdatedJob`
+  opened `Accesses/Facades/AccessChangeService.php`, a three-line forwarder.
+  Open `Accesses/Services/AccessChangeService.php` instead.
+
+Implementation:
+
+- `laravelFacadeNavigation.js` reads a direct `extends Facade` class's
+  `getFacadeAccessor()` `return X::class`, falling back to `@mixin X`;
+- `goToDefinition` runs `resolveLaravelFacadeTarget` after the helper-stub
+  redirect. It resolves `X` through the facade file's imports (aliases like
+  `TlsCryptoServiceRoot` included) and composer PSR-4, then opens its class name.
+
+Decisions and lessons:
+
+- **only when the definition lands on the facade's class line.** A method the
+  facade declares itself is still the right answer for a Cmd+B on that method;
+- **accessor before `@mixin`.** The accessor is what the container resolves;
+  the tag is documentation that can drift. String accessors (`'cache'`) without
+  a tag answer nothing, so Laravel's own facades keep native behaviour;
+- runs after native resolution, on an explicit Cmd+B only, reading one file.
+
+Verification:
+
+- `test/laravelFacadeNavigation.test.js`; full suite 235/235;
+- parser run against all 76 `extends Facade` files in `ribeit-api/app`: every
+  one resolves;
+- **not verified: the live Cmd+B.** Needs **Developer: Reload Window**, then
+  Cmd+B on `AccessChangeService` in `AccessEntityUpdatedJob.php`.
