@@ -316,6 +316,7 @@ while true; do
             --prompt='Project › ' \
             --header='↑/↓ select · type to filter · Enter open · ⌥↑/⌥↓ reorder · Ctrl-X delete session · Esc / ⌘P close' \
             --bind="start:pos($initial_position)" \
+            --bind='change:first' \
             --bind='alt-up:execute-silent(bash "$HOME/tmux-session-ui.sh" move {3} up)+reload(bash "$HOME/tmux-project.sh" --list)' \
             --bind='alt-down:execute-silent(bash "$HOME/tmux-session-ui.sh" move {3} down)+reload(bash "$HOME/tmux-project.sh" --list)' \
             --bind='ctrl-x:execute-silent(bash "$HOME/tmux-session-ui.sh" delete {3})+reload(bash "$HOME/tmux-project.sh" --list)' \

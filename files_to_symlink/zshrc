@@ -61,7 +61,7 @@ init() {
 alias tko="tmux kill-server"
 # Plain `tmux` names its first session "0" and roots it wherever you stood.
 # -A attaches if it already exists, so this stays idempotent.
-alias t="tmux new-session -A -s home"
+alias t="tmux new-session -A -s dotfiles -c ~/dev/dotfiles"
 alias ta="tmux a"
 alias reseed="composer reseed"
 alias theme=" ghostty +list-themes"
