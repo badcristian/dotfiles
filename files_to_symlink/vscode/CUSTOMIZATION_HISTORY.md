@@ -7875,3 +7875,32 @@ Verification:
   `DraftDossier::make` -> `Eloquent/Builder.php:186`, `::firstOrCreate` -> `:733`,
   `::whereIn` -> `Query/Builder.php:1478`, `Date::make` (facade) -> nothing;
 - **not verified: the live Cmd+B.** Reload Window first.
+
+### 2026-10-11 — Split call arguments onto separate lines
+
+Intent:
+
+- a one-line call such as `$issues->addIssue(column: …, type: …, typed: $value,
+  reason: …);` had no split. The signature split skips calls by design, the
+  array split reads only `[`.
+
+Implementation:
+
+- `phpCallArgumentSplit.js`: `getPhpCallArgumentSplit(lineText, cursor)`. A
+  call is a `(` after a name, `)` or `]`, outside strings and line comments,
+  that is not a control keyword, `function` / `fn` / `use`, or a declared
+  method name. Depth-1 commas via the shared `scanPhpBalancedList`;
+- `extension.js`: Option+Enter action "Split arguments onto separate lines"
+  and command `smartReferences.splitPhpCallArguments`.
+
+Decisions:
+
+- **cursor picks the call**: innermost one around it, else the first on the
+  line, so `new Box(Str::of($a, $b), $c)` splits whichever you stand in;
+- no trailing comma on the last argument, same as the signature split; one
+  argument, or a call already open at line end, is left alone.
+
+Verification:
+
+- suite 244/244, 5 new tests, including the `addIssue` line above verbatim;
+- **not verified: the live action.** Reload Window first.
