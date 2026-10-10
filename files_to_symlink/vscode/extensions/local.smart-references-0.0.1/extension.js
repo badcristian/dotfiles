@@ -19,6 +19,7 @@ const { shouldInsertJsonComma } = require('./jsonSmartEnter');
 const { getPhpSignatureSplit } = require('./phpSignatureSplit');
 const { getPhpArraySplit } = require('./phpArraySplit');
 const { getPhpCallArgumentSplit } = require('./phpCallArgumentSplit');
+const { getPhpConditionSplit } = require('./phpConditionSplit');
 const { getPhpTernarySplit } = require('./phpTernarySplit');
 const { getPhpUseSplit } = require('./phpUseSplit');
 const { getDocblockPaste } = require('./phpDocblockPaste');
@@ -4468,6 +4469,35 @@ async function splitPhpCallArgumentsAtSelection() {
 	});
 }
 
+function getSplitPhpConditionEdit(document, lineNumber) {
+	const line = document.lineAt(lineNumber);
+	const replacement = getPhpConditionSplit(line.text);
+
+	if (!replacement) {
+		return undefined;
+	}
+
+	return { range: line.range, replacement };
+}
+
+async function splitPhpConditionAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getSplitPhpConditionEdit(editor.document, editor.selection.active.line);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getSplitPhpTernaryEdit(document, lineNumber) {
 	const line = document.lineAt(lineNumber);
 	const replacement = getPhpTernarySplit(line.text);
@@ -4939,6 +4969,21 @@ function createSplitPhpCallArgumentsAction(document, range) {
 	}
 
 	const action = new vscode.CodeAction('Split arguments onto separate lines', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+	action.isPreferred = true;
+
+	return action;
+}
+
+function createSplitPhpConditionAction(document, range) {
+	const edit = getSplitPhpConditionEdit(document, range.start.line);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Split condition at && / || onto separate lines', vscode.CodeActionKind.QuickFix);
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 	action.isPreferred = true;
@@ -5822,6 +5867,12 @@ function createPhpCodeActionProvider() {
 				actions.push(splitArrayAction);
 			}
 
+			const splitConditionAction = createSplitPhpConditionAction(document, range);
+
+			if (splitConditionAction) {
+				actions.push(splitConditionAction);
+			}
+
 			const splitCallArgumentsAction = createSplitPhpCallArgumentsAction(document, range);
 
 			if (splitCallArgumentsAction) {
@@ -6186,6 +6237,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpSignature', splitPhpSignatureAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpArray', splitPhpArrayAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCallArguments', splitPhpCallArgumentsAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCondition', splitPhpConditionAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpUse', splitPhpUseAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));

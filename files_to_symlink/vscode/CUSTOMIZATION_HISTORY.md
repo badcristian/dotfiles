@@ -7904,3 +7904,30 @@ Verification:
 
 - suite 244/244, 5 new tests, including the `addIssue` line above verbatim;
 - **not verified: the live action.** Reload Window first.
+
+### 2026-10-11 — Split an if condition at && / ||
+
+Intent:
+
+- a long one-line `if (a && b && c) {` should read one operand per line, operator
+  leading, `) {` back at the statement indent.
+
+Implementation:
+
+- `phpConditionSplit.js`: `getPhpConditionSplit(lineText)` for `if`, `elseif`,
+  `else if`, `while`, with or without a leading `}`. Splits only at `&&` / `||`
+  directly inside the condition's parentheses, so nested groups, call arguments
+  and strings stay whole;
+- `extension.js`: Option+Enter action "Split condition at && / || onto separate
+  lines", listed before the call-argument split, and command
+  `smartReferences.splitPhpCondition`.
+
+Decisions:
+
+- operator leads the line (PSR-12 §5.1);
+- `and` / `or` keywords and bare `$x = $a && $b;` are not handled.
+
+Verification:
+
+- suite 248/248, 4 new tests, including the requested line verbatim;
+- **not verified: the live action.** Reload Window first.
