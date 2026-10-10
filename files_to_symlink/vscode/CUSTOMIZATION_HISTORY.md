@@ -7834,3 +7834,44 @@ Verification:
 - **not verified: the rendered row.** Applies live; it should disappear without
   a reload.
 
+
+### 2026-10-11 — Cmd+B on a Builder method called statically on a model
+
+Intent:
+
+- `ribeit-depozit` `ReadDossiersJob.php`, Cmd+B on `make` in
+  `DraftDossier::make()` answered "No other references found".
+
+Cause:
+
+- Laravel 13.32 `Model` declares no `make` and carries no `@mixin Builder`. The
+  call runs `Model::__callStatic` -> `(new static)->make()` -> `__call` ->
+  `Eloquent\Builder::make()`. Intelephense resolves none of that, no fallback
+  covered a static call, so `smartReferences.go` fell through to references.
+
+Implementation:
+
+- `laravelModelMagicCalls.js`: the walk is shared as `getCallAtOffset`, which
+  now also reads `Name::method(`; `getStaticCallAtOffset` exposes it;
+- `resolveLaravelModelStaticBuilderCallTarget` in `extension.js`: `self` /
+  `static` / `parent` mapped to the enclosing class, the name resolved, its
+  `extends` chain walked to `Illuminate\Database\Eloquent\Model`, then the
+  method looked up in `Eloquent/Builder.php`, then `Query/Builder.php`. Joined
+  to the empty-definition resolver list after the magic-call redirect.
+
+Decisions:
+
+- **the receiver is checked, unlike the magic-call redirect.** A static call
+  names its class, so the check is cheap, and without it every unresolved
+  `Facade::method` would land in the query builder;
+- local scopes (`Model::active()` -> `scopeActive`) are not handled: neither
+  builder declares the name, so the resolver answers nothing and the fallthrough
+  is unchanged.
+
+Verification:
+
+- suite 239/239, 4 new tests;
+- against the real `ribeit-depozit` through a stubbed `vscode` module:
+  `DraftDossier::make` -> `Eloquent/Builder.php:186`, `::firstOrCreate` -> `:733`,
+  `::whereIn` -> `Query/Builder.php:1478`, `Date::make` (facade) -> nothing;
+- **not verified: the live Cmd+B.** Reload Window first.

@@ -37,7 +37,7 @@ const {
 	findPhpClassDeclarationRange,
 	getMiddlewareAliasAtOffset,
 } = require('./laravelMiddlewareNavigation');
-const { getModelMagicMethodAtOffset } = require('./laravelModelMagicCalls');
+const { getModelMagicMethodAtOffset, getStaticCallAtOffset } = require('./laravelModelMagicCalls');
 const { getFacadeTargetClassName } = require('./laravelFacadeNavigation');
 const {
 	findMacroCallRanges,
@@ -1328,6 +1328,66 @@ async function resolveLaravelModelMagicCallTarget(uri, position) {
 	return { uri: modelUri, range: rangeFromOffsets(modelSource, range.start, range.end) };
 }
 
+// Eloquent first: it forwards whatever it lacks to the query builder.
+const LARAVEL_BUILDER_FILES = [
+	'vendor/laravel/framework/src/Illuminate/Database/Eloquent/Builder.php',
+	'vendor/laravel/framework/src/Illuminate/Database/Query/Builder.php',
+];
+
+async function isEloquentModelClass(fqn, workspaceFolderUri, seen = new Set()) {
+	if (fqn === 'Illuminate\\Database\\Eloquent\\Model') {
+		return true;
+	}
+
+	if (!fqn || seen.has(fqn)) {
+		return false;
+	}
+
+	seen.add(fqn);
+
+	const classUri = await getPhpClassUriFromFqn(fqn, workspaceFolderUri);
+	const source = classUri && await tryReadWorkspaceText(classUri);
+
+	return Boolean(source) && isEloquentModelClass(resolvePhpClassName(source, getPhpClassInfo(source)?.extendsName), workspaceFolderUri, seen);
+}
+
+// Runs only after native resolution came back empty, so a method the model declares never gets here.
+async function resolveLaravelModelStaticBuilderCallTarget(uri, position) {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const source = document.getText();
+	const call = getStaticCallAtOffset(source, document.offsetAt(position));
+	const workspaceFolderUri = getWorkspaceFolderUri(uri);
+
+	if (!call || !workspaceFolderUri) {
+		return undefined;
+	}
+
+	const ownClass = getPhpClassInfoBeforeOffset(source, document.offsetAt(position));
+	const className = {
+		self: ownClass?.name,
+		static: ownClass?.name,
+		parent: ownClass?.extendsName,
+	}[call.className.toLowerCase()] ?? call.className;
+
+	if (!await isEloquentModelClass(resolvePhpClassName(source, className), workspaceFolderUri)) {
+		return undefined;
+	}
+
+	for (const file of LARAVEL_BUILDER_FILES) {
+		const builderUri = vscode.Uri.joinPath(workspaceFolderUri, file);
+		const builderSource = await tryReadWorkspaceText(builderUri);
+		const [range] = builderSource ? getPhpMethodDeclarationRanges(builderSource, call.method) : [];
+
+		if (range) {
+			logDebug(`Laravel model static call redirect: ${className}::${call.method} -> ${file}`);
+
+			return { uri: builderUri, range: rangeFromOffsets(builderSource, range.start, range.end) };
+		}
+	}
+
+	return undefined;
+}
+
 // Laravel's VS Code client starts its LSP with `definitionProvider: false`: Blade components,
 // views, routes arrive as document links only. `#L12` / `#12,5` fragment = target line.
 async function resolveDocumentLinkTarget(uri, position) {
@@ -1419,6 +1479,7 @@ async function goToDefinition(uri, position) {
 			resolveLaravelColumnTarget,
 			resolveLaravelMiddlewareTarget,
 			resolveLaravelModelMagicCallTarget,
+			resolveLaravelModelStaticBuilderCallTarget,
 			resolveDocumentLinkTarget,
 		]) {
 			try {

@@ -13,12 +13,14 @@ const { scanPhpString, skipPhpComment } = require('./laravelConfigNavigation');
 // is also what tells you the call is not the Builder's bulk `increment` a chain would have reached.
 const MODEL_MAGIC_METHODS = ['increment', 'decrement', 'incrementQuietly', 'decrementQuietly'];
 
-// Sticky, so the walk below can test one position without slicing the source at every `-`.
+// Sticky, so the walk below can test one position without slicing the source at every `-` or name.
 const CALL_AFTER_ARROW = /->\s*([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\s*\(/y;
+const STATIC_CALL = /(\\?[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff\\]*)\s*::\s*([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\s*\(/y;
+const NAME_CHAR = /[A-Za-z0-9_\x80-\xff\\$]/;
 
 // Skips strings and comments rather than scanning the raw text, so `'$x->increment('` in a message
-// is not read as a call.
-function getModelMagicMethodAtOffset(source, offset) {
+// is not read as a call. `className` is set only on a static call.
+function getCallAtOffset(source, offset) {
 	let index = 0;
 
 	while (index < source.length) {
@@ -38,18 +40,26 @@ function getModelMagicMethodAtOffset(source, offset) {
 			continue;
 		}
 
-		CALL_AFTER_ARROW.lastIndex = index;
-		const call = source[index] === '-' ? CALL_AFTER_ARROW.exec(source) : null;
+		let call = null;
+
+		if (source[index] === '-') {
+			CALL_AFTER_ARROW.lastIndex = index;
+			call = CALL_AFTER_ARROW.exec(source);
+		} else if (index === 0 || !NAME_CHAR.test(source[index - 1])) {
+			STATIC_CALL.lastIndex = index;
+			call = STATIC_CALL.exec(source);
+		}
 
 		if (!call) {
 			index++;
 			continue;
 		}
 
-		const nameStart = index + call[0].indexOf(call[1]);
+		const method = call[2] ?? call[1];
+		const nameStart = index + call[0].lastIndexOf(method, call[0].length - 1);
 
-		if (offset >= nameStart && offset <= nameStart + call[1].length) {
-			return MODEL_MAGIC_METHODS.includes(call[1]) ? call[1] : undefined;
+		if (offset >= nameStart && offset <= nameStart + method.length) {
+			return { method, className: call[2] === undefined ? undefined : call[1] };
 		}
 
 		index += call[0].length;
@@ -58,7 +68,22 @@ function getModelMagicMethodAtOffset(source, offset) {
 	return undefined;
 }
 
+function getModelMagicMethodAtOffset(source, offset) {
+	const call = getCallAtOffset(source, offset);
+
+	return call && !call.className && MODEL_MAGIC_METHODS.includes(call.method) ? call.method : undefined;
+}
+
+// `DraftDossier::make()`: Model::__callStatic -> __call -> Builder. Model carries no `@mixin`, so
+// Intelephense finds nothing. Whether the class really is a model is the caller's check.
+function getStaticCallAtOffset(source, offset) {
+	const call = getCallAtOffset(source, offset);
+
+	return call?.className ? call : undefined;
+}
+
 module.exports = {
 	MODEL_MAGIC_METHODS,
 	getModelMagicMethodAtOffset,
+	getStaticCallAtOffset,
 };

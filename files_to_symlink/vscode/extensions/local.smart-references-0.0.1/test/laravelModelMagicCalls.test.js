@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { MODEL_MAGIC_METHODS, getModelMagicMethodAtOffset } = require('../laravelModelMagicCalls');
+const { MODEL_MAGIC_METHODS, getModelMagicMethodAtOffset, getStaticCallAtOffset } = require('../laravelModelMagicCalls');
 
 test('reads a magic model method the cursor sits on', () => {
 	const source = "$record->increment('bundle_fetches', 1, ['served_at' => now()]);";
@@ -58,4 +58,35 @@ test('returns undefined when the cursor is on the receiver rather than the metho
 	const source = "$record->increment('count');";
 
 	assert.equal(getModelMagicMethodAtOffset(source, source.indexOf('$record') + 2), undefined);
+});
+
+test('reads the static call the cursor sits on, with its class as written', () => {
+	const source = '$inserts[] = DraftDossier::make()->forceFill($row);';
+
+	assert.deepEqual(getStaticCallAtOffset(source, source.indexOf('make') + 2), { method: 'make', className: 'DraftDossier' });
+	assert.equal(getStaticCallAtOffset(source, source.indexOf('forceFill') + 2), undefined);
+});
+
+test('keeps a qualified class name and self / static as written', () => {
+	const qualified = '\\App\\Models\\Box::firstOrCreate($keys);';
+	const own = 'return static::whereKey($ids);';
+
+	assert.equal(getStaticCallAtOffset(qualified, qualified.indexOf('firstOrCreate') + 2).className, '\\App\\Models\\Box');
+	assert.equal(getStaticCallAtOffset(own, own.indexOf('whereKey') + 2).className, 'static');
+});
+
+test('ignores the class name, a constant, a variable receiver and strings', () => {
+	const source = "Box::make(); Box::class; $x::make(); 'Box::make()';";
+
+	assert.equal(getStaticCallAtOffset(source, source.indexOf('Box') + 1), undefined);
+	assert.equal(getStaticCallAtOffset(source, source.indexOf('class') + 1), undefined);
+	assert.equal(getStaticCallAtOffset(source, source.indexOf('make', source.indexOf('$x')) + 1), undefined);
+	assert.equal(getStaticCallAtOffset(source, source.lastIndexOf('make') + 1), undefined);
+});
+
+test('does not read an arrow call as static, nor a static call as magic', () => {
+	const source = "Box::increment('count'); $box->make();";
+
+	assert.equal(getModelMagicMethodAtOffset(source, source.indexOf('increment') + 2), undefined);
+	assert.equal(getStaticCallAtOffset(source, source.indexOf('make') + 2), undefined);
 });
