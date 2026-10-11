@@ -20,6 +20,7 @@ const { getPhpSignatureSplit } = require('./phpSignatureSplit');
 const { getPhpArraySplit } = require('./phpArraySplit');
 const { getPhpCallArgumentSplit } = require('./phpCallArgumentSplit');
 const { getPhpConditionSplit } = require('./phpConditionSplit');
+const { getPhpCallArgumentJoin } = require('./phpCallArgumentJoin');
 const { getPhpTernarySplit } = require('./phpTernarySplit');
 const { getPhpUseSplit } = require('./phpUseSplit');
 const { getDocblockPaste } = require('./phpDocblockPaste');
@@ -4469,6 +4470,68 @@ async function splitPhpCallArgumentsAtSelection() {
 	});
 }
 
+// Parameter names in declared order, from the language server's signature help at the `(`.
+async function getPhpCallParameterNames(document, openOffset) {
+	const help = await vscode.commands.executeCommand(
+		'vscode.executeSignatureHelpProvider',
+		document.uri,
+		document.positionAt(openOffset + 1),
+		'(',
+	);
+	const signature = help?.signatures?.[help.activeSignature ?? 0];
+
+	return signature?.parameters.map((parameter) => {
+		const label = typeof parameter.label === 'string'
+			? parameter.label
+			: signature.label.slice(parameter.label[0], parameter.label[1]);
+
+		return /\$([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)/.exec(label)?.[1];
+	});
+}
+
+// Names dropped only where each already sits at its declared position; otherwise the values move.
+async function getJoinPhpCallArgumentsEdit(document, position) {
+	const join = getPhpCallArgumentJoin(document.getText(), document.offsetAt(position));
+
+	if (!join) {
+		return undefined;
+	}
+
+	if (join.names.some(Boolean)) {
+		const parameters = await getPhpCallParameterNames(document, join.start - 1);
+
+		if (!parameters || join.names.some((name, index) => name && parameters[index] !== name)) {
+			logDebug(`join call arguments: names ${join.names} do not match signature ${parameters}`);
+
+			return undefined;
+		}
+	}
+
+	return {
+		range: new vscode.Range(document.positionAt(join.start), document.positionAt(join.end)),
+		replacement: join.replacement,
+	};
+}
+
+async function joinPhpCallArgumentsAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = await getJoinPhpCallArgumentsEdit(editor.document, editor.selection.active);
+
+	if (!edit) {
+		vscode.window.showInformationMessage('No call to join, or its argument names are not in parameter order.');
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getSplitPhpConditionEdit(document, lineNumber) {
 	const line = document.lineAt(lineNumber);
 	const replacement = getPhpConditionSplit(line.text);
@@ -4972,6 +5035,20 @@ function createSplitPhpCallArgumentsAction(document, range) {
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 	action.isPreferred = true;
+
+	return action;
+}
+
+async function createJoinPhpCallArgumentsAction(document, range) {
+	const edit = await getJoinPhpCallArgumentsEdit(document, range.start);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Join arguments onto one line without names', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
 
 	return action;
 }
@@ -5879,6 +5956,12 @@ function createPhpCodeActionProvider() {
 				actions.push(splitCallArgumentsAction);
 			}
 
+			const joinCallArgumentsAction = await createJoinPhpCallArgumentsAction(document, range);
+
+			if (joinCallArgumentsAction) {
+				actions.push(joinCallArgumentsAction);
+			}
+
 			const splitTernaryAction = createSplitPhpTernaryAction(document, range);
 
 			if (splitTernaryAction) {
@@ -6238,6 +6321,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpArray', splitPhpArrayAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCallArguments', splitPhpCallArgumentsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCondition', splitPhpConditionAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.joinPhpCallArguments', joinPhpCallArgumentsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpUse', splitPhpUseAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));

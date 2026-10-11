@@ -37,6 +37,7 @@
 		"onCommand:smartReferences.splitPhpArray",
 		"onCommand:smartReferences.splitPhpCallArguments",
 		"onCommand:smartReferences.splitPhpCondition",
+		"onCommand:smartReferences.joinPhpCallArguments",
 		"onCommand:smartReferences.splitPhpTernary",
 		"onCommand:smartReferences.splitPhpUse",
 		"onCommand:smartReferences.applyPhpInlayHints",
@@ -129,6 +130,10 @@
 			{
 				"command": "smartReferences.splitPhpCondition",
 				"title": "Smart References: Split PHP Condition"
+			},
+			{
+				"command": "smartReferences.joinPhpCallArguments",
+				"title": "Smart References: Join PHP Call Arguments Without Names"
 			},
 			{
 				"command": "smartReferences.splitPhpTernary",

@@ -13,8 +13,9 @@ const NON_CALL_KEYWORDS = new Set([
 	'return', 'echo', 'print', 'and', 'or', 'xor', 'list', 'isset', 'unset', 'empty',
 ]);
 
-function isCallOpen(lineText, index) {
-	const before = lineText.slice(0, index).trimEnd();
+// Window, not the whole prefix: the join runs this over a full document.
+function isCallOpen(text, index) {
+	const before = text.slice(Math.max(0, index - 200), index).trimEnd();
 	const word = /[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/.exec(before);
 
 	if (word) {
@@ -114,4 +115,5 @@ function getPhpCallArgumentSplit(lineText, cursor = 0) {
 
 module.exports = {
 	getPhpCallArgumentSplit,
+	isCallOpen,
 };

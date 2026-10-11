@@ -7931,3 +7931,37 @@ Verification:
 
 - suite 248/248, 4 new tests, including the requested line verbatim;
 - **not verified: the live action.** Reload Window first.
+
+### 2026-10-11 — Join call arguments onto one line, names dropped
+
+Intent:
+
+- inverse of the argument split: `new DraftDTO(\n row: $row,\n … issues: $issues,\n)`
+  -> `new DraftDTO($row, $status, $resolvedCompany, $folder, $box, $issues)`.
+
+Implementation:
+
+- `phpCallArgumentJoin.js`: `getPhpCallArgumentJoin(text, cursor)` scans the
+  document for calls (strings and comments tracked, call detection shared with
+  the split via `isCallOpen`), picks the innermost one around the cursor or the
+  first opening on the cursor's line, strips `name:` (not `Foo::`), drops the
+  trailing comma;
+- `extension.js`: action "Join arguments onto one line without names" and
+  command `smartReferences.joinPhpCallArguments`.
+
+Decisions:
+
+- **names are checked against the signature.** `f(b: 1, a: 2)` -> `f(1, 2)`
+  swaps values, so every named argument must sit at its declared position, read
+  from `vscode.executeSignatureHelpProvider` at the `(`. No signature, or any
+  mismatch -> no action. A call without names joins with no check;
+- a comment inside the call, or an argument spanning lines (closure, array),
+  -> no action: neither joins into anything readable;
+- `isCallOpen` reads a 200-character window, not the whole prefix, now that it
+  runs over a full document. ~1.3 ms per scan of a 25 KB file.
+
+Verification:
+
+- suite 254/254, 6 new tests, including the `DraftDTO` call verbatim;
+- **not verified: the signature check and the live action.** Needs Intelephense
+  signature help in a running window. Reload Window first.
