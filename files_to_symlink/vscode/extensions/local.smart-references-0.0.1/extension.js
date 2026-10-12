@@ -21,6 +21,7 @@ const { getPhpArraySplit } = require('./phpArraySplit');
 const { getPhpCallArgumentSplit } = require('./phpCallArgumentSplit');
 const { getPhpConditionSplit } = require('./phpConditionSplit');
 const { getPhpCallArgumentJoin } = require('./phpCallArgumentJoin');
+const { getPhpArrowFunctionConversion } = require('./phpArrowFunctionConvert');
 const { getPhpTernarySplit } = require('./phpTernarySplit');
 const { getPhpUseSplit } = require('./phpUseSplit');
 const { getDocblockPaste } = require('./phpDocblockPaste');
@@ -4532,6 +4533,35 @@ async function joinPhpCallArgumentsAtSelection() {
 	});
 }
 
+function getConvertPhpArrowFunctionEdit(document, position) {
+	const line = document.lineAt(position.line);
+	const replacement = getPhpArrowFunctionConversion(line.text, position.character);
+
+	if (!replacement) {
+		return undefined;
+	}
+
+	return { range: line.range, replacement };
+}
+
+async function convertPhpArrowFunctionAtSelection() {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		return;
+	}
+
+	const edit = getConvertPhpArrowFunctionEdit(editor.document, editor.selection.active);
+
+	if (!edit) {
+		return;
+	}
+
+	await editor.edit((editBuilder) => {
+		editBuilder.replace(edit.range, edit.replacement);
+	});
+}
+
 function getSplitPhpConditionEdit(document, lineNumber) {
 	const line = document.lineAt(lineNumber);
 	const replacement = getPhpConditionSplit(line.text);
@@ -5047,6 +5077,20 @@ async function createJoinPhpCallArgumentsAction(document, range) {
 	}
 
 	const action = new vscode.CodeAction('Join arguments onto one line without names', vscode.CodeActionKind.QuickFix);
+	action.edit = new vscode.WorkspaceEdit();
+	action.edit.replace(document.uri, edit.range, edit.replacement);
+
+	return action;
+}
+
+function createConvertPhpArrowFunctionAction(document, range) {
+	const edit = getConvertPhpArrowFunctionEdit(document, range.start);
+
+	if (!edit) {
+		return undefined;
+	}
+
+	const action = new vscode.CodeAction('Convert arrow function to closure', vscode.CodeActionKind.QuickFix);
 	action.edit = new vscode.WorkspaceEdit();
 	action.edit.replace(document.uri, edit.range, edit.replacement);
 
@@ -5944,6 +5988,12 @@ function createPhpCodeActionProvider() {
 				actions.push(splitArrayAction);
 			}
 
+			const convertArrowFunctionAction = createConvertPhpArrowFunctionAction(document, range);
+
+			if (convertArrowFunctionAction) {
+				actions.push(convertArrowFunctionAction);
+			}
+
 			const splitConditionAction = createSplitPhpConditionAction(document, range);
 
 			if (splitConditionAction) {
@@ -6322,6 +6372,7 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCallArguments', splitPhpCallArgumentsAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpCondition', splitPhpConditionAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.joinPhpCallArguments', joinPhpCallArgumentsAtSelection));
+	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.convertPhpArrowFunction', convertPhpArrowFunctionAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpTernary', splitPhpTernaryAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.splitPhpUse', splitPhpUseAtSelection));
 	context.subscriptions.push(vscode.commands.registerCommand('smartReferences.applyPhpInlayHints', applyPhpInlayHintsAtSelection));

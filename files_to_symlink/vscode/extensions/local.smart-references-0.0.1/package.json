@@ -38,6 +38,7 @@
 		"onCommand:smartReferences.splitPhpCallArguments",
 		"onCommand:smartReferences.splitPhpCondition",
 		"onCommand:smartReferences.joinPhpCallArguments",
+		"onCommand:smartReferences.convertPhpArrowFunction",
 		"onCommand:smartReferences.splitPhpTernary",
 		"onCommand:smartReferences.splitPhpUse",
 		"onCommand:smartReferences.applyPhpInlayHints",
@@ -134,6 +135,10 @@
 			{
 				"command": "smartReferences.joinPhpCallArguments",
 				"title": "Smart References: Join PHP Call Arguments Without Names"
+			},
+			{
+				"command": "smartReferences.convertPhpArrowFunction",
+				"title": "Smart References: Convert PHP Arrow Function To Closure"
 			},
 			{
 				"command": "smartReferences.splitPhpTernary",

@@ -7965,3 +7965,33 @@ Verification:
 - suite 254/254, 6 new tests, including the `DraftDTO` call verbatim;
 - **not verified: the signature check and the live action.** Needs Intelephense
   signature help in a running window. Reload Window first.
+
+### 2026-10-12 — Convert an arrow function to a closure
+
+Intent:
+
+- `->sortByDesc(fn (ContextFolderDTO $f): float => expr)` -> `function (…) use
+  (…): float { return expr; }`, the implicit captures made explicit.
+
+Implementation:
+
+- `phpArrowFunctionConvert.js`: `getPhpArrowFunctionConversion(lineText,
+  cursor)`. Innermost `fn (` around the cursor, else the first on the line.
+  Body ends at an unmatched closer or a `,` / `;` at its own depth, so the call
+  around it keeps its `)` and later arguments;
+- use list = variables the body reads, in order of appearance, minus own
+  parameters, a nested arrow's parameters, `$this`, superglobals, `self::$x`
+  and anything in single quotes (double quotes interpolate, so kept);
+- `extension.js`: action "Convert arrow function to closure" and command
+  `smartReferences.convertPhpArrowFunction`.
+
+Decisions:
+
+- one capture stays inline (`use ($factor)`), two or more one per line, as the
+  use split already formats them;
+- one-line arrows only.
+
+Verification:
+
+- suite 259/259, 5 new tests, including the requested line verbatim;
+- **not verified: the live action.** Reload Window first.
