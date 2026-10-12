@@ -7995,3 +7995,29 @@ Verification:
 
 - suite 259/259, 5 new tests, including the requested line verbatim;
 - **not verified: the live action.** Reload Window first.
+
+### 2026-10-12 — Arrow conversion cut a multi-line body at the line end
+
+Cause:
+
+- `first(fn (…): bool => a\n && b\n && c,\n)` converted to `return a; }` with
+  the `&& b && c` lines left dangling after the closure. The converter read
+  only the cursor's line.
+
+Implementation:
+
+- `getPhpArrowFunctionConversion(text, cursor)` now takes the document and
+  returns `{ start, end, replacement }`. The body runs across newlines to its
+  real end; continuation lines keep their shape, re-based one level inside
+  `return`;
+- a call's trailing comma after the body is absorbed: `…,\n)` -> `});`. Only
+  before `)`: as an array element the `,` and the `]` line stay;
+- a comment inside the body -> no action, since `;` would land after it.
+
+Verification:
+
+- suite 262/262, 3 new tests: the `findCompartment` body verbatim, an array
+  element, a commented body;
+- run over every `fn (` in `ribeit-depozit` `DossierContextDTO.php`, including a
+  multi-line `->whereHas()->latest()` chain; 100 scans of the file 5.8 ms;
+- **not verified: the live action.** Reload Window first.

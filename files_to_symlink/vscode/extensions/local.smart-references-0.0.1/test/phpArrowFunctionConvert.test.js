@@ -1,7 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { getPhpArrowFunctionConversion } = require('../phpArrowFunctionConvert');
+const { getPhpArrowFunctionConversion: convert } = require('../phpArrowFunctionConvert');
+
+function getPhpArrowFunctionConversion(text, cursor = 0) {
+	const result = convert(text, cursor);
+
+	return result && text.slice(0, result.start) + result.replacement + text.slice(result.end);
+}
 
 test('converts an arrow, capturing what the body reads in order of appearance', () => {
 	const line = '            ->sortByDesc(fn (ContextFolderDTO $f): float => $f->getSimilarity($summaryWords, $compartmentWords) + ($retention->isTermOf($f) ? 100 : 0))';
@@ -45,4 +51,47 @@ test('leaves a line without an arrow function alone', () => {
 	assert.equal(getPhpArrowFunctionConversion('    $x = function ($a) { return $a; };'), undefined);
 	assert.equal(getPhpArrowFunctionConversion('    // fn ($a) => $a'), undefined);
 	assert.equal(getPhpArrowFunctionConversion('    $fnName = 1;'), undefined);
+});
+
+test('converts an arrow whose body continues on the next lines, dropping the trailing comma', () => {
+	const text = [
+		'    ): ?ContextCompartmentDTO {',
+		'        return $this->compartments->first(fn (ContextCompartmentDTO $cp): bool => $cp->nomenclatorId === $nomenclator->nomenclatorId',
+		'                && $cp->departmentId === $departmentId',
+		'                && $cp->normalizedName === $normalizedName,',
+		'        );',
+		'    }',
+	].join('\n');
+
+	assert.equal(getPhpArrowFunctionConversion(text, text.indexOf('fn (')), [
+		'    ): ?ContextCompartmentDTO {',
+		'        return $this->compartments->first(function (ContextCompartmentDTO $cp) use (',
+		'            $nomenclator,',
+		'            $departmentId,',
+		'            $normalizedName',
+		'        ): bool {',
+		'            return $cp->nomenclatorId === $nomenclator->nomenclatorId',
+		'                && $cp->departmentId === $departmentId',
+		'                && $cp->normalizedName === $normalizedName;',
+		'        });',
+		'    }',
+	].join('\n'));
+});
+
+test('leaves an arrow with a comment in its body alone', () => {
+	const text = '    $f = fn ($a) => $a // why\n        + $b;';
+
+	assert.equal(getPhpArrowFunctionConversion(text, 8), undefined);
+});
+
+test('an array element keeps its trailing comma and the closing bracket its line', () => {
+	const text = "    ->with([\n        'folders' => fn (Relation $f): Relation => $f->orderBy('id'),\n    ])";
+
+	assert.equal(getPhpArrowFunctionConversion(text, text.indexOf('fn (')), [
+		'    ->with([',
+		"        'folders' => function (Relation $f): Relation {",
+		"            return $f->orderBy('id');",
+		'        },',
+		'    ])',
+	].join('\n'));
 });

@@ -4534,14 +4534,16 @@ async function joinPhpCallArgumentsAtSelection() {
 }
 
 function getConvertPhpArrowFunctionEdit(document, position) {
-	const line = document.lineAt(position.line);
-	const replacement = getPhpArrowFunctionConversion(line.text, position.character);
+	const conversion = getPhpArrowFunctionConversion(document.getText(), document.offsetAt(position));
 
-	if (!replacement) {
+	if (!conversion) {
 		return undefined;
 	}
 
-	return { range: line.range, replacement };
+	return {
+		range: new vscode.Range(document.positionAt(conversion.start), document.positionAt(conversion.end)),
+		replacement: conversion.replacement,
+	};
 }
 
 async function convertPhpArrowFunctionAtSelection() {

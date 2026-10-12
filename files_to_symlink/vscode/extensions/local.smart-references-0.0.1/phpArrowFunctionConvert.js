@@ -8,15 +8,16 @@ const BODY_INDENT = '    ';
 const VARIABLE = /(?<!::)\$([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)/g;
 const NOT_CAPTURED = /^(this|GLOBALS|_[A-Z]+)$/;
 
-// Where the arrow's expression ends: an unmatched closer, or `,` / `;` at its own depth.
-// Single-quoted strings skipped whole; double-quoted ones kept, since they interpolate.
-function findExpressionEnd(lineText, start) {
+// Where the arrow's expression ends: an unmatched closer, or `,` / `;` at its own depth. Newlines
+// are part of it. Single-quoted strings skipped whole; double-quoted kept, since they interpolate.
+// A comment inside -> undefined: `return …;` would land after it.
+function findExpressionEnd(text, start) {
 	let depth = 0;
 	let quote = '';
 	let escaped = false;
 
-	for (let index = start; index < lineText.length; index++) {
-		const character = lineText[index];
+	for (let index = start; index < text.length; index++) {
+		const character = text[index];
 
 		if (quote) {
 			if (escaped) {
@@ -31,8 +32,8 @@ function findExpressionEnd(lineText, start) {
 
 		if (character === '\'' || character === '"') {
 			quote = character;
-		} else if (character === '#' || (character === '/' && lineText[index + 1] === '/')) {
-			return index;
+		} else if ((character === '#' && text[index + 1] !== '[') || (character === '/' && '/*'.includes(text[index + 1]))) {
+			return undefined;
 		} else if ('([{'.includes(character)) {
 			depth++;
 		} else if (')]}'.includes(character)) {
@@ -46,7 +47,7 @@ function findExpressionEnd(lineText, start) {
 		}
 	}
 
-	return lineText.length;
+	return text.length;
 }
 
 function getCapturedVariables(body, ownParameters) {
@@ -60,80 +61,107 @@ function getCapturedVariables(body, ownParameters) {
 		.filter((name) => !excluded.has(name) && !NOT_CAPTURED.test(name));
 }
 
-function findArrowFunctions(lineText) {
-	return [...lineText.matchAll(/\bfn\s*\(/g)].map((match) => {
+function isInLineComment(text, index) {
+	const lineBefore = text.slice(text.lastIndexOf('\n', index - 1) + 1, index);
+
+	return /\/\/|#(?!\[)/.test(lineBefore) || /^\s*\*/.test(lineBefore);
+}
+
+function findArrowFunctions(text) {
+	return [...text.matchAll(/\bfn\s*\(/g)].map((match) => {
 		const fnIndex = match.index;
+
+		if (isInLineComment(text, fnIndex)) {
+			return undefined;
+		}
+
 		const openIndex = fnIndex + match[0].length - 1;
-		const { closeIndex } = scanPhpBalancedList(lineText, openIndex);
-		const arrow = closeIndex === -1 ? undefined : /^(\s*:\s*[^=]+?)?\s*=>\s*/.exec(lineText.slice(closeIndex + 1));
+		const { closeIndex } = scanPhpBalancedList(text, openIndex);
+		const arrow = closeIndex === -1 ? undefined : /^(\s*:\s*[^=;{]+?)?\s*=>\s*/.exec(text.slice(closeIndex + 1));
 
 		if (!arrow) {
 			return undefined;
 		}
 
 		const bodyStart = closeIndex + 1 + arrow[0].length;
+		const bodyEnd = findExpressionEnd(text, bodyStart);
 
-		return {
+		return bodyEnd === undefined ? undefined : {
 			fnIndex,
 			openIndex,
 			closeIndex,
 			returnType: arrow[1]?.trim(),
 			bodyStart,
-			bodyEnd: findExpressionEnd(lineText, bodyStart),
+			bodyEnd,
 		};
 	}).filter(Boolean);
 }
 
-// Innermost arrow around the cursor; else the first on the line.
-function getPhpArrowFunctionConversion(lineText, cursor = 0) {
-	const trimmed = lineText.trim();
+// Continuation lines keep their shape, re-based one level inside `return`.
+function formatBody(body, inner) {
+	const [first, ...rest] = body.split('\n');
+	const shift = Math.min(...rest.filter((line) => line.trim()).map((line) => line.match(/^\s*/)[0].length));
 
-	if (trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*')) {
-		return undefined;
-	}
+	return [
+		`${inner}return ${first}`,
+		...rest.map((line) => (line.trim() ? `${inner}${BODY_INDENT}${line.slice(shift)}` : '')),
+	].join('\n');
+}
 
-	const arrows = findArrowFunctions(lineText);
+// Innermost arrow around the cursor; else the first on the cursor's line.
+function getPhpArrowFunctionConversion(text, cursor = 0) {
+	const lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
+	const lineEnd = text.indexOf('\n', cursor) === -1 ? text.length : text.indexOf('\n', cursor);
+	const arrows = findArrowFunctions(text);
 	const arrow = arrows.filter((candidate) => candidate.fnIndex <= cursor && cursor <= candidate.bodyEnd).pop()
-		?? arrows[0];
+		?? arrows.find((candidate) => candidate.fnIndex >= lineStart && candidate.fnIndex < lineEnd);
 
 	if (!arrow) {
 		return undefined;
 	}
 
-	const body = lineText.slice(arrow.bodyStart, arrow.bodyEnd).trim();
+	const body = text.slice(arrow.bodyStart, arrow.bodyEnd).trim();
 
 	if (body === '') {
 		return undefined;
 	}
 
-	const parameters = lineText.slice(arrow.openIndex, arrow.closeIndex + 1);
+	const fnLineStart = text.lastIndexOf('\n', arrow.fnIndex - 1) + 1;
+	// Last call argument `fn … => expr,\n)` -> `});`. An array element keeps its `,` and line.
+	const tailStart = arrow.bodyEnd + (/^,\s*(?=\))/.exec(text.slice(arrow.bodyEnd))?.[0].length ?? 0);
+	const tailEnd = text.indexOf('\n', tailStart) === -1 ? text.length : text.indexOf('\n', tailStart);
+	const parameters = text.slice(arrow.openIndex, arrow.closeIndex + 1);
 	const ownParameters = [...parameters.matchAll(VARIABLE)].map((match) => match[1]);
 	const captured = getCapturedVariables(body, ownParameters).map((name) => `$${name}`);
-	const indent = lineText.match(/^\s*/)[0];
+	const indent = text.slice(fnLineStart).match(/^[ \t]*/)[0];
 	const inner = `${indent}${BODY_INDENT}`;
 	const returnType = arrow.returnType ?? '';
+	const prefix = `${text.slice(fnLineStart, arrow.fnIndex)}function ${parameters}`;
 	let header;
 
 	// One capture stays inline, as the use split leaves it; more go one per line.
 	if (captured.length === 0) {
-		header = [`${lineText.slice(0, arrow.fnIndex)}function ${parameters}${returnType} {`];
+		header = [`${prefix}${returnType} {`];
 	} else if (captured.length === 1) {
-		header = [`${lineText.slice(0, arrow.fnIndex)}function ${parameters} use (${captured[0]})${returnType} {`];
+		header = [`${prefix} use (${captured[0]})${returnType} {`];
 	} else {
 		header = [
-			`${lineText.slice(0, arrow.fnIndex)}function ${parameters} use (`,
+			`${prefix} use (`,
 			...captured.map((name, index) => `${inner}${name}${index < captured.length - 1 ? ',' : ''}`),
 			`${indent})${returnType} {`,
 		];
 	}
 
-	return [
-		...header,
-		`${inner}return ${body};`,
-		`${indent}}${lineText.slice(arrow.bodyEnd).trimEnd()}`,
-	].join('\n');
+	return {
+		start: fnLineStart,
+		end: tailEnd,
+		replacement: [
+			...header,
+			`${formatBody(body, inner)};`,
+			`${indent}}${text.slice(tailStart, tailEnd).trimEnd()}`,
+		].join('\n'),
+	};
 }
-
 module.exports = {
 	getPhpArrowFunctionConversion,
 };
