@@ -18,6 +18,10 @@ if ! command -v macmon &> /dev/null; then
     brew install macmon
 fi
 
+if ! command -v duti &> /dev/null; then
+    brew install duti
+fi
+
 # dot files
 if [ ! -d ~/.hammerspoon ]; then
     brew install --cask hammerspoon
@@ -168,6 +172,8 @@ ln -sf "$DOTFILES/obsidian/snippets/file-explorer-font.css" "$OBSIDIAN_SNIPPETS_
 # generated Ghostty override and active shader exist on a new installation.
 # `ensure` chains into tmux-theme.sh, which writes theme.ghostty.
 bash "$DOTFILES/tmux-background.sh" ensure
+
+bash "$DOTFILES/sublime-defaults.sh"
 
 # VS Code settings, keybindings, and local extensions
 bash $DOTFILES/vscode/install_vscode.sh
