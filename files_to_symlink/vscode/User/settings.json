@@ -1,7 +1,7 @@
 {
   "files.autoSave": "afterDelay",
   "workbench.editorAssociations": {
-    "*.md": "vscode.markdown.preview.editor"
+    "*.md": "default"
   },
   "workbench.colorTheme": "Monokai Pro",
   "chat.commandCenter.enabled": false,
