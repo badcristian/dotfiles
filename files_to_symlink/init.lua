@@ -29,6 +29,7 @@ APPS = {
 	-- {shortcut = "0", name = "Postman"},
 	{shortcut = "0", name = "Microsoft Excel"},
     {shortcut = "l", name = "Slack"},
+    {shortcut = ",", name = "System Settings", modifiers = {"cmd", "shift"}}, -- takes Ghostty's reload-config
 	-- {shortcut = "e", name = "Tinkerwell", modifiers = {"cmd", "shift"}},
     -- {shortcut = "p", name = "Spotify"},
     -- {shortcut = "i", name = "IntelliJ IDEA"},
@@ -144,7 +145,7 @@ end
 setActiveIde(activeIde, true)
 
 hs.hotkey.bind({"cmd"}, "3", openActiveIde)
-hs.hotkey.bind({"cmd", "shift"}, "3", showIdeChooser)
+-- hs.hotkey.bind({"cmd", "shift"}, "3", showIdeChooser)
 
 -- =============================================================================
 -- Double Tap Shortcuts
@@ -636,6 +637,29 @@ function resetGhosttyWindowSizes()
 end
 
 hs.hotkey.bind({"cmd", "alt", "ctrl"}, "c", centerGhosttyWindows)
+
+-- =============================================================================
+-- Shottr keeps Cmd+Shift+C
+-- Maccy's popup hotkey is Cmd+Shift+C. While Shottr is frontmost, the keystroke
+-- goes to Shottr instead of opening the clipboard history.
+-- =============================================================================
+-- Tap runs before Carbon hotkeys; posting to the pid skips Maccy's.
+SHOTTR_COPY_TAP = hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
+    if event:getKeyCode() ~= hs.keycodes.map.c
+        or not event:getFlags():containExactly({"cmd", "shift"}) then
+        return false
+    end
+
+    local app = hs.application.frontmostApplication()
+    if not app or app:bundleID() ~= "cc.ffitch.shottr" then
+        return false
+    end
+
+    hs.eventtap.event.newKeyEvent({"cmd", "shift"}, "c", true):post(app)
+    hs.eventtap.event.newKeyEvent({"cmd", "shift"}, "c", false):post(app)
+    return true
+end)
+SHOTTR_COPY_TAP:start()
 
 -- =============================================================================
 -- Command Line Access
