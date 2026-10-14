@@ -8021,3 +8021,38 @@ Verification:
 - run over every `fn (` in `ribeit-depozit` `DossierContextDTO.php`, including a
   multi-line `->whereHas()->latest()` chain; 100 scans of the file 5.8 ms;
 - **not verified: the live action.** Reload Window first.
+
+### 2026-10-14 — Lighthouse `$context->user()->getKey()` stopped reading as undefined
+
+Cause:
+
+- `spro-app` `Mutations/Donations.php`: `Undefined method 'getKey'.
+  intelephense(P1013)`. Lighthouse declares `GraphQLContext::user():
+  ?Authenticatable` natively; the contract has no `getKey()`. Six call sites
+  in the project.
+
+Implementation:
+
+- `buildStubContent()` emits a partial `Nuwave\Lighthouse\Support\Contracts\
+  GraphQLContext` interface redeclaring `user(): ?<authModel>`, beside the
+  `Request::user()` block and gated on the same `config/auth.php` model;
+- version 0.0.55.
+
+Decisions:
+
+- stub, not `getAuthIdentifier()` at the call sites: keeps `getKey()`
+  everywhere, fixes all six at once;
+- default guard's model, not Lighthouse's `guards` -> fine while both resolve
+  to the same provider (spro: `web` and `api` -> `users` -> `App\User`).
+
+Verification:
+
+- headless Intelephense 1.18.5, synthetic workspace with the real native
+  signature: `getKey()` P1013 before, gone after; `->nope()` still P1013, so the
+  type resolved rather than collapsed to `mixed`; stub file itself: 0
+  diagnostics;
+- `laravelIntelligence.test.js` 40 passing (1 new); `node --test` 262/0;
+  `install_vscode.sh` run;
+- block hand-inserted into `spro-app/_ide_helper_manual.php` (gitignored) so it
+  applies before the next regenerate;
+- **not verified: the live editor.** Reload Window.

@@ -534,5 +534,15 @@ test('buildStubContent emits Request::user() only when a model was found', () =>
 	assert.ok(!h.buildStubContent([], [], []).includes('Illuminate\\Http'));
 });
 
+test('buildStubContent retypes Lighthouse GraphQLContext::user() with the same model', () => {
+	const withModel = h.buildStubContent([], [], [], '\\App\\User');
+
+	assert.ok(withModel.includes('namespace Nuwave\\Lighthouse\\Support\\Contracts {'));
+	assert.ok(withModel.includes('public function user(): ?\\App\\User;'));
+	assert.ok(withModel.indexOf('interface GraphQLContext') < withModel.indexOf('ProxiesCanSeeToGate'));
+
+	assert.ok(!h.buildStubContent([], [], []).includes('interface GraphQLContext'));
+});
+
 
 console.log(`\n${passed} passing`);

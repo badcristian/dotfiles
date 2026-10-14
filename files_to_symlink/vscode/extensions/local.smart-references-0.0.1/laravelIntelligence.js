@@ -23,7 +23,8 @@
 //      this generated file rather than in app/ source, which is what PhpStorm needs no edit for.
 //   5. @method user() on Illuminate\Http\Request, typed with the model behind the default guard
 //      in config/auth.php — so $request->user()?->getKey() resolves. Vendor says `@return mixed`;
-//      Larastan overrides that with RequestUserExtension, Intelephense has nothing.
+//      Larastan overrides that with RequestUserExtension, Intelephense has nothing. Same model
+//      retypes Lighthouse's GraphQLContext::user(), natively the Authenticatable contract.
 //   6. Facade accessor return types: Storage::disk() is documented as the Filesystem CONTRACT, so
 //      ->download() reads as undefined. Larastan patches this with a return-type extension.
 // Then it also refreshes the PhpStorm file icons (combining the two dev-helper commands).
@@ -535,10 +536,11 @@ function buildStubContent(models, macroMethods = [], traits = [], authModel = un
  *
  * Written by the "Laravel: Refresh IDE Helpers & Icons" command (local.smart-references).
  * IDE-ONLY: this file is never autoloaded or executed. It declares Eloquent accessor
- * magic-properties, Macroable macro signatures, the model behind Request::user(), Restify
- * fluent-builder return-type overrides and the facade accessors whose docblock names a contract
- * instead of the class it always builds, so Intelephense resolves them without editing your models
- * or vendor code. Re-run the command after adding an accessor or a macro.
+ * magic-properties, Macroable macro signatures, the model behind Request::user() and
+ * GraphQLContext::user(), Restify fluent-builder return-type overrides and the facade accessors
+ * whose docblock names a contract instead of the class it always builds, so Intelephense
+ * resolves them without editing your models or vendor code. Re-run the command after adding an
+ * accessor or a macro.
  * Safe to delete: it only affects the editor. See https://intelephense.com/docs (symbol overrides).
  */`;
 
@@ -560,7 +562,17 @@ function buildStubContent(models, macroMethods = [], traits = [], authModel = un
 }`
 		: undefined;
 
-	return [header, ...modelBlocks, ...macroBlocks, ...traitBlocks, requestUserBlock, RESTIFY_OVERRIDES,
+	// Lighthouse types user() natively as the Authenticatable contract - no getKey(). The
+	// redeclaration wins on clash; abstract interface method = no body, no P1075.
+	const graphqlUserBlock = authModel
+		? `namespace Nuwave\\Lighthouse\\Support\\Contracts {
+    interface GraphQLContext {
+        public function user(): ?${authModel};
+    }
+}`
+		: undefined;
+
+	return [header, ...modelBlocks, ...macroBlocks, ...traitBlocks, requestUserBlock, graphqlUserBlock, RESTIFY_OVERRIDES,
 		facadeOverrides ? FACADE_OVERRIDES : undefined]
 		.filter(Boolean)
 		.join('\n\n') + '\n';
